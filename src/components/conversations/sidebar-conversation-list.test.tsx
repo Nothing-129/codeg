@@ -61,7 +61,7 @@ const stableTabFns = vi.hoisted(() => ({
   openTab: () => {},
   closeConversationTab: () => {},
   closeTabsByFolder: () => {},
-  openNewConversationTab: () => {},
+  openNewConversationTab: vi.fn(),
 }))
 
 const stableAgents = vi.hoisted(() => ({ sortedTypes: ["claude_code"] }))
@@ -329,6 +329,7 @@ beforeEach(() => {
   virtuaCtl.scrollOffset = 0
   virtuaCtl.onScroll = null
   virtuaCtl.scrollToIndex.mockClear()
+  stableTabFns.openNewConversationTab.mockClear()
 })
 
 describe("SidebarConversationList — single status event re-render scope", () => {
@@ -365,6 +366,21 @@ describe("SidebarConversationList — single status event re-render scope", () =
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it("indents folder sessions without drawing a folder spine", () => {
+    render(tree())
+    const cards = document.querySelectorAll("[data-conv-key]")
+    expect(cards.length).toBe(5)
+    // Sessions sit one step under the folder header, but the first indent
+    // step does not grow a vertical rail — two expanded folders stay
+    // separate groups, not one connected column.
+    for (const card of cards) {
+      expect(card.querySelectorAll("[data-subsession-rail]")).toHaveLength(0)
+      expect(
+        (card as HTMLElement).style.getPropertyValue("--conv-rail-axis")
+      ).toBe("calc(0.875rem + 1 * 1.25rem)")
+    }
   })
 
   it("re-renders exactly one card and no folder headers when a single summary changes", () => {
@@ -592,6 +608,25 @@ describe("SidebarConversationList — folder drag gesture", () => {
     await act(async () => {
       firePointer(window, "pointerup", { clientY: 103 })
     })
+    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+  })
+
+  it("does not treat pointer movement on the new-conversation button as a folder drag", () => {
+    render(tree())
+    const header = grip(1)
+    const newConversation = header.querySelector(
+      'button[aria-label="New Conversation"]'
+    )
+    if (!newConversation) throw new Error("new-conversation button not found")
+
+    act(() =>
+      firePointer(newConversation, "pointerdown", { clientX: 0, clientY: 100 })
+    )
+    act(() => firePointer(window, "pointermove", { clientX: 8, clientY: 100 }))
+    act(() => firePointer(window, "pointerup", { clientX: 8, clientY: 100 }))
+    fireEvent.click(newConversation)
+
+    expect(stableTabFns.openNewConversationTab).toHaveBeenCalledWith(1, "/p/1")
     expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
   })
 })

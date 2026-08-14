@@ -345,6 +345,29 @@ describe("buildRows", () => {
     ])
   })
 
+  it("indents folder sessions under the folder header", () => {
+    const byFolder = new Map([
+      [10, [conv(1, 10)]],
+      [20, [conv(2, 20)]],
+    ])
+    const rows = folderRows(
+      [10, 20],
+      byFolder,
+      { 10: true, 20: true },
+      new Map([
+        [10, 1],
+        [20, 1],
+      ])
+    )
+    expect(rows).toEqual([
+      foldersHeader(2),
+      { kind: "folder", folderId: 10 },
+      { kind: "conversation", conversation: byFolder.get(10)![0], depth: 1 },
+      { kind: "folder", folderId: 20 },
+      { kind: "conversation", conversation: byFolder.get(20)![0], depth: 1 },
+    ])
+  })
+
   it("emits header + empty-hint row for an expanded folder with no visible rows", () => {
     const rows = folderRows([10], new Map(), { 10: true }, new Map([[10, 3]]))
     expect(rows).toEqual([
@@ -396,7 +419,7 @@ describe("buildRows", () => {
       foldersHeader(2),
       { kind: "folder", folderId: 20 },
       { kind: "folder", folderId: 10 },
-      { kind: "conversation", conversation: byFolder.get(10)![0], depth: 0 },
+      { kind: "conversation", conversation: byFolder.get(10)![0], depth: 1 },
     ])
   })
 
@@ -712,9 +735,9 @@ describe("buildRows", () => {
       childrenByParent: new Map([[1, [childA, childB]]]),
     })
     expect(rows.filter((r) => r.kind === "conversation")).toEqual([
-      { kind: "conversation", conversation: parent, depth: 0 },
-      { kind: "conversation", conversation: childA, depth: 1 },
-      { kind: "conversation", conversation: childB, depth: 1 },
+      { kind: "conversation", conversation: parent, depth: 1 },
+      { kind: "conversation", conversation: childA, depth: 2 },
+      { kind: "conversation", conversation: childB, depth: 2 },
     ])
   })
 
@@ -735,7 +758,7 @@ describe("buildRows", () => {
       childrenByParent: new Map([[1, [childA]]]),
     })
     expect(rows.filter((r) => r.kind === "conversation")).toEqual([
-      { kind: "conversation", conversation: parent, depth: 0 },
+      { kind: "conversation", conversation: parent, depth: 1 },
     ])
   })
 
@@ -757,7 +780,7 @@ describe("buildRows", () => {
     expect(rows).toContainEqual({
       kind: "subsession-loading",
       parentId: 1,
-      depth: 1,
+      depth: 2,
     })
   })
 
@@ -778,7 +801,7 @@ describe("buildRows", () => {
     })
     expect(rows.some((r) => r.kind === "subsession-loading")).toBe(false)
     expect(rows.filter((r) => r.kind === "conversation")).toEqual([
-      { kind: "conversation", conversation: parent, depth: 0 },
+      { kind: "conversation", conversation: parent, depth: 1 },
     ])
   })
 
@@ -803,9 +826,9 @@ describe("buildRows", () => {
       ]),
     })
     expect(rows.filter((r) => r.kind === "conversation")).toEqual([
-      { kind: "conversation", conversation: parent, depth: 0 },
-      { kind: "conversation", conversation: child, depth: 1 },
-      { kind: "conversation", conversation: grandchild, depth: 2 },
+      { kind: "conversation", conversation: parent, depth: 1 },
+      { kind: "conversation", conversation: child, depth: 2 },
+      { kind: "conversation", conversation: grandchild, depth: 3 },
     ])
   })
 
@@ -850,7 +873,7 @@ describe("buildRows", () => {
     expect(rows).toContainEqual({
       kind: "subsession-loading",
       parentId: 1,
-      depth: 1,
+      depth: 2,
     })
   })
 })
@@ -891,7 +914,7 @@ describe("buildRows — Recent section", () => {
     // The same conversation appears twice: once under its folder (untagged),
     // once in Recent (tagged).
     expect(matches).toEqual([
-      { kind: "conversation", conversation: c1, depth: 0 },
+      { kind: "conversation", conversation: c1, depth: 1 },
       { kind: "conversation", conversation: c1, depth: 0, recent: true },
     ])
   })
@@ -912,7 +935,7 @@ describe("buildRows — Recent section", () => {
     expect(
       rows.filter((r) => r.kind === "conversation" && r.conversation.id === 2)
     ).toEqual([
-      { kind: "conversation", conversation: kid, depth: 1 },
+      { kind: "conversation", conversation: kid, depth: 2 },
       { kind: "conversation", conversation: kid, depth: 1, recent: true },
     ])
 
@@ -926,7 +949,7 @@ describe("buildRows — Recent section", () => {
       childrenLoading: new Set([1]),
     }).filter((r) => r.kind === "subsession-loading")
     expect(loadingRows).toEqual([
-      { kind: "subsession-loading", parentId: 1, depth: 1 },
+      { kind: "subsession-loading", parentId: 1, depth: 2 },
       { kind: "subsession-loading", parentId: 1, depth: 1, recent: true },
     ])
   })
@@ -1140,7 +1163,7 @@ describe("buildRows — Show worktrees container tree", () => {
     ])
   })
 
-  it("renders a repo with no worktree children flat at depth 0 (no root-group)", () => {
+  it("renders a repo with no worktree children as a plain folder (no root-group)", () => {
     const c = conv(1, 20)
     const rows = buildRows({
       pinned: [],
@@ -1155,16 +1178,16 @@ describe("buildRows — Show worktrees container tree", () => {
       foldersExpanded: true,
       chatConversations: [],
       chatsExpanded: true,
-      // Only repo 10 is a container; repo 20 stays a plain flat folder.
+      // Only repo 10 is a container; repo 20 stays a plain folder.
       containerChildren: new Map([[10, [11]]]),
     })
     const trimmed = trimChats(rows)
-    // Repo 20 (plain): header + its own session at depth 0 — no root-group.
+    // Repo 20 (plain): header + its own session at depth 1 — no root-group.
     expect(trimmed).toContainEqual({ kind: "folder", folderId: 20 })
     expect(trimmed).toContainEqual({
       kind: "conversation",
       conversation: c,
-      depth: 0,
+      depth: 1,
     })
     expect(
       trimmed.some((r) => r.kind === "root-group" && r.folderId === 20)

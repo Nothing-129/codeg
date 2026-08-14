@@ -3265,7 +3265,7 @@ fn carries_image(block: &PromptInputBlock) -> bool {
 ///
 /// Two wire encodings carry the same bytes: a native `Image` block, and a
 /// `Resource` whose `blob` holds them under an image mime type (what agents
-/// that reject image content but accept embedded context — e.g. Grok — take).
+/// that reject image content but accept embedded context take).
 /// The composer picks one at compose time from a probe; this picks again at
 /// dispatch, when the session has actually said what it accepts.
 ///

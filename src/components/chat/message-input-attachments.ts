@@ -56,12 +56,11 @@ export type InputAttachment = ResourceInputAttachment | ImageInputAttachment
  * - Agents that accept native ACP image content (`caps.image` — e.g. Claude,
  *   Codex) → an `image` block.
  * - Agents that reject image content but accept embedded context
- *   (`caps.embedded_context` — e.g. Grok, which advertises `image: false` +
- *   `embeddedContext: true`) → an embedded `resource` blob carrying the same
- *   base64 bytes and image mime type. This is exactly what those agents already
- *   received before; the only change is that the composer now shows the image
- *   as a thumbnail instead of an inline file badge (see `canAttachImages` in
- *   `message-input.tsx`), so the sent payload is unchanged for them.
+ *   (`caps.embedded_context`) → an embedded `resource` blob carrying the same
+ *   base64 bytes and image mime type. (Grok advertises `image: false` on the
+ *   wire, but codeg overrides that to `true` so Grok takes the native `image`
+ *   branch — a resource blob is dumped as a binary file attachment and never
+ *   reaches Grok's image-describe sidecar.)
  *
  * Pure and deterministic: a path-less pasted image (no `uri`) is given a stable
  * `clipboard://` identifier derived from its name + id, so the emitted block is

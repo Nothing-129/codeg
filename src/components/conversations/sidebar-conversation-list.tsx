@@ -493,6 +493,12 @@ const FolderHeader = memo(function FolderHeader({
               </button>
               <button
                 type="button"
+                onPointerDown={(e) => {
+                  // The folder row owns pointerdown for reordering. Keep a small
+                  // movement while pressing this action from entering drag mode,
+                  // collapsing the list, and swallowing the eventual click.
+                  e.stopPropagation()
+                }}
                 onClick={(e) => {
                   e.stopPropagation()
                   onNewConversation(folderId)
@@ -2121,6 +2127,26 @@ export function SidebarConversationList({
   const folderThemeColor = (folderId: number): FolderThemeColor =>
     normalizeFolderThemeColor(folderIndex.get(folderId)?.color)
 
+  // Folder-section sessions indent one step under the header (`depth >= 1`)
+  // but must not grow a spine from the folder icon. Skip that first rail
+  // unless this row is pinned / chat / Recent (flat) or a worktree / root
+  // sub-group (those keep the container connector).
+  const folderRailFrom = (
+    conv: DbConversationSummary | undefined,
+    recent?: true
+  ): number => {
+    if (!conv || recent) return 0
+    if (conv.kind === "chat" || conv.pinned_at != null) return 0
+    if (
+      showWorktrees &&
+      (childToParent.has(conv.folder_id) ||
+        containerRepoIds.has(conv.folder_id))
+    ) {
+      return 0
+    }
+    return 1
+  }
+
   // A per-row theme wrapper replaces the old per-folder-group wrapper: it scopes
   // the folder's accent color (and dark-mode flip) to that single virtual row.
   const themeWrap = (folderId: number, child: React.ReactNode) => {
@@ -2298,27 +2324,25 @@ export function SidebarConversationList({
       )
     }
     if (row.kind === "empty") {
-      // A worktree / root sub-group's empty hint is indented one level so its
-      // text lines up under the (depth-1) sub-group's sessions, matching the
-      // header. A plain folder's hint stays at depth 0.
+      // Sessions hang one step under the header (plain folder or worktree
+      // sub-group). Only a worktree / root-group empty hint draws the
+      // container spine — a plain folder stays indented, without a rail.
       const nested =
         showWorktrees &&
         (childToParent.has(row.folderId) || containerRepoIds.has(row.folderId))
-      const depth = nested ? 1 : 0
+      const depth = 1
       return themeWrap(
         row.folderId,
-        // Full row height (h-[2rem], the fixed virtua item size) so the container
-        // connector spine stays continuous THROUGH an empty sub-group ("no
-        // conversations") instead of breaking at a shorter box. The ancestor rail
-        // spans this row; it renders nothing at depth 0 (a plain folder has no
-        // spine).
+        // Full row height (h-[2rem], the fixed virtua item size) so the
+        // container connector spine stays continuous THROUGH an empty
+        // worktree ("no conversations") instead of breaking at a shorter box.
         <div
           className="relative flex h-[2rem] items-center text-[0.75rem] text-muted-foreground/70"
           style={{
             paddingLeft: `calc(var(--conv-rail-axis) + 0.875rem + ${depth} * ${CONV_RAIL_DEPTH_STEP})`,
           }}
         >
-          <SubsessionAncestorRails depth={depth} />
+          <SubsessionAncestorRails depth={nested ? depth : 0} />
           <span className="relative truncate">
             {row.totalConversationCount === 0
               ? t("emptyFolderHint")
@@ -2399,6 +2423,7 @@ export function SidebarConversationList({
       // (0.875rem + depth·CONV_RAIL_DEPTH_STEP) plus the button's extra 0.875rem.
       // Ancestor guide rails keep each parent's vertical line continuous through
       // this placeholder; the content is lifted (relative) above the z-0 rails.
+      const parent = conversations.find((c) => c.id === row.parentId)
       return (
         <div
           className="relative py-[0.375rem] text-[0.75rem] text-muted-foreground/70"
@@ -2406,7 +2431,10 @@ export function SidebarConversationList({
             paddingLeft: `calc(0.875rem + ${row.depth} * ${CONV_RAIL_DEPTH_STEP} + 0.875rem)`,
           }}
         >
-          <SubsessionAncestorRails depth={row.depth} />
+          <SubsessionAncestorRails
+            depth={row.depth}
+            from={folderRailFrom(parent, row.recent)}
+          />
           <span className="relative flex items-center gap-1.5">
             <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
             {t("loadingSubsessions")}
@@ -2441,6 +2469,7 @@ export function SidebarConversationList({
         onNewConversation={handleNewConversationForFolder}
         onTogglePin={handleTogglePin}
         depth={row.depth}
+        railFrom={folderRailFrom(conv, row.recent)}
         hasChildren={conv.child_count > 0}
         expanded={conversationExpanded.has(conv.id)}
         onToggleExpand={toggleConversation}

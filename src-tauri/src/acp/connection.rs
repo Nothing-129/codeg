@@ -2523,20 +2523,34 @@ async fn apply_and_emit_session_config_options(
     emit_session_config_options_values(state, emitter, agent_type, updated).await;
 }
 
+/// Grok's initialize still advertises `image: false` — the coding model
+/// cannot see pixels. Native ACP `image` blocks nevertheless run its
+/// image-describe sidecar (verified against grok 1.0.2). An image-mime
+/// `resource` blob does not: grok dumps it as
+/// `<file_contents type="binary">` and the model only gets a path.
+/// Advertise `image: true` so the composer sends Image blocks.
+fn effective_prompt_capabilities(
+    agent_type: AgentType,
+    capabilities: &sacp::schema::PromptCapabilities,
+) -> PromptCapabilitiesInfo {
+    PromptCapabilitiesInfo {
+        image: capabilities.image || agent_type == AgentType::Grok,
+        audio: capabilities.audio,
+        embedded_context: capabilities.embedded_context,
+    }
+}
+
 async fn emit_prompt_capabilities(
     state: &Arc<RwLock<SessionState>>,
     emitter: &EventEmitter,
     capabilities: &sacp::schema::PromptCapabilities,
+    agent_type: AgentType,
 ) {
     emit_with_state(
         state,
         emitter,
         AcpEvent::PromptCapabilities {
-            prompt_capabilities: PromptCapabilitiesInfo {
-                image: capabilities.image,
-                audio: capabilities.audio,
-                embedded_context: capabilities.embedded_context,
-            },
+            prompt_capabilities: effective_prompt_capabilities(agent_type, capabilities),
         },
     )
     .await;
@@ -3626,6 +3640,7 @@ async fn run_connection(
                 &state,
                 &emitter_clone,
                 &init_resp.agent_capabilities.prompt_capabilities,
+                agent_type,
             )
             .await;
 
@@ -5726,6 +5741,31 @@ async fn journal_turn_span(
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), ack).await;
 }
 
+/// Promote image-mime embedded resources to native Image blocks.
+///
+/// Codeg used to send Grok images as `resource` blobs because grok
+/// advertised `image:false`. That path never reaches grok's describe
+/// sidecar — see [`effective_prompt_capabilities`]. Queued drafts and
+/// work-task replays can still carry the old shape; lift them here.
+fn promote_grok_image_resources(blocks: Vec<PromptInputBlock>) -> Vec<PromptInputBlock> {
+    blocks
+        .into_iter()
+        .map(|block| match block {
+            PromptInputBlock::Resource {
+                uri,
+                mime_type: Some(mime),
+                text: None,
+                blob: Some(blob),
+            } if mime.starts_with("image/") && !blob.is_empty() => PromptInputBlock::Image {
+                data: blob,
+                mime_type: mime,
+                uri: Some(uri),
+            },
+            other => other,
+        })
+        .collect()
+}
+
 fn map_prompt_blocks(blocks: Vec<PromptInputBlock>) -> Vec<ContentBlock> {
     blocks
         .into_iter()
@@ -6518,6 +6558,14 @@ async fn run_conversation_loop<'a>(
                         .collect();
                     (crate::turn_timings::prompt_hash(&text), cursor_turn_ord)
                 });
+                // Grok: lift leftover image-mime resource blobs (queued drafts
+                // composed before we advertised image:true) into native Image
+                // blocks so its describe sidecar actually runs.
+                let blocks = if agent_type == AgentType::Grok {
+                    promote_grok_image_resources(blocks)
+                } else {
+                    blocks
+                };
                 let prompt_blocks = map_prompt_blocks(blocks);
                 if prompt_blocks.is_empty() {
                     // Defensive: the manager rejects empty prompts before the
@@ -8224,6 +8272,12 @@ struct CodeBuddyLiveState {
     /// dropped so the card doesn't double-render; tracked by id because a later
     /// status-only update may drop the `x.ai/tool` meta that first identified it.
     grok_ask_tool_ids: HashSet<String>,
+    /// Grok may call its text-only `read_file` tool on the raster copy of a
+    /// native prompt image that it just persisted under its session `assets/`
+    /// directory. The call predictably fails UTF-8 decoding even though Grok
+    /// already has the visual context. Hide both frames by id so this harmless
+    /// implementation detail never renders as a red tool card.
+    grok_hidden_image_read_ids: HashSet<String>,
     /// Grok `spawn_subagent` tool_call ids ever announced on this connection
     /// (dedupe for the pending queue + status tracking on meta-less updates).
     grok_spawn_seen: HashSet<String>,
@@ -8574,6 +8628,37 @@ fn map_grok_ext_notification(
                 locations: None,
                 meta: Some(serde_json::Value::Object(meta)),
                 images: None,
+            })
+        }
+        // A prompt image was accepted on the wire but dropped before the
+        // describe sidecar (too small, oversize, decode failure). Surface it
+        // so the user isn't left wondering why Grok "can't see" the shot.
+        "image_dropped" => {
+            let detail = update
+                .get("notes")
+                .and_then(|v| v.as_array())
+                .map(|notes| {
+                    notes
+                        .iter()
+                        .filter_map(|n| n.as_str())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                })
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    update
+                        .get("reason")
+                        .or_else(|| update.get("message"))
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| "image was dropped before send".to_string());
+            Some(AcpEvent::Error {
+                message: format!("Image dropped: {detail}"),
+                agent_type: agent_type.to_string(),
+                code: None,
+                details: None,
+                terminal: false,
             })
         }
         // Compaction itself blew up (e.g. the summarizer model call failed) while
@@ -9091,6 +9176,24 @@ async fn emit_conversation_update(
                 return;
             }
             let tool_call_id = tc.tool_call_id.to_string();
+            let grok_native_tool_name = tc
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.get("x.ai/tool"))
+                .and_then(|tool| tool.get("name"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(tc.title.as_str());
+            if matches!(agent_type, AgentType::Grok)
+                && crate::parsers::grok::is_redundant_session_image_read(
+                    grok_native_tool_name,
+                    tc.raw_input.as_ref(),
+                )
+            {
+                cb_state
+                    .grok_hidden_image_read_ids
+                    .insert(tool_call_id);
+                return;
+            }
             // Grok emits a redundant `tool_call` for its native ask_user_question
             // alongside the blocking `_x.ai/ask_user_question` ext request codeg
             // answers with the interactive card; drop it here (remembering the id so
@@ -9247,6 +9350,12 @@ async fn emit_conversation_update(
                 return;
             }
             let tool_call_id = tcu.tool_call_id.to_string();
+            if cb_state
+                .grok_hidden_image_read_ids
+                .contains(&tool_call_id)
+            {
+                return;
+            }
             // Suppress the redundant update stream for grok's ask_user_question
             // (see the ToolCall arm): match the tracked id, or the meta on a late
             // update that still carries it.
@@ -10498,6 +10607,85 @@ mod tests {
         assert!(matches!(
             map_grok_ext_notification(&raw, AgentType::Grok),
             Some(AcpEvent::ToolCall { .. })
+        ));
+    }
+
+    #[test]
+    fn map_grok_ext_notification_image_dropped_surfaces_error() {
+        let raw = UntypedMessage::new(
+            "_x.ai/session_notification",
+            serde_json::json!({
+                "sessionId": "s",
+                "update": {
+                    "sessionUpdate": "image_dropped",
+                    "notes": [
+                        "Image 1 was dropped before send: too small (1×1); images must be at least 8×8 pixels."
+                    ]
+                }
+            }),
+        )
+        .unwrap();
+        match map_grok_ext_notification(&raw, AgentType::Grok) {
+            Some(AcpEvent::Error {
+                message, terminal, ..
+            }) => {
+                assert!(
+                    message.contains("too small"),
+                    "error should carry grok's drop reason; got: {message}"
+                );
+                assert!(!terminal, "a dropped image must not kill the connection");
+            }
+            other => panic!("expected non-terminal Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn promote_grok_image_resources_lifts_image_blobs_only() {
+        let blocks = vec![
+            PromptInputBlock::Text {
+                text: "see this".into(),
+            },
+            PromptInputBlock::Resource {
+                uri: "clipboard://shot.png-abc".into(),
+                mime_type: Some("image/png".into()),
+                text: None,
+                blob: Some("aGk=".into()),
+            },
+            PromptInputBlock::Resource {
+                uri: "clipboard://notes.md".into(),
+                mime_type: Some("text/markdown".into()),
+                text: Some("hi".into()),
+                blob: None,
+            },
+            PromptInputBlock::Image {
+                data: "already".into(),
+                mime_type: "image/jpeg".into(),
+                uri: None,
+            },
+        ];
+        let out = promote_grok_image_resources(blocks);
+        assert!(matches!(&out[0], PromptInputBlock::Text { text } if text == "see this"));
+        assert!(
+            matches!(
+                &out[1],
+                PromptInputBlock::Image { data, mime_type, uri: Some(u) }
+                    if data == "aGk="
+                        && mime_type == "image/png"
+                        && u == "clipboard://shot.png-abc"
+            ),
+            "{:?}",
+            out[1]
+        );
+        assert!(matches!(
+            &out[2],
+            PromptInputBlock::Resource {
+                mime_type: Some(m),
+                ..
+            } if m == "text/markdown"
+        ));
+        assert!(matches!(
+            &out[3],
+            PromptInputBlock::Image { data, .. } if data == "already"
         ));
     }
 
@@ -12162,6 +12350,81 @@ mod tests {
         assert!(
             content.as_deref().is_some_and(|c| c.contains("build ok")),
             "the clean content channel carries the executed command's output: {content:?}"
+        );
+    }
+
+    /// Grok 1.0.4 persists a native prompt image under its session `assets/`
+    /// directory, then may redundantly call the TEXT-only `read_file` tool on
+    /// that PNG even though the model already has the visual description. The
+    /// call predictably fails UTF-8 decoding but Grok continues from its image
+    /// context. Neither half of this implementation-detail call should become a
+    /// red tool card in codeg's live stream.
+    #[tokio::test]
+    async fn grok_live_suppresses_redundant_session_image_read() {
+        let st = SessionState::new(
+            "conn-grok".to_string(),
+            AgentType::Grok,
+            None,
+            "win".to_string(),
+            None,
+        );
+        let state = Arc::new(RwLock::new(st));
+        let emitter = EventEmitter::Noop;
+        let mut cache = ToolCallOutputCache::default();
+        let mut cb = CodeBuddyLiveState::default();
+        let image = "/Users/me/.grok/sessions/%2FUsers%2Fme%2Fproj/session-id/assets/image-1.png";
+
+        let call: SessionUpdate = serde_json::from_value(serde_json::json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "call-image-read",
+            "title": "read_file",
+            "rawInput": {"target_file": image},
+            "_meta": {"x.ai/tool": {"name": "read_file", "kind": "read"}},
+        }))
+        .expect("valid grok read_file call");
+        emit_conversation_update(
+            &state,
+            &emitter,
+            AgentType::Grok,
+            call,
+            None,
+            &mut cache,
+            &mut cb,
+        )
+        .await;
+
+        let failed: SessionUpdate = serde_json::from_value(serde_json::json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-image-read",
+            "status": "failed",
+            "content": [{
+                "type": "content",
+                "content": {
+                    "type": "text",
+                    "text": format!("Failed to read file: {image}: stream did not contain valid UTF-8"),
+                },
+            }],
+        }))
+        .expect("valid grok read_file failure");
+        emit_conversation_update(
+            &state,
+            &emitter,
+            AgentType::Grok,
+            failed,
+            None,
+            &mut cache,
+            &mut cb,
+        )
+        .await;
+
+        let guard = state.read().await;
+        let events = guard.recent_events_after(0).unwrap_or_default();
+        assert!(
+            events.iter().all(|event| !matches!(
+                event.payload,
+                AcpEvent::ToolCall { .. } | AcpEvent::ToolCallUpdate { .. }
+            )),
+            "the redundant Grok image read must not render live: {events:?}"
         );
     }
 

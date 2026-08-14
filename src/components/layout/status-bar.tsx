@@ -3,7 +3,6 @@
 import { StatusBarStats } from "@/components/layout/status-bar-stats"
 import { StatusBarTasks } from "@/components/layout/status-bar-tasks"
 import { StatusBarAlerts } from "@/components/layout/status-bar-alerts"
-import { StatusBarUpdate } from "@/components/layout/status-bar-update"
 import { CommandDropdown } from "@/components/layout/command-dropdown"
 import { useIsMobile } from "@/hooks/use-mobile"
 
@@ -21,7 +20,6 @@ export function StatusBar() {
           <StatusBarStats />
         </div>
         <div className="flex items-center gap-3">
-          <StatusBarUpdate />
           <CommandDropdown />
           <StatusBarAlerts />
         </div>
@@ -38,7 +36,6 @@ export function StatusBar() {
         <StatusBarStats />
       </div>
       <div className="flex items-center gap-4">
-        <StatusBarUpdate />
         <StatusBarTasks />
         {/* Command launcher (moved from the aux "session details" tab), taking
             the slot the old static branch label (StatusBarSessionInfo) held. */}

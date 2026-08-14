@@ -41,10 +41,10 @@ describe("imageAttachmentToPromptBlock", () => {
     expect(block).toMatchObject({ type: "image", uri: null })
   })
 
-  it("emits an embedded resource blob when the agent only accepts embedded context (Grok)", () => {
-    // Grok advertises image:false, embeddedContext:true — the image rides along
-    // as an embedded resource blob (same bytes, image mime) rather than an
-    // unsupported native image block.
+  it("emits an embedded resource blob when the agent only accepts embedded context", () => {
+    // Agents that truly cannot take native image blocks (image:false +
+    // embeddedContext:true) still get the bytes as an embedded resource.
+    // Grok is no longer in this bucket: codeg advertises image:true for it.
     const block = imageAttachmentToPromptBlock(image(), {
       image: false,
       embedded_context: true,

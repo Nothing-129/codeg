@@ -17,9 +17,9 @@
 //! - `Image { data: "", uri: Some("file://…") }` — agents that accept native
 //!   image content.
 //! - `Resource { blob: Some(""), mime_type: Some("image/*"), uri: "file://…" }`
-//!   — agents that reject images but take embedded context (e.g. Grok). The
-//!   client already chose the caps-correct shape, so hydration only fills
-//!   bytes and never converts between shapes.
+//!   — agents that reject images but take embedded context. The client already
+//!   chose the caps-correct shape, so hydration only fills bytes and never
+//!   converts between shapes.
 //!
 //! Anything else — a block whose payload is already populated (the desktop
 //! local path, which inlines over Tauri IPC where no body limit exists), a

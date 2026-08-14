@@ -289,7 +289,12 @@ describe("SidebarConversationCard sub-session chevron", () => {
 
   function renderCard(
     c: DbConversationSummary,
-    props: { hasChildren?: boolean; expanded?: boolean; depth?: number } = {}
+    props: {
+      hasChildren?: boolean
+      expanded?: boolean
+      depth?: number
+      railFrom?: number
+    } = {}
   ) {
     return renderWithIntl(
       <SidebarConversationCard
@@ -305,6 +310,7 @@ describe("SidebarConversationCard sub-session chevron", () => {
         hasChildren={props.hasChildren}
         expanded={props.expanded}
         depth={props.depth}
+        railFrom={props.railFrom}
       />
     )
   }
@@ -364,6 +370,11 @@ describe("SidebarConversationCard sub-session chevron", () => {
 
   it("draws no ancestor guide rails for a root row", () => {
     const { container } = renderCard(conv(5), { depth: 0 })
+    expect(container.querySelectorAll("[data-subsession-rail]")).toHaveLength(0)
+  })
+
+  it("skips the first rail levels when railFrom is set (folder indent, no spine)", () => {
+    const { container } = renderCard(conv(6), { depth: 1, railFrom: 1 })
     expect(container.querySelectorAll("[data-subsession-rail]")).toHaveLength(0)
   })
 })

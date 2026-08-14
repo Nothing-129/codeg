@@ -101,6 +101,51 @@ describe("computeTurnMetadataPatches", () => {
     ])
   })
 
+  it("folds Claude thinking and text slices into their own live reply", () => {
+    const localTurns: MessageTurn[] = [
+      {
+        id: "u1",
+        role: "user",
+        blocks: [],
+        timestamp: "2026-08-14T10:53:16.092Z",
+      },
+      asst({ id: "a1", timestamp: "2026-08-14T10:53:16.092Z" }),
+      {
+        id: "u2",
+        role: "user",
+        blocks: [],
+        timestamp: "2026-08-14T10:53:33.233Z",
+      },
+      asst({ id: "a2", timestamp: "2026-08-14T10:53:33.233Z" }),
+      {
+        id: "u3",
+        role: "user",
+        blocks: [],
+        timestamp: "2026-08-14T10:53:43.716Z",
+      },
+      asst({ id: "a3", timestamp: "2026-08-14T10:53:43.716Z" }),
+    ]
+    const parsedAssistantTurns = [
+      asst({ timestamp: "2026-08-14T10:53:24.485Z", duration_ms: 8393 }),
+      asst({ timestamp: "2026-08-14T10:53:25.044Z", duration_ms: 559 }),
+      asst({ timestamp: "2026-08-14T10:53:36.719Z", duration_ms: 3486 }),
+      asst({ timestamp: "2026-08-14T10:53:37.331Z", duration_ms: 612 }),
+      asst({ timestamp: "2026-08-14T10:53:47.425Z", duration_ms: 3709 }),
+      asst({ timestamp: "2026-08-14T10:53:48.325Z", duration_ms: 900 }),
+    ]
+
+    const patches = computeTurnMetadataPatches({
+      localAssistantIndices: [1, 3, 5],
+      localTurns,
+      parsedAssistantTurns,
+      persistedAssistantCount: 0,
+    })
+
+    expect(patches.map((patch) => patch.duration_ms)).toEqual([
+      8952, 4098, 4609,
+    ])
+  })
+
   it("folds only this session's sub-turns after resume, never history", () => {
     // Resume (3 historical), then a reply the parser split into 2 sub-turns
     // while the live stream produced a single assistant turn (index 1).

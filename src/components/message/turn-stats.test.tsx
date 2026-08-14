@@ -9,7 +9,7 @@ vi.mock("./use-create-task-from-message", () => ({
   useCreateTaskFromMessage: () => () => {},
 }))
 
-import { TurnStats } from "./turn-stats"
+import { resolveTurnDurationMs, TurnStats } from "./turn-stats"
 import { MessageScrollProvider } from "./message-scroll-context"
 import enMessages from "@/i18n/messages/en.json"
 
@@ -50,5 +50,39 @@ describe("TurnStats jump-to-previous-user gating", () => {
       />
     )
     expect(screen.queryByLabelText(jumpLabel)).not.toBeInTheDocument()
+  })
+})
+
+describe("resolveTurnDurationMs", () => {
+  it("prefers the reported duration", () => {
+    expect(
+      resolveTurnDurationMs(
+        12_000,
+        "2026-01-01T00:01:00Z",
+        "2026-01-01T00:00:00Z"
+      )
+    ).toBe(12_000)
+  })
+
+  it("infers from prompt to completion when the agent left duration empty", () => {
+    expect(
+      resolveTurnDurationMs(
+        null,
+        "2026-01-01T00:01:30Z",
+        "2026-01-01T00:00:00Z"
+      )
+    ).toBe(90_000)
+  })
+
+  it("shows inferred duration in the stats row", () => {
+    renderStats(
+      <TurnStats
+        copyText=""
+        duration_ms={null}
+        completedAt="2026-01-01T00:00:42Z"
+        previousUserAt="2026-01-01T00:00:00Z"
+      />
+    )
+    expect(screen.getByLabelText("Duration: 42s")).toBeInTheDocument()
   })
 })

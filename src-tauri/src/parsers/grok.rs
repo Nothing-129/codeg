@@ -642,6 +642,11 @@ fn parse_updates(path: &Path) -> ParsedUpdates {
     let mut assistant: Option<MessageTurn> = None;
     let mut tool_result_idx: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
+    // Grok may redundantly call its text-only `read_file` tool on the raster
+    // copy it just persisted for a native prompt image. Keep those call ids out
+    // of history entirely; the model already has the image context and carries
+    // on after the predictable UTF-8 failure.
+    let mut hidden_image_read_ids = std::collections::HashSet::new();
     // Stats for the in-flight turn (tokens/timing/model), applied to the
     // assistant turn when it is finalized. Reset at each turn boundary.
     let mut turn_meta = GrokTurnMeta::default();
@@ -795,6 +800,12 @@ fn parse_updates(path: &Path) -> ParsedUpdates {
                         .unwrap_or("tool")
                         .to_string(),
                 };
+                if is_redundant_session_image_read(&tool_name, raw_input) {
+                    if !id.is_empty() {
+                        hidden_image_read_ids.insert(id);
+                    }
+                    continue;
+                }
                 // Native sub-agent launch → the dedicated Agent card (see
                 // `GROK_SPAWN_SUBAGENT_TOOL_NAME`). Recorded for the
                 // lifecycle/stats pairing pass; the MCP-unwrapped branch is
@@ -838,6 +849,9 @@ fn parse_updates(path: &Path) -> ParsedUpdates {
             }
             "tool_call_update" => {
                 let id = str_field(update, "toolCallId");
+                if hidden_image_read_ids.contains(&id) {
+                    continue;
+                }
                 let output = update_tool_output(update);
                 let status = grok_line_status(&v, update);
                 let failed = status.as_deref() == Some("failed");
@@ -855,6 +869,7 @@ fn parse_updates(path: &Path) -> ParsedUpdates {
                 }
                 turn_meta = GrokTurnMeta::default();
                 tool_result_idx.clear();
+                hidden_image_read_ids.clear();
             }
             // Grok's auto-compaction (`/compact` or threshold-triggered) lands in
             // updates.jsonl on the namespaced `_x.ai/session/update` method as
@@ -1010,15 +1025,14 @@ fn update_text(update: &Value) -> String {
 
 /// Classify a `user_message_chunk`'s `content` into a display block.
 ///
-/// Grok sends prose as `{type:"text"}` and a pasted image as an embedded
-/// `{type:"resource", resource:{blob, mimeType, uri}}` — it advertises
-/// `image:false`, so images ride as embedded resources. An image-mime resource
-/// is promoted to [`ContentBlock::Image`] (bytes: `blob → data`) so it renders
-/// as a thumbnail, matching the live path and every other agent's images; a
-/// non-image embedded resource folds to a `[uri](uri)` link (same as the live
-/// [`crate::acp::user_blocks_from_prompt`]) so the attachment is still visible
-/// instead of a blank turn. Anything else falls back to a (possibly empty) text
-/// block, preserving prior behavior for plain prompts.
+/// Grok sends prose as `{type:"text"}`. Current codeg prompts send a native
+/// `{type:"image"}` chunk (so grok's describe sidecar runs). Older transcripts
+/// still carry the embedded `{type:"resource", resource:{blob, mimeType, uri}}`
+/// shape from when we followed grok's `image:false` advertisement. Both
+/// image-mime forms become [`ContentBlock::Image`] so they render as a
+/// thumbnail; a non-image embedded resource folds to a `[uri](uri)` link
+/// (same as the live [`crate::acp::user_blocks_from_prompt`]). Anything else
+/// falls back to a (possibly empty) text block.
 fn user_chunk_to_block(update: &Value) -> Option<ContentBlock> {
     let content = update.get("content")?;
     match content.get("type").and_then(Value::as_str).unwrap_or("") {
@@ -1045,8 +1059,7 @@ fn user_chunk_to_block(update: &Value) -> Option<ContentBlock> {
                 }
             }
         }
-        // Defensive: native ACP image content. Grok uses the `resource` shape
-        // above, but stay robust to a future/native image chunk.
+        // Native ACP image content — the live send path as of grok 1.0.2.
         "image" => {
             let data = content.get("data").and_then(Value::as_str)?;
             Some(ContentBlock::Image {
@@ -1261,6 +1274,39 @@ fn unwrap_use_tool(raw_input: Option<&Value>) -> Option<(&str, &Value)> {
         .filter(|s| !s.is_empty())?;
     let tool_input = obj.get("tool_input")?;
     Some((tool_name, tool_input))
+}
+
+/// Whether this is Grok redundantly feeding its own persisted prompt image to
+/// the text-only `read_file` tool. Grok already received the native image block;
+/// the generated copy is named `sessions/<group>/<id>/assets/image-*`, and the
+/// read predictably fails UTF-8 decoding for raster formats. Keep the match
+/// deliberately narrower than “read_file on an image” so genuine project-file
+/// failures remain visible.
+pub(crate) fn is_redundant_session_image_read(
+    tool_name: &str,
+    raw_input: Option<&Value>,
+) -> bool {
+    if tool_name != "read_file" {
+        return false;
+    }
+    let Some(path) = raw_input
+        .and_then(Value::as_object)
+        .and_then(|input| input.get("target_file").or_else(|| input.get("path")))
+        .and_then(Value::as_str)
+    else {
+        return false;
+    };
+    let normalized = path.replace('\\', "/").to_ascii_lowercase();
+    let Some((session, asset)) = normalized.rsplit_once("/assets/") else {
+        return false;
+    };
+    if !session.contains("/sessions/") || !asset.starts_with("image-") {
+        return false;
+    }
+    matches!(
+        asset.rsplit_once('.').map(|(_, ext)| ext),
+        Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "avif" | "tif" | "tiff" | "heic" | "heif")
+    )
 }
 
 /// Extract the readable text from a Grok MCP `rawOutput`
@@ -2074,12 +2120,107 @@ mod tests {
     }
 
     #[test]
+    fn merges_prompt_text_and_native_image_into_one_user_turn() {
+        // Live grok 1.0.2 echoes a native ACP image as its own
+        // `user_message_chunk` (same `promptIndex` as the prose). Same merge
+        // rule as the legacy resource-blob shape below.
+        let updates = concat!(
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"这是什么"},"_meta":{"modelId":"grok-4.6","promptIndex":0}}},"timestamp":1783584019}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"image","data":"QUJD","mimeType":"image/png"},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"一张截图"}}},"timestamp":1783584024}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584024}"#, "\n",
+        );
+        let (_tmp, sessions) = fixture(SUMMARY, updates);
+        let parser = GrokParser::with_base_dir(sessions);
+        let detail = parser
+            .get_conversation("019f45e3-e1ef-7690-a29f-fe2554382b49")
+            .unwrap();
+        let turns = &detail.turns;
+        assert_eq!(turns.len(), 2);
+        assert!(matches!(turns[0].role, TurnRole::User));
+        assert_eq!(turns[0].blocks.len(), 2);
+        assert!(
+            matches!(&turns[0].blocks[0], ContentBlock::Text { text } if text == "这是什么")
+        );
+        assert!(matches!(
+            &turns[0].blocks[1],
+            ContentBlock::Image { data, mime_type, .. }
+                if data == "QUJD" && mime_type == "image/png"
+        ));
+        assert!(matches!(turns[1].role, TurnRole::Assistant));
+    }
+
+    #[test]
+    fn hides_redundant_session_image_read_from_history() {
+        let updates = concat!(
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"识别一下文字。"},"_meta":{"modelId":"grok-4.6","promptIndex":0}}},"timestamp":1786710356}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"image","data":"QUJD","mimeType":"image/png"},"_meta":{"promptIndex":0}}},"timestamp":1786710356}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"我先把截图里的文字完整认出来。"}}},"timestamp":1786710358}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-image-read","title":"read_file","rawInput":{"target_file":"/Users/me/.grok/sessions/%2FUsers%2Fme%2Fproj/session-id/assets/image-1.png"},"_meta":{"x.ai/tool":{"name":"read_file","kind":"read"}}}},"timestamp":1786710364}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-image-read","status":"failed","content":[{"type":"content","content":{"type":"text","text":"Failed to read file: image-1.png: stream did not contain valid UTF-8"}}]}},"timestamp":1786710364}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"截图里的文字如下：今天准备做些什么呢？"}}},"timestamp":1786710365}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1786710365}"#, "\n",
+        );
+        let (_tmp, sessions) = fixture(SUMMARY, updates);
+        let parser = GrokParser::with_base_dir(sessions);
+        let detail = parser
+            .get_conversation("019f45e3-e1ef-7690-a29f-fe2554382b49")
+            .unwrap();
+
+        let assistant = detail
+            .turns
+            .iter()
+            .find(|turn| matches!(turn.role, TurnRole::Assistant))
+            .expect("assistant turn present");
+        assert!(
+            assistant.blocks.iter().all(|block| !matches!(
+                block,
+                ContentBlock::ToolUse { .. } | ContentBlock::ToolResult { .. }
+            )),
+            "the redundant Grok image read must not reappear from history: {:?}",
+            assistant.blocks
+        );
+        assert!(assistant.blocks.iter().any(|block| {
+            matches!(block, ContentBlock::Text { text } if text.contains("今天准备做些什么呢"))
+        }));
+    }
+
+    #[test]
+    fn redundant_image_read_match_does_not_hide_real_file_reads() {
+        let generated = serde_json::json!({
+            "target_file": "/Users/me/.grok/sessions/group/id/assets/image-1.png"
+        });
+        assert!(is_redundant_session_image_read(
+            "read_file",
+            Some(&generated)
+        ));
+
+        let project_image = serde_json::json!({"target_file": "/repo/assets/image-1.png"});
+        assert!(!is_redundant_session_image_read(
+            "read_file",
+            Some(&project_image)
+        ));
+
+        let session_text = serde_json::json!({
+            "target_file": "/Users/me/.grok/sessions/group/id/assets/image-1.txt"
+        });
+        assert!(!is_redundant_session_image_read(
+            "read_file",
+            Some(&session_text)
+        ));
+
+        assert!(!is_redundant_session_image_read(
+            "write_file",
+            Some(&generated)
+        ));
+    }
+
+    #[test]
     fn merges_prompt_text_and_image_resource_into_one_user_turn() {
-        // Grok (`image:false` + `embedded_context:true`) sends a pasted image as
-        // a separate `user_message_chunk` carrying an embedded resource blob,
-        // right after the prose chunk of the SAME prompt (same `promptIndex`).
-        // Both must land in ONE user turn as [Text, Image] — not a text turn
-        // plus a trailing empty/image-only turn (the bug this fixes).
+        // Older transcripts: Grok echoed a pasted image as an embedded
+        // resource blob (`user_message_chunk` after the prose, same
+        // `promptIndex`). Both must still land in ONE user turn as
+        // [Text, Image] — not a text turn plus a trailing image-only turn.
         let updates = concat!(
             r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"这是什么"},"_meta":{"modelId":"grok-4.5","promptIndex":0}}},"timestamp":1783584019}"#, "\n",
             r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"resource","resource":{"blob":"QUJD","mimeType":"image/png","uri":"clipboard://image.png-abc"}},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#, "\n",

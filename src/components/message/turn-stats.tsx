@@ -30,10 +30,27 @@ interface TurnStatsProps {
   model?: string | null
   models?: string[]
   previousUserIndex?: number | null
+  /** ISO timestamp of the preceding user prompt — used to infer duration. */
+  previousUserAt?: string | null
   isResponseComplete?: boolean
   copyText?: string
   /** ISO timestamp marking when the assistant reply finished. */
   completedAt?: string | null
+}
+
+/** Prefer the agent-reported span; otherwise prompt → completion. */
+export function resolveTurnDurationMs(
+  duration_ms?: number | null,
+  completedAt?: string | null,
+  previousUserAt?: string | null
+): number | null {
+  if (typeof duration_ms === "number" && duration_ms > 0) return duration_ms
+  if (!completedAt || !previousUserAt) return null
+  const end = new Date(completedAt).getTime()
+  const start = new Date(previousUserAt).getTime()
+  if (Number.isNaN(end) || Number.isNaN(start)) return null
+  const ms = end - start
+  return ms > 0 ? ms : null
 }
 
 const iconButtonClass =
@@ -45,6 +62,7 @@ export function TurnStats({
   model,
   models,
   previousUserIndex,
+  previousUserAt,
   isResponseComplete = true,
   copyText = "",
   completedAt,
@@ -90,9 +108,14 @@ export function TurnStats({
     : null
 
   const displayModels = models?.length ? models : model ? [model] : []
+  const resolvedDurationMs = resolveTurnDurationMs(
+    duration_ms,
+    completedAt,
+    previousUserAt
+  )
   const hasCopy = copyText.trim().length > 0
   const hasUsage = Boolean(usage)
-  const hasDuration = typeof duration_ms === "number" && duration_ms > 0
+  const hasDuration = resolvedDurationMs != null
   const hasCompletedAt = Boolean(completedLabel)
   // Usage OR duration: some agents (Cursor) never report per-turn token
   // usage, but a turn with a duration chip is still a substantial reply
@@ -240,23 +263,14 @@ export function TurnStats({
             </TooltipContent>
           </Tooltip>
         )}
-        {hasDuration && duration_ms != null && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(iconButtonClass, "cursor-default")}
-                aria-label={t("duration")}
-              >
-                <Timer aria-hidden="true" className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <span className="font-mono tabular-nums">
-                {formatElapsedLabel(duration_ms, tLive)}
-              </span>
-            </TooltipContent>
-          </Tooltip>
+        {hasDuration && resolvedDurationMs != null && (
+          <span
+            className="inline-flex h-6 items-center gap-1 px-1.5 tabular-nums"
+            aria-label={`${t("duration")}: ${formatElapsedLabel(resolvedDurationMs, tLive)}`}
+          >
+            <Timer aria-hidden="true" className="h-3.5 w-3.5" />
+            {formatElapsedLabel(resolvedDurationMs, tLive)}
+          </span>
         )}
         {hasJump && (
           <Tooltip>

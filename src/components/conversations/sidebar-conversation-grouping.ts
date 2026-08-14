@@ -396,9 +396,11 @@ export interface ConversationRow {
    */
   conversation: DbConversationSummary
   /**
-   * Nesting depth in the delegation tree: 0 for a root / pinned / chat
-   * conversation, 1 for its direct delegation children, 2 for grandchildren,
-   * etc. Drives the card's per-level indent (a pure function of this number).
+   * Visual indent depth. 0 for pinned / chat / Recent (flat, no folder
+   * parent). Folder-section sessions start at 1 so they sit under their
+   * folder header; each delegation child adds another 1. Worktree / root
+   * sub-group sessions also start at 1 (header is already at 1). Drives the
+   * card's per-level indent (a pure function of this number).
    */
   depth: number
   /**
@@ -701,8 +703,9 @@ export function buildRows(args: {
    *  present here renders as a CONTAINER — its header is followed (when the
    *  container is expanded via `folderExpanded[repoId]`) by a `root-group` header
    *  + the repo's own sessions (depth 1), then each worktree's header + sessions
-   *  (depth 1). Absent/empty (the default) = the flat model: every folder renders
-   *  its header + its own bucket at depth 0, exactly as before. Optional. */
+   *  (depth 1). Absent/empty (the default) = every folder renders its header at
+   *  depth 0 and its own bucket at depth 1, so sessions hang under the folder
+   *  instead of lining up with it. Optional. */
   containerChildren?: ReadonlyMap<number, readonly number[]>
   /** Repo ids whose `root-group` sub-group is collapsed (its own sessions
    *  hidden). Absent = expanded (the default). Only consulted for container
@@ -759,9 +762,10 @@ export function buildRows(args: {
   // bottom — the row logic inside each (headers always present, each with its
   // own empty hint) stays intact regardless of position.
   // Emit one folder's body (its conversation rows, or a single empty hint) at
-  // `baseDepth` — 0 for a plain top-level folder, 1 for a container's root
-  // sub-group or a worktree sub-group. The empty hint carries no depth; the
-  // renderer derives its indent from the folder id (worktree/container → 1).
+  // `baseDepth` — 1 for a plain top-level folder (sessions hang under the
+  // header) and for a container's root / worktree sub-group (those headers
+  // already sit at 1). The empty hint carries no depth; the renderer derives
+  // its indent from the folder id (plain and worktree/container → 1).
   const pushFolderBody = (folderId: number, baseDepth: number) => {
     const convs = byFolder.get(folderId)
     if (!convs || convs.length === 0) {
@@ -805,9 +809,9 @@ export function buildRows(args: {
       const worktrees = containerChildren.get(folderId)
       if (!worktrees || worktrees.length === 0) {
         // Plain top-level folder (or, under Show worktrees, a repo with no open
-        // worktrees): header + its own bucket at depth 0 — the flat model.
+        // worktrees): header at depth 0, sessions one step under it.
         rows.push({ kind: "folder", folderId })
-        if (folderExpanded[folderId] ?? true) pushFolderBody(folderId, 0)
+        if (folderExpanded[folderId] ?? true) pushFolderBody(folderId, 1)
         continue
       }
       // Container repo: its header gates the WHOLE subtree (root sub-group +

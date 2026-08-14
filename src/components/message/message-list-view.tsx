@@ -123,6 +123,7 @@ export interface ResolvedMessageGroup {
    * post-turn metadata patch may sit on any sub-turn, not just the last.
    */
   completed_at?: string | null
+  timestamp?: string | null
 }
 
 export type ThreadRenderItem =
@@ -134,6 +135,7 @@ export type ThreadRenderItem =
       showStats: boolean
       isRoleTransition: boolean
       previousUserIndex: number | null
+      previousUserAt: string | null
       /** Raw assistant sub-turn(s) that compose this reply — fed to the
        *  per-reply artifacts card so it can list files changed this reply. */
       sourceTurns: MessageTurn[]
@@ -563,6 +565,7 @@ const HistoricalMessageGroup = memo(function HistoricalMessageGroup({
   dimmed = false,
   showStats = true,
   previousUserIndex = null,
+  previousUserAt = null,
   isResponseComplete = true,
   sourceTurns,
 }: {
@@ -570,6 +573,7 @@ const HistoricalMessageGroup = memo(function HistoricalMessageGroup({
   dimmed?: boolean
   showStats?: boolean
   previousUserIndex?: number | null
+  previousUserAt?: string | null
   isResponseComplete?: boolean
   sourceTurns?: MessageTurn[]
 }) {
@@ -613,6 +617,7 @@ const HistoricalMessageGroup = memo(function HistoricalMessageGroup({
           model={group.model}
           models={group.models}
           previousUserIndex={previousUserIndex}
+          previousUserAt={previousUserAt}
           isResponseComplete={isResponseComplete}
           copyText={extractTextFromParts(group.parts)}
           completedAt={group.completed_at}
@@ -780,6 +785,7 @@ export function MessageListView({
           duration_ms: msg.duration_ms,
           model: msg.model,
           completed_at: msg.completed_at,
+          timestamp: msg.timestamp,
         }
         groupCache.set(msg, group)
       }
@@ -807,6 +813,7 @@ export function MessageListView({
         showStats: false,
         isRoleTransition: false,
         previousUserIndex: null,
+        previousUserAt: null,
         sourceTurns: singletonSourceTurns(allTurns[i]),
       }
     })
@@ -828,6 +835,7 @@ export function MessageListView({
       item.showStats = false
       item.isRoleTransition = false
       item.previousUserIndex = null
+      item.previousUserAt = null
 
       // isRoleTransition: role differs from previous turn item
       if (idx > 0) {
@@ -847,6 +855,11 @@ export function MessageListView({
         if (!next || next.kind !== "turn" || next.group.role !== "assistant") {
           item.showStats = true
           item.previousUserIndex = lastUserIdx
+          const prevUser = lastUserIdx != null ? items[lastUserIdx] : null
+          item.previousUserAt =
+            prevUser?.kind === "turn"
+              ? (prevUser.group.timestamp ?? null)
+              : null
         }
       }
     }
@@ -904,6 +917,7 @@ export function MessageListView({
                 dimmed={item.phase === "optimistic"}
                 showStats={item.showStats}
                 previousUserIndex={item.previousUserIndex}
+                previousUserAt={item.previousUserAt}
                 isResponseComplete={item.phase === "persisted"}
                 sourceTurns={item.sourceTurns}
               />

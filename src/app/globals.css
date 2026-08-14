@@ -937,6 +937,11 @@
   --sidebar-ring: oklch(0.541 0.281 293.009);
 }
 
+/* Light sidebar surface: rgb(252, 252, 252) */
+html:not(.dark) {
+  --sidebar: rgb(252 252 252);
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]):not(.light) {
     --background: oklch(0.145 0 0);

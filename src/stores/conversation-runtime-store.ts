@@ -1315,6 +1315,7 @@ export interface TurnMetadataPatch {
  */
 export function computeTurnMetadataPatches(params: {
   localAssistantIndices: number[]
+  localTurns?: MessageTurn[]
   parsedAssistantTurns: MessageTurn[]
   persistedAssistantCount: number
 }): TurnMetadataPatch[] {
@@ -1328,6 +1329,90 @@ export function computeTurnMetadataPatches(params: {
   )
   const sessionParsedTurns = parsedAssistantTurns.slice(historyBoundary)
 
+  const replyGroups = buildTurnMetadataReplyGroups(
+    localAssistantIndices,
+    params.localTurns,
+    sessionParsedTurns
+  )
+  if (replyGroups) {
+    return replyGroups.flatMap((group) =>
+      alignTurnMetadataGroup(
+        group.localAssistantIndices,
+        group.parsedAssistantTurns
+      )
+    )
+  }
+
+  return alignTurnMetadataGroup(localAssistantIndices, sessionParsedTurns)
+}
+
+interface TurnMetadataReplyGroup {
+  localAssistantIndices: number[]
+  parsedAssistantTurns: MessageTurn[]
+}
+
+/**
+ * Partition the batch at its user prompts before aligning parser sub-turns.
+ * Claude commonly persists one assistant record for thinking and another for
+ * text while the live stream emits one assistant turn for the whole reply.
+ * Aligning the complete batch by count treats every extra parser record as an
+ * extra slice of local[0], so later replies keep only their final sub-second
+ * text slice. Prompt boundaries keep those slices with their own reply.
+ */
+function buildTurnMetadataReplyGroups(
+  localAssistantIndices: number[],
+  localTurns: MessageTurn[] | undefined,
+  parsedAssistantTurns: MessageTurn[]
+): TurnMetadataReplyGroup[] | null {
+  if (!localTurns || localAssistantIndices.length === 0) return null
+
+  const groups: Array<
+    TurnMetadataReplyGroup & { promptAt: number; promptIndex: number }
+  > = []
+  for (const assistantIndex of localAssistantIndices) {
+    let promptIndex = assistantIndex - 1
+    while (promptIndex >= 0 && localTurns[promptIndex]?.role !== "user") {
+      promptIndex -= 1
+    }
+    if (promptIndex < 0) return null
+
+    const promptAt = Date.parse(localTurns[promptIndex].timestamp)
+    if (!Number.isFinite(promptAt)) return null
+
+    const previous = groups[groups.length - 1]
+    if (previous?.promptIndex === promptIndex) {
+      previous.localAssistantIndices.push(assistantIndex)
+      continue
+    }
+    if (previous && promptAt <= previous.promptAt) return null
+    groups.push({
+      promptAt,
+      promptIndex,
+      localAssistantIndices: [assistantIndex],
+      parsedAssistantTurns: [],
+    })
+  }
+
+  let groupIndex = 0
+  for (const parsedTurn of parsedAssistantTurns) {
+    const parsedAt = Date.parse(parsedTurn.timestamp)
+    if (!Number.isFinite(parsedAt)) return null
+    while (
+      groupIndex + 1 < groups.length &&
+      parsedAt >= groups[groupIndex + 1].promptAt
+    ) {
+      groupIndex += 1
+    }
+    groups[groupIndex].parsedAssistantTurns.push(parsedTurn)
+  }
+
+  return groups
+}
+
+function alignTurnMetadataGroup(
+  localAssistantIndices: number[],
+  sessionParsedTurns: MessageTurn[]
+): TurnMetadataPatch[] {
   const offset = sessionParsedTurns.length - localAssistantIndices.length
   const patches: TurnMetadataPatch[] = []
 
@@ -3386,6 +3471,7 @@ export const useConversationRuntimeStore = create<ConversationRuntimeStore>()((
                 ? []
                 : computeTurnMetadataPatches({
                     localAssistantIndices,
+                    localTurns: cur.localTurns,
                     parsedAssistantTurns,
                     persistedAssistantCount,
                   })

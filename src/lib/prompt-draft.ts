@@ -26,7 +26,7 @@ function isImageBlock(
 /**
  * An embedded `resource` block that actually carries image bytes — an `image/*`
  * mime + a `blob`. This is how an agent with `image:false` but
- * `embedded_context:true` (e.g. Grok) encodes a pasted image (see
+ * `embedded_context:true` encodes a pasted image (see
  * `imageAttachmentToPromptBlock`). It must render as a thumbnail like a native
  * image, not as a content-less resource chip.
  */

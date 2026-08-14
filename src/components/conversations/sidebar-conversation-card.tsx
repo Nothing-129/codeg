@@ -78,26 +78,40 @@ export const CONV_RAIL_DEPTH_STEP = "1.25rem"
  *
  * Renders nothing for a root (depth 0). Shared with the list's sub-session
  * loading placeholder so the spine stays continuous while children are fetched.
+ *
+ * `from` skips the first N levels. Folder-section sessions sit at depth 1 so
+ * they indent under the folder header, but that first step must not draw a
+ * spine — otherwise every expanded folder grows a vertical line down through
+ * its conversations. Delegation / worktree rails start at `from`.
  */
-export function SubsessionAncestorRails({ depth }: { depth: number }) {
-  if (depth <= 0) return null
+export function SubsessionAncestorRails({
+  depth,
+  from = 0,
+}: {
+  depth: number
+  from?: number
+}) {
+  if (depth <= from) return null
   return (
     <>
-      {Array.from({ length: depth }, (_, level) => (
-        <span
-          key={level}
-          aria-hidden
-          data-subsession-rail
-          className="pointer-events-none absolute z-0 bg-sidebar-border"
-          style={{
-            top: "-0.0625rem",
-            bottom: "-0.0625rem",
-            left: `calc(0.875rem + ${level} * ${CONV_RAIL_DEPTH_STEP})`,
-            width: "0.125rem",
-            transform: "translateX(-50%)",
-          }}
-        />
-      ))}
+      {Array.from({ length: depth - from }, (_, i) => {
+        const level = from + i
+        return (
+          <span
+            key={level}
+            aria-hidden
+            data-subsession-rail
+            className="pointer-events-none absolute z-0 bg-sidebar-border"
+            style={{
+              top: "-0.0625rem",
+              bottom: "-0.0625rem",
+              left: `calc(0.875rem + ${level} * ${CONV_RAIL_DEPTH_STEP})`,
+              width: "0.125rem",
+              transform: "translateX(-50%)",
+            }}
+          />
+        )
+      })}
     </>
   )
 }
@@ -116,6 +130,11 @@ interface SidebarConversationCardProps {
   onTogglePin?: (id: number, nextPinned: boolean) => void
   /** Delegation-tree nesting depth (0 = root). Drives the per-level indent. */
   depth?: number
+  /**
+   * Skip this many ancestor-rail levels. Folder-section sessions use `1` so
+   * they indent under the folder without drawing a spine from the folder icon.
+   */
+  railFrom?: number
   /** True when `child_count > 0`: the conversation has delegation children, so
    *  the expand chevron is shown. */
   hasChildren?: boolean
@@ -138,6 +157,7 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   onNewConversation,
   onTogglePin,
   depth = 0,
+  railFrom = 0,
   hasChildren = false,
   expanded = false,
   onToggleExpand,
@@ -262,25 +282,29 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                 {/* Ancestor guide rails (depth ≥ 1): keep each parent's vertical
                     line continuous down through this nested row, so the child's
                     left rail aligns under the parent's. */}
-                <SubsessionAncestorRails depth={depth} />
-                {/* This row's OWN rail, through its agent icon, at the (depth-
-                    shifted) rail axis. */}
-                <span
-                  aria-hidden
-                  className={cn(
-                    "pointer-events-none absolute z-0 bg-sidebar-border"
-                  )}
-                  style={{
-                    top: "-0.0625rem",
-                    bottom: "-0.0625rem",
-                    left: "var(--conv-rail-axis, 0.875rem)",
-                    width: "0.125rem",
-                    transform: "translateX(-50%)",
-                  }}
-                />
+                <SubsessionAncestorRails depth={depth} from={railFrom} />
+                {/* This row's OWN rail, through its agent icon. Omitted for
+                    folder-section roots (`railFrom` covers the folder indent):
+                    that rail would stitch sibling sessions into one spine
+                    under the folder. Delegation children still draw it. */}
+                {!(railFrom > 0 && depth <= railFrom) && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "pointer-events-none absolute z-0 bg-sidebar-border"
+                    )}
+                    style={{
+                      top: "-0.0625rem",
+                      bottom: "-0.0625rem",
+                      left: "var(--conv-rail-axis, 0.875rem)",
+                      width: "0.125rem",
+                      transform: "translateX(-50%)",
+                    }}
+                  />
+                )}
                 <div
                   className={cn(
-                    "pointer-events-none absolute top-1/2 z-10 flex items-center justify-center",
+                    "pointer-events-none absolute top-1/2 z-10 flex items-center justify-center overflow-visible",
                     // With children, the row hover (or focus) swaps this agent
                     // icon out for the expand chevron at the same spot — fade it
                     // so the two cross-fade in place. On touch (no hover) the
@@ -300,11 +324,6 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                   <AgentIcon
                     agentType={conversation.agent_type}
                     className="h-[0.75rem] w-[0.75rem]"
-                  />
-                  <ConversationStatusDot
-                    status={status}
-                    size="sm"
-                    className="absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar"
                   />
                 </div>
 

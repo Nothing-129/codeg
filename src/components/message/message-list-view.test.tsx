@@ -35,6 +35,7 @@ function assistantItem(
     showStats: false,
     isRoleTransition: false,
     previousUserIndex: null,
+    previousUserAt: null,
     sourceTurns: [],
   }
 }
@@ -134,6 +135,7 @@ function makeItem(
     showStats: false,
     isRoleTransition: false,
     previousUserIndex: null,
+    previousUserAt: null,
     sourceTurns: singletonSourceTurns(turn(group.id)),
   }
 }

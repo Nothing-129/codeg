@@ -1,30 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import {
-  ArrowUpCircle,
-  CheckCircle2,
-  Languages,
-  Loader2,
-  RefreshCw,
-  RotateCcw,
-  Wifi,
-} from "lucide-react"
-import { useLocale, useTranslations } from "next-intl"
+import { Languages, Loader2, Wifi } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { useAppI18n } from "@/components/i18n-provider"
 import { BackupSettings } from "@/components/settings/backup-settings"
-import { ReleaseNotes } from "@/components/settings/release-notes"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -42,13 +23,6 @@ import {
 } from "@/lib/api"
 import { openUrl } from "@/lib/platform"
 import type { AppLocale } from "@/lib/types"
-import { readLastCheck } from "@/lib/update-check-storage"
-import {
-  appUpdateErrorMessageKey,
-  normalizeAppUpdateError,
-  usesTauriUpdater,
-} from "@/lib/updater"
-import { useAppUpdate } from "@/components/providers/update-provider"
 import { APP_LOCALES } from "@/lib/i18n"
 import { toErrorMessage } from "@/lib/app-error"
 
@@ -67,12 +41,6 @@ function GithubMarkIcon({ className }: { className?: string }) {
   )
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 const PROXY_EXAMPLE = "http://127.0.0.1:7890"
 const APP_LANGUAGE_VALUES = APP_LOCALES
 
@@ -82,12 +50,9 @@ function isAppLocale(value: string): value is AppLocale {
   return APP_LANGUAGE_VALUES.includes(value as AppLocale)
 }
 
-type UpdateAction = "check" | "install"
-
 export function SystemNetworkSettings() {
   const t = useTranslations("SystemSettings")
   const tLanguage = useTranslations("Language")
-  const locale = useLocale()
   const { languageSettings, languageSettingsLoaded, setLanguageSettings } =
     useAppI18n()
 
@@ -98,63 +63,6 @@ export function SystemNetworkSettings() {
   const [proxyUrl, setProxyUrl] = useState("")
   const [proxyUrlError, setProxyUrlError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false)
-
-  // Both halves of the update flow — "is a newer release out there" and the
-  // in-flight download / install / restart lifecycle — live in the app-wide
-  // UpdateProvider (settings/layout.tsx wraps this page), so this page and the
-  // workspace status bar always agree and only one manifest fetch happens. It
-  // is always mounted inside the provider, hence the non-null assertion.
-  const update = useAppUpdate()!
-  const {
-    state: updateState,
-    isUpdating,
-    restartCountdown,
-    isRollingBack,
-    hydrated: updateHydrated,
-    isBusy,
-    available: availableUpdate,
-    currentVersion,
-    checking: checkingUpdate,
-    checkError,
-    lastCheckedAt,
-    selfUpdateSupported: serverSelfUpdate,
-    liveProgress: serverLiveProgress,
-    runtime: serverRuntime,
-    rollbackAvailable: serverRollbackAvailable,
-    canInstallInPlace,
-    checkNow,
-    refreshLocalStatus,
-    startUpdate,
-    restart,
-    rollback,
-  } = update
-  const updateReady = updateState.status === "ready_to_restart"
-  // Rollback is only safe from a settled lifecycle (never while an upgrade is
-  // downloading/installing/staged/restarting — that conflicts with the
-  // "Restart to update" prompt). For a server that speaks the live-progress
-  // protocol, wait for the authoritative snapshot to hydrate before trusting
-  // the status (the default is a placeholder `idle`); older servers don't
-  // hydrate, so they're allowed through on their reported availability.
-  const canRollback =
-    serverSelfUpdate &&
-    serverRollbackAvailable &&
-    !usesTauriUpdater() &&
-    (updateState.status === "idle" || updateState.status === "error") &&
-    (updateHydrated || !serverLiveProgress)
-  // A determinate bar needs a known content length; the install phase (and a
-  // length-less download) fall back to an indeterminate pulse.
-  const downloadDeterminate =
-    updateState.status === "downloading" &&
-    !!updateState.total &&
-    updateState.total > 0
-  const downloadPercent = downloadDeterminate
-    ? Math.min(
-        100,
-        ((updateState.downloaded ?? 0) / (updateState.total as number)) * 100
-      )
-    : 0
-
   const [appLanguage, setAppLanguage] = useState<LanguageSelectValue>(
     languageSettings.mode === "system" ? "system" : languageSettings.language
   )
@@ -181,38 +89,6 @@ export function SystemNetworkSettings() {
     [tLanguage]
   )
 
-  const formattedLastCheckedAt = useMemo(() => {
-    if (!lastCheckedAt) return null
-    return new Intl.DateTimeFormat(locale, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(lastCheckedAt)
-  }, [lastCheckedAt, locale])
-
-  const formattedUpdateDate = useMemo(() => {
-    if (!availableUpdate?.date) return null
-
-    const parsed = new Date(availableUpdate.date)
-    if (Number.isNaN(parsed.getTime())) return availableUpdate.date
-
-    return new Intl.DateTimeFormat(locale, {
-      dateStyle: "medium",
-    }).format(parsed)
-  }, [availableUpdate?.date, locale])
-
-  const updateNotes = useMemo(
-    () => availableUpdate?.body?.trim() ?? "",
-    [availableUpdate?.body]
-  )
-
-  const updateStatusMessage = useMemo(() => {
-    if (checkingUpdate) return t("checking")
-    if (isUpdating) return t("updating")
-    if (availableUpdate) return null
-    if (lastCheckedAt) return t("alreadyLatest")
-    return null
-  }, [availableUpdate, checkingUpdate, isUpdating, lastCheckedAt, t])
-
   const loadSettings = useCallback(async () => {
     setLoading(true)
     setLoadError(null)
@@ -234,20 +110,7 @@ export function SystemNetworkSettings() {
     loadSettings().catch((err) => {
       console.error("[Settings] load system settings failed:", err)
     })
-    // The version, capability bits and "is there an update" answer all come
-    // from the provider: it seeds local status on mount, restores the last
-    // result from storage and runs the periodic manifest check. So opening
-    // this page no longer costs a second check — unless nothing has ever been
-    // checked (read from storage, not from provider state, which the provider
-    // seeds in its own effect and therefore may not have applied yet), or the
-    // last attempt failed, in which case opening this page is a natural retry.
-    if (!readLastCheck() || checkError) {
-      checkNow({ silent: true }).catch((err) => {
-        console.error("[Settings] auto check update failed:", err)
-      })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loadSettings])
 
   const saveProxySettings = useCallback(
     async (nextEnabled: boolean, nextProxyUrl: string) => {
@@ -292,53 +155,6 @@ export function SystemNetworkSettings() {
     [languageSettings.language, setLanguageSettings, t]
   )
 
-  const formatUpdateError = useCallback(
-    (error: unknown, action: UpdateAction): string => {
-      const { kind, rawMessage } = normalizeAppUpdateError(error)
-      if (kind === "unknown" && action === "check") {
-        console.error("[Settings] updater unknown error:", rawMessage)
-      }
-      return t(appUpdateErrorMessageKey(kind, action))
-    },
-    [t]
-  )
-
-  // A failure inside the detached backend download/install task lands in the
-  // shared update state rather than as a thrown error here, so surface it the
-  // same way as a check error — and it stays visible after navigating back.
-  const lifecycleError =
-    updateState.status === "error" && updateState.error
-      ? formatUpdateError(updateState.error, "install")
-      : null
-
-  // The shared check records the raw failure; classify it for display here.
-  const updateError = checkError ? formatUpdateError(checkError, "check") : null
-
-  // A user-initiated check, so failures toast (the provider's own periodic
-  // checks stay silent).
-  const checkForUpdates = useCallback(() => {
-    void checkNow({ silent: false })
-  }, [checkNow])
-
-  // Close a stale rollback confirm dialog if the lifecycle leaves a
-  // rollback-able state — e.g. another window staged an update while the dialog
-  // sat open — so it can't fire a now-conflicting rollback. The backend also
-  // rejects such a rollback; this avoids the user even reaching it.
-  useEffect(() => {
-    if (rollbackConfirmOpen && !canRollback) {
-      setRollbackConfirmOpen(false)
-    }
-  }, [rollbackConfirmOpen, canRollback])
-
-  // Manual rollback runs through the provider (it owns the restart + verify
-  // flow); afterwards refresh the rollback affordance — a single-generation
-  // `.bak` is consumed by a successful rollback (which also reloads the page).
-  const handleRollback = useCallback(async () => {
-    setRollbackConfirmOpen(false)
-    await rollback()
-    void refreshLocalStatus()
-  }, [rollback, refreshLocalStatus])
-
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-muted-foreground gap-2">
@@ -365,215 +181,6 @@ export function SystemNetworkSettings() {
           <p className="text-xs text-muted-foreground">
             {t("sectionDescription")}
           </p>
-        </section>
-
-        <section className="rounded-xl border bg-card p-4 space-y-4">
-          <div className="flex items-center gap-2">
-            {checkingUpdate ? (
-              <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
-            ) : availableUpdate ? (
-              <ArrowUpCircle className="h-4 w-4 text-muted-foreground" />
-            ) : lastCheckedAt ? (
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-            ) : (
-              <RefreshCw className="h-4 w-4 text-muted-foreground" />
-            )}
-            <h2 className="text-sm font-semibold">{t("versionTitle")}</h2>
-          </div>
-
-          <p className="text-xs text-muted-foreground leading-5">
-            {t("updateDescription")}
-          </p>
-
-          <div className="rounded-md border bg-muted/20 px-3 py-3 text-xs space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-muted-foreground">
-                {t("currentVersion")}：
-                {currentVersion ? `v${currentVersion}` : "-"}
-              </p>
-              {checkingUpdate ? (
-                <Button
-                  key="checking-update"
-                  size="sm"
-                  disabled
-                  aria-busy="true"
-                  className="w-[9.5rem] justify-center transition-none"
-                >
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t("checking")}
-                </Button>
-              ) : updateReady ? (
-                // Download finished in the background — relaunch into it
-                // (IDE-style "Restart to update").
-                <Button
-                  size="sm"
-                  onClick={() => void restart()}
-                  disabled={isBusy}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  {t("restartToUpdate")}
-                </Button>
-              ) : isBusy ? (
-                <Button
-                  size="sm"
-                  disabled
-                  aria-busy="true"
-                  className="w-[9.5rem] justify-center transition-none"
-                >
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {t("updating")}
-                </Button>
-              ) : availableUpdate ? (
-                // In-place upgrade only when this client can actually drive it:
-                // desktop (Tauri plugin) or a server speaking the live-progress
-                // protocol. An older remote server falls back to "view release".
-                canInstallInPlace ? (
-                  <Button size="sm" onClick={() => void startUpdate()}>
-                    <ArrowUpCircle className="h-3.5 w-3.5" />
-                    {t("upgradeTo", { version: availableUpdate.version })}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      openUrl(
-                        "https://github.com/xintaofei/codeg/releases/latest"
-                      )
-                    }
-                  >
-                    <ArrowUpCircle className="h-3.5 w-3.5" />
-                    {t("viewRelease", { version: availableUpdate.version })}
-                  </Button>
-                )
-              ) : (
-                <Button
-                  key="check-update"
-                  size="sm"
-                  onClick={checkForUpdates}
-                  disabled={isBusy}
-                  className="w-[9.5rem] justify-center transition-none"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  {t("checkUpdate")}
-                </Button>
-              )}
-            </div>
-
-            {!availableUpdate && formattedLastCheckedAt && (
-              <p className="text-muted-foreground">
-                {t("lastChecked", { time: formattedLastCheckedAt })}
-              </p>
-            )}
-
-            {updateStatusMessage && !isUpdating && (
-              <p className="text-muted-foreground">{updateStatusMessage}</p>
-            )}
-
-            {isUpdating && (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>
-                    {updateState.status === "downloading"
-                      ? t("downloading")
-                      : t("updating")}
-                  </span>
-                  {updateState.status === "downloading" && (
-                    <span>
-                      {formatBytes(updateState.downloaded ?? 0)}
-                      {updateState.total
-                        ? ` / ${formatBytes(updateState.total)}`
-                        : ""}
-                    </span>
-                  )}
-                </div>
-                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                  {downloadDeterminate ? (
-                    <div
-                      className="h-full rounded-full bg-primary transition-all duration-300"
-                      style={{ width: `${downloadPercent}%` }}
-                    />
-                  ) : (
-                    <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {updateReady && (
-              <p className="text-muted-foreground">{t("updateReadyHint")}</p>
-            )}
-
-            {restartCountdown !== null && (
-              <p className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {restartCountdown > 0
-                  ? t("restartingIn", { seconds: restartCountdown })
-                  : t("waitingForServer")}
-              </p>
-            )}
-
-            {canRollback && (
-              <div className="flex items-center justify-between gap-3 pt-1">
-                <span className="text-muted-foreground/80 text-[11px] leading-5">
-                  {t("rollbackDescription")}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setRollbackConfirmOpen(true)}
-                  disabled={isBusy}
-                >
-                  {isRollingBack ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      {t("rollingBack")}
-                    </>
-                  ) : (
-                    <>
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      {t("rollbackButton")}
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {availableUpdate &&
-              serverSelfUpdate &&
-              serverRuntime === "docker" && (
-                <p className="text-muted-foreground/80 text-[11px] leading-5">
-                  {t("dockerUpgradeHint")}
-                </p>
-              )}
-
-            {availableUpdate && (
-              <div className="space-y-2 pt-2 border-t border-border/70">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium">
-                    {t("upgradableVersion")}：v{availableUpdate.version}
-                  </span>
-                  {formattedUpdateDate && (
-                    <span className="text-muted-foreground text-[11px]">
-                      {formattedUpdateDate}
-                    </span>
-                  )}
-                </div>
-                <ReleaseNotes
-                  notes={updateNotes}
-                  emptyLabel={t("none")}
-                  className="mt-3 max-h-72 overflow-auto rounded-md border bg-background/70 px-3 py-3"
-                />
-              </div>
-            )}
-          </div>
-
-          {(updateError || lifecycleError) && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-400">
-              {t("updateError", {
-                message: updateError || lifecycleError || "",
-              })}
-            </div>
-          )}
         </section>
 
         <section className="rounded-xl border bg-card p-4 space-y-4">
@@ -695,35 +302,6 @@ export function SystemNetworkSettings() {
         </section>
 
         <BackupSettings />
-
-        <AlertDialog
-          open={rollbackConfirmOpen}
-          onOpenChange={(open) => {
-            if (!isRollingBack) setRollbackConfirmOpen(open)
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t("rollbackConfirmTitle")}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("rollbackConfirmDescription")}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isRollingBack}>
-                {t("rollbackCancel")}
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={(event) => {
-                  event.preventDefault()
-                  void handleRollback()
-                }}
-              >
-                {t("rollbackConfirm")}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </ScrollArea>
   )

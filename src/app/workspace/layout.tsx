@@ -55,7 +55,6 @@ import {
   useWorkspaceView,
 } from "@/contexts/workspace-context"
 import { RemoteConnectionGate } from "@/contexts/remote-connection-context"
-import { UpdateProvider } from "@/components/providers/update-provider"
 import { useWorkspaceBackground, useZoomLevel } from "@/hooks/use-appearance"
 import { FILL_MODE_STYLE } from "@/lib/workspace-background"
 import { TabBar } from "@/components/tabs/tab-bar"
@@ -1286,9 +1285,7 @@ export default function WorkspaceLayout({
   return (
     <Suspense>
       <RemoteConnectionGate>
-        <UpdateProvider>
-          <WorkspaceLayoutInner>{children}</WorkspaceLayoutInner>
-        </UpdateProvider>
+        <WorkspaceLayoutInner>{children}</WorkspaceLayoutInner>
       </RemoteConnectionGate>
     </Suspense>
   )
