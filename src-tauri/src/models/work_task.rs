@@ -25,6 +25,14 @@ pub struct WorkTaskInfo {
     /// can only fail.
     #[serde(default)]
     pub worktree_missing: bool,
+    /// Wire name of the agent that runs — or ran — this task, resolved with
+    /// the engine's own layering. Stamped by the list/get commands (the row
+    /// stores only an optional override; the inherited value lives in the
+    /// folder's settings), so the board and the list can draw its mark beside
+    /// the title without a lookup per card. `None` = nothing configured
+    /// anywhere, which is also the one case the engine refuses to launch.
+    #[serde(default)]
+    pub agent_type: Option<String>,
     pub conversation_id: Option<i32>,
     /// Live ACP connection of the current generation — the transcript viewer
     /// attaches by it. Only meaningful while the task is running/awaiting;
@@ -43,6 +51,13 @@ pub struct WorkTaskInfo {
     /// `WorkTaskPreflight` snapshot (acceptance red/green light), if a
     /// preflight command ran for this review.
     pub preflight: Option<serde_json::Value>,
+    /// The merge this reviewed task is waiting to run — the user clicked merge
+    /// while another task of the same project was landing. `None` = not queued.
+    /// Carries the options wholesale, not just the instant: the board ranks the
+    /// queue by `queued_at`, and reopening the dialog on a queued task has to
+    /// show the commit message and worktree choice already parked rather than
+    /// silently replacing them with the defaults.
+    pub merge_queued: Option<WorkTaskQueuedMerge>,
     pub archived_at: Option<DateTime<Utc>>,
     /// Planned start of a to-do task (`None` = no plan). Cleared the moment the
     /// task is claimed, by the scheduler or by hand.
@@ -154,6 +169,13 @@ pub struct WorkTaskFolderSettings {
     /// Merge dialog's "delete worktree after merge" default.
     #[serde(default = "default_true")]
     pub delete_worktree_default: bool,
+    /// Directory new task worktrees are created IN — each one still gets its
+    /// own `<repo>-task-<id>` directory under it. `None`/blank keeps the
+    /// historical layout: right next to the project folder. `~` expands to the
+    /// home directory and a relative path resolves against the project folder,
+    /// so a typed value behaves like it reads.
+    #[serde(default)]
+    pub worktree_root: Option<String>,
     /// P2: `folder_command` id run in the worktree when a task settles into
     /// review — the acceptance red/green light. `None` = no preflight.
     #[serde(default)]
@@ -188,6 +210,7 @@ impl Default for WorkTaskFolderSettings {
             merge_strategy: default_merge_strategy(),
             auto_merge: false,
             delete_worktree_default: true,
+            worktree_root: None,
             preflight_command_id: None,
             preflight_command: None,
             init_command: None,
@@ -287,6 +310,23 @@ pub struct WorkTaskMergeState {
     /// The agent writes the commit message itself (`message` is empty then).
     #[serde(default)]
     pub auto_message: bool,
+}
+
+/// A merge the user asked for while the folder's one merge slot was busy,
+/// parked as JSON in `work_task.pending_merge` and dispatched by the folder's
+/// merge pump when the slot frees. Merges into one base branch can only run one
+/// at a time, so the queue is what lets a user accept a whole review column in
+/// one pass instead of babysitting each landing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkTaskQueuedMerge {
+    /// The commit message the user typed; `None` = the agent writes it.
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub delete_worktree: bool,
+    /// When the task took its place in line — the pump's ordering key, kept
+    /// across a re-queue so changing the options doesn't jump the line.
+    pub queued_at: DateTime<Utc>,
 }
 
 /// Outcome of the folder's preflight command for one review generation,

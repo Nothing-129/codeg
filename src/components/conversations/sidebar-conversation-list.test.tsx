@@ -1050,6 +1050,47 @@ describe("SidebarConversationList — worktree grouping (Show worktrees)", () =>
     expect(text).toContain("conv-21")
   })
 
+  it("labels a worktree sub-group `branch [ directory ]`", () => {
+    // What a worktree registered through `open_worktree_folder_core` looks like:
+    // the alias was seeded with the branch it was created on. `git_branch` on the
+    // folder row is never written by the folder flow, so without the alias every
+    // worktree fell back to its (long, derived) directory name alone.
+    const cur = useAppWorkspaceStore.getState()
+    const aliased = cur.allFolders.map((f) =>
+      f.id === 2
+        ? ({
+            ...f,
+            git_branch: null,
+            alias: "feature-x",
+          } as unknown as FolderDetail)
+        : f
+    )
+    useAppWorkspaceStore.setState({ folders: aliased, allFolders: aliased })
+    render(wtTree(true))
+
+    // Same two-part label a repo header renders: what the worktree IS in front,
+    // where it lives on disk bracketed behind it.
+    expect(document.body.textContent ?? "").toContain(
+      "feature-x [ wt-feature ]"
+    )
+  })
+
+  it("leaves a worktree with no branch or alias on its bare directory name", () => {
+    const cur = useAppWorkspaceStore.getState()
+    const bare = cur.allFolders.map((f) =>
+      f.id === 2
+        ? ({ ...f, git_branch: null, alias: null } as unknown as FolderDetail)
+        : f
+    )
+    useAppWorkspaceStore.setState({ folders: bare, allFolders: bare })
+    render(wtTree(true))
+
+    const text = document.body.textContent ?? ""
+    expect(text).toContain("wt-feature")
+    // No alias to lead with, so no empty brackets trailing the name either.
+    expect(text).not.toContain("[ wt-feature ]")
+  })
+
   it("keeps the connector spine continuous through an empty worktree sub-group", () => {
     // Add a second worktree (folder 3) with NO conversations → it renders the
     // empty-folder hint. That empty row must still draw the container spine

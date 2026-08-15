@@ -20,12 +20,14 @@ import {
   CircleAlert,
   CircleCheck,
   CircleX,
+  Clock,
   Coins,
   FileDiff,
   FolderX,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
+  ListX,
   Loader2,
   MessageSquareText,
   Pencil,
@@ -43,6 +45,7 @@ import {
   workTaskDelete,
   workTaskDiff,
   workTaskEvents,
+  workTaskMergeUnqueue,
   workTaskRequeue,
   workTaskRetry,
   workTaskReturn,
@@ -65,7 +68,7 @@ import { AgentIcon } from "@/components/agent-icon"
 import { getAgentLabel } from "@/lib/custom-agents"
 import { useShortcutSettings } from "@/hooks/use-shortcut-settings"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
-import { hasNothingToMerge } from "./task-acceptance"
+import { hasNothingToMerge, isMergeQueued } from "./task-acceptance"
 import { StatusChip, statusLabelKey } from "./task-card"
 import {
   TaskMessageComposer,
@@ -332,6 +335,13 @@ export function TaskDetailSheet({
     [run]
   )
 
+  // Conversation truth first — that is the agent that actually ran. Before its
+  // detail lands (and for a task that has never run) the list's own resolution
+  // stands in, so the glyph here is the one the board and the list already
+  // showed for this task rather than a placeholder that changes on load.
+  const agentType =
+    convAgentType ?? task?.agent_type ?? task?.config?.agent_type ?? null
+
   // Snapshot first (it carries the model the run actually used); otherwise the
   // resolved agent's display name, so a task that simply follows the folder's
   // defaults still names its agent beside the icon.
@@ -339,17 +349,14 @@ export function TaskDetailSheet({
     const snap = task?.config?.label_snapshot
     const name =
       snap?.agent_label ??
-      (convAgentType ? (getAgentLabel(convAgentType) ?? convAgentType) : null)
+      (agentType ? (getAgentLabel(agentType) ?? agentType) : null)
     if (!name) return null
     const model = snap?.config_labels?.model
     return model ? `${name} · ${model}` : name
-  }, [task, convAgentType])
+  }, [task, agentType])
 
   if (!task) return null
 
-  // Conversation truth first; a task that overrides the folder default carries
-  // its own agent, and before the detail lands that override is all we have.
-  const agentType = convAgentType ?? task.config?.agent_type ?? null
   // The same resolution, plus a folder default and the worktree path, for the
   // composer's commands / skills / file references.
   const composerTarget = followUpComposerTarget({
@@ -371,6 +378,8 @@ export function TaskDetailSheet({
   // anything, so they sit in the bottom bar instead.
   const zoneActions: ZoneAction[] = []
   const isReview = task.status === "review" && !archived
+  /** Accepted already, waiting for the project's one merge slot. */
+  const mergeQueued = isReview && isMergeQueued(task)
   const isRestart =
     !archived && (task.status === "failed" || task.status === "canceled")
   // A note for a restart (failed / canceled): both stopped for a reason the
@@ -391,23 +400,40 @@ export function TaskDetailSheet({
   const composerBlocks = (): PromptInputBlock[] =>
     composerOpen ? (composerRef.current?.getAttachmentBlocks() ?? []) : []
   if (isReview) {
-    // A task that changed nothing has no merge to offer — accepting it IS the
-    // primary action (same swap the board card makes).
-    zoneActions.push(
-      hasNothingToMerge(task)
-        ? {
-            icon: CircleCheck,
-            label: t("actionComplete"),
-            filled: true,
-            onClick: () => onComplete(task),
-          }
-        : {
-            icon: GitMerge,
-            label: t("actionMerge"),
-            filled: true,
-            onClick: () => onMerge(task),
-          }
-    )
+    // Already accepted and waiting for the project's merge slot: the merge is
+    // decided, so the panel offers the two ways to change that decision —
+    // edit the queued merge, or leave the queue. Neither is filled: nothing
+    // here is waiting on the user, and a filled button would say it is.
+    if (mergeQueued) {
+      zoneActions.push({
+        icon: GitMerge,
+        label: t("actionEditQueuedMerge"),
+        onClick: () => onMerge(task),
+      })
+      zoneActions.push({
+        icon: ListX,
+        label: t("actionUnqueueMerge"),
+        onClick: () => run(() => workTaskMergeUnqueue(task.id)),
+      })
+    } else {
+      // A task that changed nothing has no merge to offer — accepting it IS
+      // the primary action (same swap the board card makes).
+      zoneActions.push(
+        hasNothingToMerge(task)
+          ? {
+              icon: CircleCheck,
+              label: t("actionComplete"),
+              filled: true,
+              onClick: () => onComplete(task),
+            }
+          : {
+              icon: GitMerge,
+              label: t("actionMerge"),
+              filled: true,
+              onClick: () => onMerge(task),
+            }
+      )
+    }
     zoneActions.push({
       icon: Undo2,
       label: t("actionFollowUp"),
@@ -722,6 +748,19 @@ export function TaskDetailSheet({
                       : "border-border/70 bg-muted/30"
                   )}
                 >
+                  {/* Why there is no merge button here: the task is in line
+                      behind another landing of the same project. Without this
+                      the panel would read as if the acceptance never
+                      registered. */}
+                  {mergeQueued ? (
+                    <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                      <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 break-words">
+                        {t("badgeMergeQueuedHint")}
+                      </span>
+                    </p>
+                  ) : null}
+
                   {isReview && task.preflight ? (
                     <div className="flex flex-col gap-1.5">
                       <div
@@ -1379,6 +1418,7 @@ const EVENT_KIND_KEYS = {
   agent_progress: "eventAgentProgress",
   agent_verdict: "eventAgentVerdict",
   merge_attempt: "eventMergeAttempt",
+  merge_queued: "eventMergeQueued",
   merge_conflict: "eventMergeConflict",
   preflight_result: "eventPreflight",
   cleanup_failed: "eventCleanupFailed",

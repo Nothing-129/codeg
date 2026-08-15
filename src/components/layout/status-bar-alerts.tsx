@@ -1,6 +1,7 @@
 "use client"
 
-import { CircleAlert, X, Trash2 } from "lucide-react"
+import { useState } from "react"
+import { ChevronRight, CircleAlert, X, Trash2 } from "lucide-react"
 import { useTranslations } from "next-intl"
 import {
   useAlertContext,
@@ -16,6 +17,7 @@ import { useAcpActions } from "@/contexts/acp-connections-context"
 import { openUrl } from "@/lib/platform"
 import { openSettingsWindow } from "@/lib/api"
 import { AGENT_LABELS, type AgentType } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const KNOWN_AGENT_TYPES = new Set<AgentType>(
   Object.keys(AGENT_LABELS) as AgentType[]
@@ -110,6 +112,43 @@ function AlertActionButton({ action }: { action: AlertAction }) {
   )
 }
 
+/**
+ * Collapsed disclosure for an alert's raw evidence (agent stderr tail, unparsed
+ * update counts). The alert list is the only surface that can show that output
+ * — the composer tooltip and the OS notification are one-line, and the tooltip
+ * copy sends the user here — so the expander has to be visible and labelled,
+ * not implied. Collapsed by default: evidence is multi-line machine output and
+ * this is a 320px popover.
+ */
+function AlertEvidence({ text }: { text: string }) {
+  const t = useTranslations("Folder.statusBar.alerts")
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ChevronRight
+          className={cn(
+            "h-2.5 w-2.5 transition-transform",
+            open && "rotate-90"
+          )}
+        />
+        {t("details")}
+      </button>
+      {open && (
+        <pre className="mt-1 max-h-40 overflow-y-auto rounded bg-muted/60 p-1.5 font-mono text-[10px] leading-relaxed text-muted-foreground whitespace-pre-wrap break-words select-text">
+          {text}
+        </pre>
+      )}
+    </div>
+  )
+}
+
 export function StatusBarAlerts() {
   const t = useTranslations("Folder.statusBar.alerts")
   const { alerts, hasAlerts, dismissAlert, clearAll } = useAlertContext()
@@ -153,6 +192,7 @@ export function StatusBarAlerts() {
                       {alert.detail}
                     </div>
                   )}
+                  {alert.evidence && <AlertEvidence text={alert.evidence} />}
                   {alert.actions && alert.actions.length > 0 && (
                     <div className="flex items-center gap-1 mt-1">
                       {alert.actions.map((action, i) => (

@@ -833,6 +833,13 @@ pub async fn token_usage_facets_core(
             .map(|(f, _)| TokenUsageFolderFacet {
                 folder_id: f.id,
                 label: usage_service::folder_display_label(&f),
+                name: f.name.clone(),
+                alias: f
+                    .alias
+                    .as_ref()
+                    .map(|a| a.trim())
+                    .filter(|a| !a.is_empty())
+                    .map(str::to_owned),
                 path: f.path.clone(),
                 parent_id: f.parent_id,
             })

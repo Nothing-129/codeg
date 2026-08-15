@@ -123,6 +123,9 @@ export function denormalizeSnapshot(wire: LiveSessionSnapshot): SnapshotPatch {
           // after a refresh.
           tool_call: wire.pending_permission.tool_call,
           options: wire.pending_permission.options,
+          // So a client attaching mid-turn sees the same "N more waiting" hint
+          // as one that was live for the original event.
+          queued: wire.pending_permission.queued,
         }
       : null,
     // The snapshot shape already matches PendingQuestionState; pass through.

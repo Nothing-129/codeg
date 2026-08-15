@@ -72,6 +72,24 @@ fn is_lifecycle_relevant(event: &AcpEvent) -> bool {
     )
 }
 
+/// Whether this event starts or ends a prompt that BLOCKS the agent until a
+/// human answers. Deliberately not folded into [`is_lifecycle_relevant`]: these
+/// never reach a worker, they only wake the delegation broker's parked status
+/// long-polls (see the dispatcher loop). Both edges matter — the raise so a
+/// waiting parent learns it is blocked, the resolve so a subsequent poll finds
+/// the child working again.
+fn is_blocking_prompt_event(event: &AcpEvent) -> bool {
+    matches!(
+        event,
+        AcpEvent::PermissionRequest { .. }
+            | AcpEvent::PermissionResolved { .. }
+            | AcpEvent::QuestionRequest { .. }
+            | AcpEvent::QuestionResolved { .. }
+            | AcpEvent::PlanApprovalRequest { .. }
+            | AcpEvent::PlanApprovalResolved { .. }
+    )
+}
+
 /// Whether the dispatcher should tear down (drop the sender for) the per-
 /// connection worker after forwarding this event. Two cases:
 ///
@@ -1526,6 +1544,15 @@ pub fn lifecycle_subscriber_task(
                     // worker at all. See `register_delegation_tool_call_from_event`.
                     if let Some(b) = broker.as_ref() {
                         register_delegation_tool_call_from_event(b.as_ref(), &envelope_arc).await;
+                        // Same placement rationale: a blocking prompt raised on
+                        // a delegation child must reach the broker's parked
+                        // status long-polls immediately, so the parent LLM can
+                        // report "waiting on you" instead of hanging until the
+                        // user happens to notice (#447). Ahead of the
+                        // `is_lifecycle_relevant` filter, which drops all six.
+                        if is_blocking_prompt_event(&envelope_arc.payload) {
+                            b.note_blocking_changed();
+                        }
                     }
 
                     // Fast-path filter: skip events the worker would no-op.
@@ -1598,6 +1625,17 @@ pub fn lifecycle_subscriber_task(
                     // authoritative loss record (unthrottled); the log line is
                     // throttled to at most one per window.
                     metrics.lagged_count.fetch_add(skipped, Ordering::Relaxed);
+                    // A dropped batch may have contained a blocking prompt, and
+                    // a child parked on one emits nothing further — so no later
+                    // event is guaranteed to wake the broker's parked status
+                    // long-polls, and a `wait_ms: 0` caller would hang for good.
+                    // Wake them unconditionally: they re-probe live
+                    // `SessionState`, which is written directly and therefore
+                    // survives any bus loss. Same "resync from authoritative
+                    // state" recovery the pet aggregator does on lag.
+                    if let Some(b) = broker.as_ref() {
+                        b.note_blocking_changed();
+                    }
                     if let Some(s) = lag_throttle.record(skipped) {
                         tracing::warn!(
                             "[lifecycle][WARN] internal bus lagged: dropped {} events across \

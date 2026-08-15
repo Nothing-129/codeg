@@ -136,6 +136,7 @@ import {
   OpenCodeConnectDialog,
   OpenCodeCustomProviderDialog,
 } from "@/components/settings/opencode-connect-dialog"
+import { OpenCodePermissionsSection } from "@/components/settings/opencode-permissions-section"
 import { AgentDiagnosticsDialog } from "@/components/settings/agent-diagnostics-dialog"
 import {
   buildConnectedModelOptions,
@@ -368,6 +369,19 @@ function summarizeChecks(checks: UiCheckItem[]): CheckStatus | "unchecked" {
   return "pass"
 }
 
+/**
+ * Per-agent `env_json` knob deciding WHICH SIDE of the ACP connection reads
+ * files and runs commands (`HostToolsPolicy`, Rust side). codeg advertises
+ * `fs.readTextFile` / `terminal` by default, and an agent that sees them stops
+ * using its own backends and delegates — so the work happens in CODEG's
+ * process, outside any OS sandbox the agent applies to itself. Set to
+ * {@link HOST_TOOLS_AGENT} and codeg advertises neither, so the agent does its
+ * own I/O and its own sandbox covers it again (#436). Absent ⇒ codeg hosts.
+ */
+const HOST_TOOLS_ENV = "CODEG_ACP_HOST_TOOLS"
+const HOST_TOOLS_AGENT = "agent"
+const HOST_TOOLS_DEFAULT = "default"
+
 function envMapToText(env: Record<string, string>): string {
   return Object.entries(env)
     .map(([key, value]) => `${key}=${value}`)
@@ -403,6 +417,45 @@ function patchEnvText(
     }
   }
   return envMapToText(envMap)
+}
+
+/**
+ * Whether this agent's env draft hands the ACP fs/terminal channels back to the
+ * agent — see {@link HOST_TOOLS_ENV}. Anything other than the exact sentinel
+ * (including a hand-typed `default`) reads as off, matching the Rust resolver,
+ * which fails OPEN on an unrecognized value rather than silently withholding.
+ *
+ * Reads the per-agent layer ONLY. When the key is absent and an operator has
+ * exported `CODEG_ACP_HOST_TOOLS=agent` in codeg's own environment, the switch
+ * renders off while the next connection actually withholds the channels — the
+ * display understates how restricted the agent is. Showing that inherited state
+ * would need the backend to report its resolved process-env value; until then
+ * the error is in the safe direction, and {@link setHostToolsAgentMode} makes
+ * the per-agent value authoritative the moment the user touches the switch.
+ */
+export function hostToolsAgentModeEnabled(envText: string): boolean {
+  return parseEnvText(envText)[HOST_TOOLS_ENV] === HOST_TOOLS_AGENT
+}
+
+/**
+ * Flip the knob in an env draft, always writing an EXPLICIT value — including
+ * `default` for off, rather than deleting the key.
+ *
+ * Deleting would be tidier but wrong: the backend resolves this knob as
+ * `env_json` first, then codeg's own process env. An operator who exported
+ * `CODEG_ACP_HOST_TOOLS=agent` process-wide makes "absent" mean `agent`, so a
+ * toggle that cleared the key on OFF could not turn the mode off at all — the
+ * switch would read false while the next connection still withheld the
+ * channels. Writing the value the user actually chose makes the per-agent
+ * setting authoritative in both directions.
+ */
+export function setHostToolsAgentMode(
+  envText: string,
+  enabled: boolean
+): string {
+  return patchEnvText(envText, {
+    [HOST_TOOLS_ENV]: enabled ? HOST_TOOLS_AGENT : HOST_TOOLS_DEFAULT,
+  })
 }
 
 interface ImportantEnvKeys {
@@ -7549,6 +7602,36 @@ export function AcpAgentSettings() {
                     />
                     <div className="pointer-events-none absolute inset-0 rounded-md bg-background/10 backdrop-blur-[3px] transition-opacity duration-200 group-focus-within:opacity-0" />
                   </div>
+                  {/*
+                    Backed by the same `envText` draft as the textarea above,
+                    not self-persisting: saving on toggle would also commit
+                    whatever unsaved edits the textarea happens to hold. One
+                    Save button owns both.
+                  */}
+                  <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/10 p-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">
+                        {t("hostTools.label")}
+                      </label>
+                      <p className="text-[11px] text-muted-foreground">
+                        {t("hostTools.description")}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={hostToolsAgentModeEnabled(selectedDraft.envText)}
+                      onCheckedChange={(checked) => {
+                        updateSelectedDraft((current) => ({
+                          ...current,
+                          envText: setHostToolsAgentMode(
+                            current.envText,
+                            checked
+                          ),
+                        }))
+                      }}
+                      disabled={selectedGrokSaving}
+                      aria-label={t("hostTools.label")}
+                    />
+                  </div>
                   <div className="flex justify-end">
                     <Button
                       size="sm"
@@ -7997,6 +8080,15 @@ export function AcpAgentSettings() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {/* `untrusted` has no equivalent in codex-acp's three
+                            approval presets, so an ACP session cannot honor it
+                            (#442). Say so where the user picks it, rather than
+                            letting it look effective. */}
+                        {selectedDraft.codexApprovalPolicy === "untrusted" ? (
+                          <p className="text-[10px] text-yellow-500">
+                            {t("codex.approvalPolicyUntrustedAcpWarning")}
+                          </p>
+                        ) : null}
                       </div>
 
                       {selectedDraft.codexApprovalPolicy === "granular" ? (
@@ -8066,6 +8158,13 @@ export function AcpAgentSettings() {
                         </Select>
                         <p className="text-[10px] text-muted-foreground">
                           {t("codex.sandboxModeHint")}
+                        </p>
+                        {/* Sandbox mode is what codeg maps onto the session's
+                            starting approval preset (#442), so it reaches
+                            ordinary prompts even though approval_policy does
+                            not. Worth stating next to the control that does it. */}
+                        <p className="text-[10px] text-muted-foreground">
+                          {t("codex.sandboxModeSeedsPresetHint")}
                         </p>
                       </div>
 
@@ -9336,6 +9435,19 @@ supports_websockets = true`}
                         </div>
                       )}
                     </div>
+
+                    {/*
+                      The editor owns the `permission` key and hands back a
+                      whole rewritten document, so it goes through the same
+                      path as the raw JSON box below — draft-only, like the
+                      model fields above, with the card's Save button doing
+                      the write to opencode.json.
+                    */}
+                    <OpenCodePermissionsSection
+                      configText={selectedDraft.configText}
+                      onChange={handleConfigTextChange}
+                      disabled={selectedIsSavingConfig}
+                    />
 
                     <div className="space-y-1.5">
                       <label className="text-[11px] text-muted-foreground">

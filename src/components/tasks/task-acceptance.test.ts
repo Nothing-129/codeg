@@ -2,9 +2,17 @@ import { describe, expect, it } from "vitest"
 import type { WorkTask } from "@/lib/types"
 import {
   hasNothingToMerge,
+  isFolderMerging,
+  isMergeQueued,
   isWorktreeGone,
+  mergeQueueRanks,
   worktreeWasRemoved,
 } from "./task-acceptance"
+
+/** A parked merge, reduced to what the queue helpers actually read. */
+function queued(at: string): WorkTask["merge_queued"] {
+  return { message: null, delete_worktree: true, queued_at: at }
+}
 
 function task(overrides?: Partial<WorkTask>): WorkTask {
   return {
@@ -76,6 +84,65 @@ describe("hasNothingToMerge", () => {
         task({ status: "running", files_changed: 3, worktree_missing: true })
       )
     ).toBe(false)
+  })
+})
+
+describe("the merge queue", () => {
+  it("marks only reviewed tasks that actually took a place in line", () => {
+    expect(isMergeQueued(task())).toBe(false)
+    expect(
+      isMergeQueued(task({ merge_queued: queued("2026-08-01T10:00:00Z") }))
+    ).toBe(true)
+    // A dispatched merge left the queue: the row is `merging` now, and the
+    // stamp it may still carry must not read as "still waiting".
+    expect(
+      isMergeQueued(
+        task({
+          status: "merging",
+          merge_queued: queued("2026-08-01T10:00:00Z"),
+        })
+      )
+    ).toBe(false)
+  })
+
+  it("numbers each project's queue by request order, ties broken by id", () => {
+    const ranks = mergeQueueRanks([
+      task({ id: 1, merge_queued: queued("2026-08-01T10:00:02Z") }),
+      task({ id: 2, merge_queued: queued("2026-08-01T10:00:01Z") }),
+      // Same instant as #2 — the backend breaks the tie by id, and so does the
+      // display.
+      task({ id: 3, merge_queued: queued("2026-08-01T10:00:01Z") }),
+      // Another project keeps its own line.
+      task({
+        id: 4,
+        folder_id: 2,
+        merge_queued: queued("2026-08-01T10:00:05Z"),
+      }),
+      // Not queued at all.
+      task({ id: 5 }),
+    ])
+    expect(ranks.get(2)).toBe(1)
+    expect(ranks.get(3)).toBe(2)
+    expect(ranks.get(1)).toBe(3)
+    expect(ranks.get(4)).toBe(1)
+    expect(ranks.has(5)).toBe(false)
+  })
+
+  it("orders by instant, not by the text of the timestamp", () => {
+    // RFC 3339 with a variable number of fractional digits: "…:00Z" sorts
+    // AFTER "…:00.5Z" as a string, and before it as a time.
+    const ranks = mergeQueueRanks([
+      task({ id: 1, merge_queued: queued("2026-08-01T10:00:00.500Z") }),
+      task({ id: 2, merge_queued: queued("2026-08-01T10:00:00Z") }),
+    ])
+    expect(ranks.get(2)).toBe(1)
+    expect(ranks.get(1)).toBe(2)
+  })
+
+  it("knows when a project's merge slot is busy", () => {
+    const tasks = [task({ id: 1 }), task({ id: 2, status: "merging" })]
+    expect(isFolderMerging(tasks, 1)).toBe(true)
+    expect(isFolderMerging(tasks, 2)).toBe(false)
   })
 })
 

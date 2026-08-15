@@ -13,12 +13,18 @@
  * filters the two delegation variants and exposes a tool-use-id-keyed lookup
  * so ToolCallBlock can resolve the binding by the field it already has in hand.
  *
- * Scope intentionally minimal for Phase 8:
- *   * State stays in-memory; persistence across reloads relies on the
- *     parent_tool_use_id stored on the child's DB row (Phase 7).
- *   * Inline permission routing (child's `permission_request` surfaced on
- *     parent's ToolCallBlock) is deferred — the existing permission store
- *     is per-connection and would require a broader reducer change.
+ * State stays in-memory; persistence across reloads relies on the
+ * parent_tool_use_id stored on the child's DB row (Phase 7).
+ *
+ * On the child's blocking prompts: attaching the child (below) is what makes
+ * them visible at all. The permission store stays per-connection — a child's
+ * `permission_request` is never re-keyed onto the parent's ToolCallBlock — but
+ * because the child IS a connection in the store, `useDelegationCardModel`
+ * reads its `pendingPermission` directly and badges the delegation card
+ * "waiting", and `SubAgentSessionDialog` answers through the child's own
+ * connection id. Surfaces OUTSIDE this transcript (the pet badge/panel, the
+ * work-task row, `get_delegation_status`) are handled in the backend, not here
+ * — see `pet_list_active_sessions_core` and the broker's `blocked_on` (#447).
  */
 
 import {

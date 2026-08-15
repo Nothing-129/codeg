@@ -40,6 +40,27 @@ describe("aux-panel-file-tree-tab no longer owns tab watching", () => {
   })
 })
 
+describe("aux file tree badges links from the node's own symlink flag", () => {
+  // Issue #430: the badge used to come from `listFolderLinks`, so it only ever
+  // marked top-level directories registered through the "link folder" dialog —
+  // a symlink the user made with `ln -s` got nothing. The backend now flags
+  // every symlinked directory node, which covers any depth and any origin.
+  // Reintroducing the side fetch would resurrect both blind spots.
+  it("derives the badge from node.symlink, not a separate links fetch", () => {
+    expect(auxSource).toMatch(
+      /isLinkedDir\s*=\s*node\.kind === "dir" && node\.symlink === true/
+    )
+    expect(auxSource).not.toMatch(/listFolderLinks/)
+    expect(auxSource).not.toMatch(/LinkedDirNamesContext/)
+  })
+
+  it("still refetches the tree when links change elsewhere", () => {
+    // The badge rides along on the tree, so the broadcast must keep forcing a
+    // refetch or a link added from another window would not show up at all.
+    expect(auxSource).toMatch(/FOLDER_LINKS_CHANGED_EVENT/)
+  })
+})
+
 describe("use-open-file-tabs-watch external-change coverage", () => {
   it("destructures the background-reload, stale, and prefetched-apply APIs", () => {
     // Catching external changes for non-active tabs requires these APIs;

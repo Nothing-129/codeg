@@ -16,6 +16,8 @@ interface TaskListProps {
   folderNames: Map<number, string>
   /** Shared render-tick timestamp for relative times (refreshed by the page). */
   now: number
+  /** task id → place in its project's merge queue (see `mergeQueueRanks`). */
+  mergeQueueRanks: Map<number, number>
   /** Whether a status filter is narrowing the list — drives the empty state's
    *  offer to clear it, instead of leaving a dead end. */
   filtered: boolean
@@ -39,6 +41,7 @@ export function TaskList({
   tasks,
   folderNames,
   now,
+  mergeQueueRanks,
   filtered,
   onClearFilter,
   onOpen,
@@ -57,8 +60,13 @@ export function TaskList({
           )}
         >
           <div className={TASK_LIST_CELLS.status}>{t("listColStatus")}</div>
+          {/* pl-5 clears the rows' agent-mark gutter (14px mark + 6px gap), so
+              the heading sits over the titles rather than over their icons. */}
           <div
-            className={cn(TASK_LIST_CELLS.title, "flex items-center gap-1.5")}
+            className={cn(
+              TASK_LIST_CELLS.title,
+              "flex items-center gap-1.5 pl-5"
+            )}
           >
             {t("listColTask")}
             <span className="rounded-full bg-muted/70 px-1.5 py-0.5 text-[0.625rem] font-medium leading-none tabular-nums">
@@ -105,6 +113,7 @@ export function TaskList({
                     task={task}
                     folderName={folderNames.get(task.folder_id) ?? null}
                     now={now}
+                    mergeQueueRank={mergeQueueRanks.get(task.id)}
                     onOpen={() => onOpen(task.id)}
                     {...handlersFor(task)}
                   />

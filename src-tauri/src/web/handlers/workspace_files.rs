@@ -7,12 +7,18 @@
 //! web mode in the UI but live in the shared router so the desktop's
 //! built-in web service is functional too.
 //!
-//! All three endpoints share the same path-safety contract: caller passes
-//! a `root_path` (the absolute path of an opened workspace) plus a
-//! relative path that must not contain `..` or absolute components. The
-//! handler joins them, then `canonicalize`s and confirms the resolved
-//! path starts with the canonical root, so a symlink inside the user's
-//! workspace cannot redirect reads or writes outside it.
+//! All three endpoints share the same base path-safety contract: caller
+//! passes a `root_path` (the absolute path of an opened workspace) plus a
+//! relative path that must not contain `..` or absolute components, and the
+//! handler joins them.
+//!
+//! Symlinks are then treated differently by direction. **Upload** additionally
+//! `canonicalize`s and requires the result to stay under the canonical root
+//! (or inside a registered link), because following a stray link would leave
+//! files outside the workspace. **Download** applies only the lexical boundary
+//! (`folders::ensure_user_navigable_path`): it is the file tree's own
+//! context-menu action on a row the user can already open in the editor, and
+//! refusing symlinked folders there is what broke issue #430.
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -88,6 +94,8 @@ fn resolve_relative_path(root: &Path, rel: &str) -> Result<PathBuf, AppCommandEr
     Ok(root.join(rel_path))
 }
 
+/// Strict confinement, for the upload path: a write that resolves outside the
+/// root leaves a file there, so an unvetted symlink must never be followed.
 fn ensure_inside_root(root: &Path, target: &Path) -> Result<(), AppCommandError> {
     let canonical_root = std::fs::canonicalize(root).map_err(AppCommandError::io)?;
     let canonical_target = std::fs::canonicalize(target).map_err(AppCommandError::io)?;
@@ -643,7 +651,10 @@ fn resolve_download_file_target(
     if !target.is_file() {
         return Err(AppCommandError::invalid_input("Path is not a file"));
     }
-    ensure_inside_root(&root, &target)?;
+    // Downloading is the tree's own context-menu action, so it uses the same
+    // boundary as opening the file in the editor: a symlink living inside the
+    // workspace is part of it. (Uploads keep the strict rule above.)
+    crate::commands::folders::ensure_user_navigable_path(&root, &target)?;
     Ok(target)
 }
 
@@ -669,7 +680,7 @@ fn resolve_download_dir_target(
     if !resolved.is_dir() {
         return Err(AppCommandError::invalid_input("Path is not a directory"));
     }
-    ensure_inside_root(&root, &resolved)?;
+    crate::commands::folders::ensure_user_navigable_path(&root, &resolved)?;
     let name = resolved
         .file_name()
         .and_then(|s| s.to_str())

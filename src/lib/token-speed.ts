@@ -1,7 +1,8 @@
 /**
- * Pure helpers behind the live token-output-speed badge. Everything here is a
- * function of its arguments — no clock, no DOM — so the heuristic, the
- * incremental accounting and the smoothing are exactly testable.
+ * Pure helpers behind the live token-output-speed reading in the streaming turn
+ * row (`useTokenOutputSpeed`). Everything here is a function of its arguments —
+ * no clock, no DOM — so the heuristic, the incremental accounting and the
+ * smoothing are exactly testable.
  *
  * The char→token ratios are deliberately rough ("大差不差"): CJK-family scripts
  * tokenize denser than Latin, so we count them at ~1.8 chars/token and every
@@ -17,9 +18,9 @@ const DENSE_CHARS_PER_TOKEN = 1.8
 const OTHER_CHARS_PER_TOKEN = 4
 
 /**
- * Mirrors the JS regex `\s` class. Hand-rolled rather than `/\s/` because the
- * hot path re-measures on every wire event: a char-code scan allocates nothing,
- * where `text.replace(/\s/g, "")` copies the whole string every call.
+ * Mirrors the JS regex `\s` class. Hand-rolled rather than `/\s/` because this
+ * re-measures a growing turn on every sample: a char-code scan allocates
+ * nothing, where `text.replace(/\s/g, "")` copies the whole string every call.
  */
 function isSpace(code: number): boolean {
   if (code === 0x20) return true // space — by far the most common case
@@ -104,13 +105,12 @@ export function estimateTokens(text: string, from = 0): number {
  * incrementally.
  *
  * The naive version — re-running `estimateTokens` over every block on every
- * store notification — is O(turn) per event and so O(turn²) over a turn, on the
- * synchronous dispatch path that already fires once per wire envelope. Blocks
- * are append-only within a turn, so we keep each block's consumed length and
+ * sample — is O(turn) per sample and so O(turn²) over a turn. Blocks are
+ * append-only within a turn, so we keep each block's consumed length and
  * measure only what was appended, which reduces an unchanged block to a single
  * length compare.
  *
- * One pass per notification, feeding the eligible blocks in their (stable) order:
+ * One pass per sample, feeding the eligible blocks in their (stable) order:
  *
  * ```ts
  * counts.beginPass()
@@ -187,18 +187,17 @@ export class TokenCountAccumulator {
 
 /**
  * First-order low-pass over instantaneous token rates. Time-constant based
- * (rather than per-event alpha) so the reading doesn't depend on how irregularly
- * the store notifies, and so a bursty thinking stream followed by a tool pause
+ * (rather than per-sample alpha) so the reading doesn't depend on how regularly
+ * the caller samples, and so a bursty thinking stream followed by a tool pause
  * decays toward zero instead of pinning the old reading.
  *
  * The accumulated weight is tracked alongside the average and divided back out
  * (the bias correction Adam uses). Without it the filter cold-starts from its
- * first sample — and the store's first sample after a turn begins is routinely a
- * zero, because every wire envelope notifies subscribers via `EVENT_APPLIED`
- * before the batched content delta lands. That made the badge open at `0.0` and
- * crawl toward the true rate over several seconds. With the correction the
- * reading is the turn's cumulative average until `TAU_MS` has elapsed, and an
- * exponential window after that.
+ * first sample, and a turn's first sample is routinely near-zero — it lands on
+ * whatever fraction of a batched content delta had arrived by then. That made
+ * the reading open at `0.0` and crawl toward the truth over several seconds.
+ * With the correction it is the turn's cumulative average until `TAU_MS` has
+ * elapsed, and an exponential window after that.
  */
 export class TokenSpeedTracker {
   private static readonly TAU_MS = 1500

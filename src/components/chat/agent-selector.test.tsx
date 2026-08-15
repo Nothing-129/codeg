@@ -168,6 +168,25 @@ describe("AgentSelector", () => {
     expect(onSelect).toHaveBeenCalledWith("codex")
   })
 
+  it("keeps the icon wrapper a flex box so the mark stays vertically centered", () => {
+    // jsdom has no layout engine, so this guards the cause rather than the
+    // symptom: as a bare inline box the wrapper lays the icon out on a text
+    // baseline and grows by the strut's descender (20px around a 16px mark),
+    // which pushes every icon ~2px above the pill's centerline while the
+    // label sits dead center. Measured in a real engine; assert the class
+    // here so a future markup cleanup can't silently drop it.
+    mockUseAcpAgents.mockReturnValue({
+      agents: [agent("codex")],
+      fresh: true,
+      refresh: async () => {},
+    })
+    renderWithIntl(
+      <AgentSelector defaultAgentType="codex" onSelect={() => {}} />
+    )
+    const wrapper = screen.getByRole("button").firstElementChild
+    expect(wrapper).toHaveClass("inline-flex")
+  })
+
   it("notifies onAgentsLoaded with the current agent list", async () => {
     const codex = agent("codex")
     mockUseAcpAgents.mockReturnValue({

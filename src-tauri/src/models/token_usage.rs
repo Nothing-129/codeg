@@ -202,7 +202,15 @@ pub struct TokenUsageReport {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenUsageFolderFacet {
     pub folder_id: i32,
+    /// Compact display name — the alias when one is set, else the folder name.
+    /// Kept for callers that only have room for one string; the filter list
+    /// renders `alias [ name ]` from the two fields below instead, so an
+    /// aliased folder never hides which directory it actually is.
     pub label: String,
+    /// The folder's real (on-disk) directory name, alias or not.
+    pub name: String,
+    /// The user-set display alias, or `None` when unset.
+    pub alias: Option<String>,
     pub path: String,
     /// Set when this folder is a worktree created under another folder — the
     /// UI nests it so picking the parent visibly covers it.

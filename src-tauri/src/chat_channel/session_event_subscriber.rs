@@ -371,6 +371,9 @@ async fn handle_acp_envelope(
             request_id,
             tool_call,
             options,
+            // The chat-channel bridge renders one card per event, so the
+            // queued-behind count is not part of its message shape.
+            queued: _,
         } => {
             let mut guard = bridge.lock().await;
             if let Some(session) = guard.get_mut(connection_id) {

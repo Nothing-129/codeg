@@ -249,10 +249,12 @@ export function useConnection(contextKey: string): UseConnectionReturn {
     [actions, contextKey]
   )
 
-  const disconnect = useCallback(
-    () => actions.disconnect(contextKey),
-    [actions, contextKey]
-  )
+  // Drops `actions.disconnect`'s teardown-confirmed flag: this hook's callers
+  // are closing a surface, and only a caller that reports a restart back to the
+  // user (see `reapplyConfig`) has anything to do with that answer.
+  const disconnect = useCallback(async () => {
+    await actions.disconnect(contextKey)
+  }, [actions, contextKey])
 
   const sendPrompt = useCallback(
     (

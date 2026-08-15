@@ -62,8 +62,8 @@ use crate::acp::delegation::meta_writer::{
 };
 use crate::acp::delegation::spawner::{ConnectionSpawner, DelegationLink};
 use crate::acp::delegation::types::{
-    AgentDelegationDefaults, DelegationError, DelegationOutcome, DelegationRequest,
-    DelegationTaskReport, TaskStatus,
+    AgentDelegationDefaults, BlockedKind, BlockedOn, DelegationError, DelegationOutcome,
+    DelegationRequest, DelegationTaskReport, TaskStatus,
 };
 use crate::acp::types::DelegationResultSummary;
 use crate::models::AgentType;
@@ -203,6 +203,27 @@ struct RunningTask {
     /// When the child started running (after `send_prompt` succeeded). Used to
     /// compute a real `duration_ms` at terminal time.
     started_at: Instant,
+    /// The last blocking prompt a status query reported to the parent, and when.
+    /// Makes "the block I told you about" distinguishable from "a NEW block",
+    /// which is what stops a `wait_ms: 0` poll from returning instantly forever
+    /// once a child parks on a permission (#447): the first observation
+    /// returns, a re-poll on the same prompt goes back to waiting, and a second
+    /// prompt returns again.
+    ///
+    /// The timestamp is the safety valve. Marking a block reported is not proof
+    /// the parent RECEIVED it — the report still has to cross the listener, the
+    /// companion's stdout and the agent CLI, and an MCP `notifications/cancelled`
+    /// or a client-side call abort discards it silently. Without the valve that
+    /// lost report would be the only one ever offered, re-creating the exact
+    /// stall this fixes. So the same unanswered prompt becomes reportable again
+    /// after [`BLOCK_RESURFACE_INTERVAL`].
+    last_surfaced_block: Option<SurfacedBlock>,
+}
+
+/// See [`RunningTask::last_surfaced_block`].
+struct SurfacedBlock {
+    request_id: String,
+    at: Instant,
 }
 
 /// A terminal delegation result retained so `get_delegation_status` /
@@ -728,6 +749,8 @@ fn report_from_outcome(
         error_code,
         message,
         duration_ms,
+        // Terminal by construction — nothing is waiting on the user anymore.
+        blocked_on: None,
     }
 }
 
@@ -765,6 +788,7 @@ fn running_ack(
         error_code: None,
         message: Some(message),
         duration_ms: None,
+        blocked_on: None,
     }
 }
 
@@ -791,6 +815,47 @@ pub enum StatusWait {
     Infinite,
 }
 
+/// How long an already-reported blocking prompt stays suppressed before a
+/// status long-poll will surface it again. Two jobs: it keeps a `wait_ms: 0`
+/// caller from spinning on a block it has already been told about, and it
+/// bounds the damage when a report is generated but never delivered (see
+/// [`RunningTask::last_surfaced_block`]) — a lost report costs a delayed notice
+/// instead of a permanent stall. Long relative to a human noticing a prompt,
+/// short relative to walking away from the machine.
+const BLOCK_RESURFACE_INTERVAL: Duration = Duration::from_secs(300);
+
+/// Second line of a blocked running report's message. The frontend anchors on
+/// this exact prefix to keep recognizing the poll as "running" on hosts that
+/// persist only the `CallToolResult` content text — see `textRunningStatus` in
+/// `src/lib/delegation-status.ts`. Backend protocol string, never localized.
+const BLOCKED_LINE_PREFIX: &str = "Awaiting your decision:";
+
+/// Mark a running report as parked on a user decision: set the structured
+/// `blocked_on` and replace the bare `"Running."` message with a two-line
+/// version naming what needs answering.
+///
+/// The note goes on its OWN line, for the same reason the live-reply hint does:
+/// content-only hosts recognize a still-running poll by the standalone first
+/// line `"Running."`, so a *completed* result whose text happens to start with
+/// "Running. …" can never be misread as running.
+fn attach_blocked(report: &mut DelegationTaskReport, blocked: BlockedOn) {
+    let what = match (&blocked.kind, blocked.title.as_deref()) {
+        (_, Some(title)) => title.to_string(),
+        (BlockedKind::Permission, None) => "a tool permission".to_string(),
+        (BlockedKind::Question, None) => "a question".to_string(),
+        (BlockedKind::PlanApproval, None) => "a plan approval".to_string(),
+    };
+    // The third line is guidance for the orchestrating LLM, in the same spirit
+    // as `running_ack`'s "call get_delegation_status with this id". Keep it in
+    // step with the tool description in `tool_schema.json`.
+    report.message = Some(format!(
+        "Running.\n{BLOCKED_LINE_PREFIX} {what}\nThe sub-agent is parked until \
+         a human answers in Codeg — it is not making progress. Tell the user, \
+         then wait again."
+    ));
+    report.blocked_on = Some(blocked);
+}
+
 /// Status report for a still-running task.
 fn running_report(task_id: &str, task: &RunningTask) -> DelegationTaskReport {
     DelegationTaskReport {
@@ -804,6 +869,7 @@ fn running_report(task_id: &str, task: &RunningTask) -> DelegationTaskReport {
         // "Running.\nLatest sub-agent reply: …" when the child has live output.
         message: Some("Running.".to_string()),
         duration_ms: None,
+        blocked_on: None,
     }
 }
 
@@ -818,6 +884,7 @@ fn completed_report(task_id: &str, c: &CompletedTask) -> DelegationTaskReport {
         error_code: c.error_code.clone(),
         message: c.message.clone(),
         duration_ms: Some(c.duration_ms),
+        blocked_on: None,
     }
 }
 
@@ -837,6 +904,7 @@ fn unknown_report(task_id: &str) -> DelegationTaskReport {
                 .to_string(),
         ),
         duration_ms: None,
+        blocked_on: None,
     }
 }
 
@@ -855,7 +923,20 @@ fn db_report(task_id: &str, rec: &ChildStatusRecord) -> DelegationTaskReport {
             rec.child_conversation_id
         )),
         duration_ms: None,
+        blocked_on: None,
     }
+}
+
+/// What [`DelegationBroker::claim_new_blocks`] decided for one status pass.
+#[derive(Default)]
+struct ClaimedBlocks {
+    /// At least one blocking prompt is reportable now — the wait should return.
+    any_claimed: bool,
+    /// Earliest moment a currently-suppressed prompt becomes reportable again.
+    /// Bounds how long an otherwise-unbounded park may sleep, so the
+    /// resurface valve actually fires instead of waiting on a notify that will
+    /// never come (a blocked child emits nothing further on its own).
+    retry_at: Option<Instant>,
 }
 
 /// Per-id classification captured under the pending lock during a (possibly
@@ -1177,6 +1258,10 @@ pub struct DelegationBroker {
     /// Woken after every terminal `record_completed` so a `get_delegation_status`
     /// long-poll wakes the instant its task finishes instead of busy-polling.
     result_notify: Arc<Notify>,
+    /// How long an already-reported blocking prompt stays suppressed —
+    /// [`BLOCK_RESURFACE_INTERVAL`] in production. A field only so tests can
+    /// shrink it; nothing outside tests ever sets it.
+    block_resurface: Duration,
 }
 
 impl DelegationBroker {
@@ -1232,6 +1317,7 @@ impl DelegationBroker {
             pre_canceled_handles: Arc::new(PreCanceledHandles::default()),
             config: Arc::new(Mutex::new(DelegationConfig::default())),
             result_notify: Arc::new(Notify::new()),
+            block_resurface: BLOCK_RESURFACE_INTERVAL,
         }
     }
 
@@ -1253,6 +1339,15 @@ impl DelegationBroker {
         live_reply_lookup: Arc<dyn ChildLiveReplyLookup>,
     ) -> Self {
         self.live_reply_lookup = live_reply_lookup;
+        self
+    }
+
+    /// Shrink [`BLOCK_RESURFACE_INTERVAL`] so a test can observe the
+    /// delivery-failure valve without waiting minutes. Test-only by
+    /// construction — production always keeps the constant.
+    #[cfg(test)]
+    fn with_block_resurface(mut self, interval: Duration) -> Self {
+        self.block_resurface = interval;
         self
     }
 
@@ -2479,6 +2574,7 @@ impl DelegationBroker {
                             task_id: call_id.clone(),
                             external_handle: req.external_handle.clone(),
                             started_at,
+                            last_surfaced_block: None,
                         },
                     );
                     inner.deregister_inflight(inflight_id);
@@ -3111,6 +3207,17 @@ impl DelegationBroker {
             .unwrap_or_else(|| unknown_report(task_id))
     }
 
+    /// Wake every parked status long-poll so it can re-probe its children.
+    ///
+    /// Called by the lifecycle dispatcher when ANY connection raises or resolves
+    /// a blocking prompt — permission, question, or plan approval. Cheap and
+    /// unconditional: these events are rare, and a wake for a connection that
+    /// isn't anybody's delegation child just re-snapshots and re-parks, exactly
+    /// like the spurious wakes `get_tasks_status` already tolerates.
+    pub fn note_blocking_changed(&self) {
+        self.result_notify.notify_waiters();
+    }
+
     /// Backs the batch `get_delegation_status` tool. Resolves the status of one
     /// or many task ids in a single pass — each from the completed-cache, then
     /// the running set, then the DB fallback — scoped to the calling parent (a
@@ -3121,10 +3228,20 @@ impl DelegationBroker {
     /// `Bounded`/`Infinite` return as soon as ANY requested task is terminal —
     /// INCLUDING one already terminal at entry, so a completed result is never
     /// held hostage to a long-running sibling (the caller re-polls the
-    /// still-running ids to collect the rest). Only an all-running batch parks:
-    /// it wakes when a task settles (the running count drops below the total) or
-    /// — for `Bounded` — when the deadline elapses. An all-settled batch returns
-    /// immediately even under `Infinite`, so it never parks forever.
+    /// still-running ids to collect the rest) — **or as soon as one becomes
+    /// blocked on a user decision**. Only an all-running, nothing-newly-blocked
+    /// batch parks: it wakes when a task settles (the running count drops below
+    /// the total), when a child raises a blocking prompt, or — for `Bounded` —
+    /// when the deadline elapses. An all-settled batch returns immediately even
+    /// under `Infinite`, so it never parks forever.
+    ///
+    /// The blocked-return is what closes #447. Without it, a child that hits a
+    /// permission prompt parks the parent's `wait_ms: 0` call for as long as the
+    /// user takes to notice — indefinitely, for an unattended run — and the
+    /// orchestrating LLM cannot even report the stall, because "working" and
+    /// "waiting on a human" look identical from here. Each blocking prompt is
+    /// surfaced ONCE (see `RunningTask::last_surfaced_block`), so re-polling an
+    /// already-reported block goes back to waiting rather than spinning.
     pub async fn get_tasks_status(
         &self,
         parent_connection_id: &str,
@@ -3137,7 +3254,7 @@ impl DelegationBroker {
         }
         // A bounded wait gets a single fixed deadline; Immediate and Infinite
         // carry none — Immediate returns on the first pass, Infinite parks on
-        // `result_notify` until a task is terminal.
+        // `result_notify` until a task is terminal or newly blocked.
         let deadline = match wait {
             StatusWait::Bounded(ms) => Some(Instant::now() + Duration::from_millis(ms)),
             StatusWait::Immediate | StatusWait::Infinite => None,
@@ -3164,6 +3281,14 @@ impl DelegationBroker {
                 .filter(|c| matches!(c, StatusClass::Running { .. }))
                 .count();
 
+            // Probe each running child for a blocking prompt. Done HERE, after
+            // the pending lock was dropped at the end of the block above and
+            // before any early return, because it takes the child's
+            // `SessionState` lock — the same ordering `attach_live_reply` has
+            // always used. The result rides along to `assemble_reports` so a
+            // pass never probes the same child twice.
+            let blocked = self.probe_blocked(&classes).await;
+
             // Return now when the poll is Immediate, OR when at least one
             // requested task is already (or now) terminal — i.e. not EVERY task
             // is still running. This honors the contract "returns as soon as ANY
@@ -3179,23 +3304,43 @@ impl DelegationBroker {
             // re-snapshots all-running and re-parks.
             if matches!(wait, StatusWait::Immediate) || running_count < task_ids.len() {
                 return self
-                    .assemble_reports(parent_conversation_id, task_ids, classes)
+                    .assemble_reports(parent_conversation_id, task_ids, classes, blocked)
                     .await;
             }
-            // Every requested task is still running. A `Bounded` wait gives up at
-            // its deadline and returns the running snapshot; `Infinite` parks on
-            // the notify alone.
+            // Every task is still running, but one of them just parked on the
+            // user. That is not progress and no completion signal is coming
+            // until a human acts, so stop waiting and say so. The claim marks
+            // each prompt as surfaced, so the NEXT poll on the same prompt falls
+            // through to the park below instead of returning instantly.
+            let claimed = self.claim_new_blocks(task_ids, &blocked).await;
+            if claimed.any_claimed {
+                return self
+                    .assemble_reports(parent_conversation_id, task_ids, classes, blocked)
+                    .await;
+            }
+            // A `Bounded` wait gives up at its deadline and returns the running
+            // snapshot.
             let now = Instant::now();
             if deadline.is_some_and(|d| now >= d) {
                 return self
-                    .assemble_reports(parent_conversation_id, task_ids, classes)
+                    .assemble_reports(parent_conversation_id, task_ids, classes, blocked)
                     .await;
             }
-            // Park until the next completion signal, bounded by the deadline
-            // when there is one (Infinite waits on the notify alone).
-            match deadline {
-                Some(d) => {
-                    let remaining = d - now;
+            // Park until the next completion signal — bounded by the deadline
+            // when there is one, and ALWAYS bounded by `retry_at` when a
+            // suppressed block is waiting to become reportable again. Without
+            // that second bound an `Infinite` wait would park on a notify that
+            // nothing is going to fire: a child parked on a permission emits
+            // nothing further by itself, so the resurface valve would never get
+            // a chance to run and a report lost in transit would strand the
+            // caller for good.
+            let wake_at = match (deadline, claimed.retry_at) {
+                (Some(d), Some(r)) => Some(d.min(r)),
+                (d, r) => d.or(r),
+            };
+            match wake_at {
+                Some(t) => {
+                    let remaining = t.saturating_duration_since(now);
                     tokio::select! {
                         _ = &mut notified => {}
                         _ = tokio::time::sleep(remaining) => {}
@@ -3205,31 +3350,118 @@ impl DelegationBroker {
                     notified.await;
                 }
             }
-            // Loop: re-snapshot (a task likely just completed, or the deadline
-            // passed and the next pass returns the running snapshot).
+            // Loop: re-snapshot (a task likely just completed, the deadline
+            // passed and the next pass returns the running snapshot, or a
+            // suppressed block is now reportable again).
         }
+    }
+
+    /// Ask each `Running` entry's child what it is blocked on, position-aligned
+    /// with `classes` (non-running slots are `None`). One probe per child per
+    /// pass; must be called with the pending lock RELEASED (it takes the child's
+    /// `SessionState` lock).
+    async fn probe_blocked(&self, classes: &[StatusClass]) -> Vec<Option<BlockedOn>> {
+        let mut out = Vec::with_capacity(classes.len());
+        for class in classes {
+            let blocked = match class {
+                StatusClass::Running {
+                    child_connection_id,
+                    ..
+                } => self.live_reply_lookup.blocked_on(child_connection_id).await,
+                _ => None,
+            };
+            out.push(blocked);
+        }
+        out
+    }
+
+    /// Claim the blocking prompts in `blocked` that are reportable right now,
+    /// returning whether any was — and, when none was, the earliest [`Instant`]
+    /// at which one becomes reportable again.
+    ///
+    /// This is the ratchet: a `wait_ms: 0` poll returns the first time a child
+    /// parks, but a re-poll while the SAME prompt is still unanswered finds
+    /// nothing new and goes back to waiting — otherwise the caller's wait loop
+    /// would return instantly forever and burn a round-trip per iteration while
+    /// the user is simply slow to click. A second, different prompt is new
+    /// again and returns, and so does the same prompt once
+    /// [`BLOCK_RESURFACE_INTERVAL`] has passed (the delivery-failure valve — see
+    /// [`RunningTask::last_surfaced_block`]).
+    ///
+    /// Positionally aligned with `task_ids`. Silently skips ids no longer in the
+    /// running map (settled between the snapshot and here) — those return via
+    /// the terminal path on the next pass anyway.
+    async fn claim_new_blocks(
+        &self,
+        task_ids: &[String],
+        blocked: &[Option<BlockedOn>],
+    ) -> ClaimedBlocks {
+        let mut out = ClaimedBlocks::default();
+        if blocked.iter().all(|b| b.is_none()) {
+            return out;
+        }
+        let now = Instant::now();
+        let mut inner = self.pending.inner.lock().await;
+        for (id, blocked) in task_ids.iter().zip(blocked) {
+            let Some(blocked) = blocked else { continue };
+            let Some(task) = inner.running.get_mut(id) else {
+                continue;
+            };
+            if let Some(prev) = task.last_surfaced_block.as_ref() {
+                if prev.request_id == blocked.request_id {
+                    let due = prev.at + self.block_resurface;
+                    if now < due {
+                        // Not reportable yet. Deliberately does NOT refresh
+                        // `at` — that would push the valve out forever under
+                        // repeated polling.
+                        out.retry_at = Some(out.retry_at.map_or(due, |t: Instant| t.min(due)));
+                        continue;
+                    }
+                }
+            }
+            task.last_surfaced_block = Some(SurfacedBlock {
+                request_id: blocked.request_id.clone(),
+                at: now,
+            });
+            out.any_claimed = true;
+        }
+        out
     }
 
     /// Finish a batch status pass: resolve each [`StatusClass`] into a final
     /// report AFTER the pending lock is released. `Running` ids get their latest
-    /// live reply attached; `NotInMemory` ids fall back to the DB status lookup.
-    /// Reports come back in `task_ids` order.
+    /// live reply (or blocking prompt) attached; `NotInMemory` ids fall back to
+    /// the DB status lookup. Reports come back in `task_ids` order.
+    ///
+    /// `blocked` is the already-probed result from [`Self::probe_blocked`] for
+    /// this same pass, position-aligned with `classes`.
     async fn assemble_reports(
         &self,
         parent_conversation_id: Option<i32>,
         task_ids: &[String],
         classes: Vec<StatusClass>,
+        blocked: Vec<Option<BlockedOn>>,
     ) -> Vec<DelegationTaskReport> {
         let mut out = Vec::with_capacity(classes.len());
+        let mut blocked = blocked.into_iter().chain(std::iter::repeat_with(|| None));
         for (id, class) in task_ids.iter().zip(classes) {
+            let blocked = blocked.next().flatten();
             let report = match class {
                 StatusClass::Settled(report) => report,
                 StatusClass::Running {
                     mut report,
                     child_connection_id,
                 } => {
-                    self.attach_live_reply(&mut report, &child_connection_id)
-                        .await;
+                    match blocked {
+                        // A blocked child's last reply is stale by definition —
+                        // it is what it said BEFORE it stopped — so the block
+                        // replaces it rather than competing with it.
+                        Some(blocked) => attach_blocked(&mut report, blocked),
+                        None => {
+                            self.attach_live_reply(&mut report, &child_connection_id)
+                                .await
+                        }
+                    }
                     report
                 }
                 StatusClass::NotInMemory => self.status_from_db(parent_conversation_id, id).await,
@@ -3753,6 +3985,199 @@ mod tests {
             .await;
         assert_eq!(report.status, TaskStatus::Running);
         assert_eq!(report.message.as_deref(), Some("Running."));
+    }
+
+    // -- Blocked sub-agents (#447) -----------------------------------------
+
+    fn permission_block(request_id: &str, title: &str) -> BlockedOn {
+        BlockedOn {
+            kind: BlockedKind::Permission,
+            request_id: request_id.into(),
+            title: Some(title.into()),
+        }
+    }
+
+    /// Spin up a broker whose children all report `blocked` (settable later) and
+    /// one running task on it. Returns `(broker, lookup, task_id)`.
+    async fn broker_with_blockable_child() -> (
+        DelegationBroker,
+        Arc<crate::acp::delegation::live_reply::mock::MockChildLiveReplyLookup>,
+        String,
+    ) {
+        // The production interval is minutes; every test but the valve one
+        // wants "effectively never re-surfaces during this test".
+        broker_with_blockable_child_resurfacing(Duration::from_secs(3600)).await
+    }
+
+    async fn broker_with_blockable_child_resurfacing(
+        resurface: Duration,
+    ) -> (
+        DelegationBroker,
+        Arc<crate::acp::delegation::live_reply::mock::MockChildLiveReplyLookup>,
+        String,
+    ) {
+        use crate::acp::delegation::live_reply::mock::MockChildLiveReplyLookup;
+
+        let mock = Arc::new(MockSpawner::new());
+        mock.queue_spawn(Ok("child-conn-1".into())).await;
+        mock.queue_send(Ok(42)).await;
+        let lookup = Arc::new(MockChildLiveReplyLookup::new(Some("Reading x".into())));
+        let broker =
+            DelegationBroker::new(mock.clone() as Arc<dyn ConnectionSpawner>, shallow_lookup())
+                .with_live_reply_lookup(lookup.clone())
+                .with_block_resurface(resurface);
+        enable_delegation(&broker).await;
+        let task_id = broker
+            .start_delegation(request(1, "pt-1"))
+            .await
+            .task_id
+            .expect("running task carries an id");
+        (broker, lookup, task_id)
+    }
+
+    /// A child parked on a permission reports `Running` + `blocked_on`, and its
+    /// message says so INSTEAD of the (now stale) live reply.
+    #[tokio::test]
+    async fn blocked_child_reports_blocked_on_over_live_reply() {
+        let (broker, lookup, task_id) = broker_with_blockable_child().await;
+        lookup.set_blocked(Some(permission_block("req-1", "rm -rf /tmp/x")));
+
+        let report = broker
+            .get_task_status("parent-conn", Some(1), &task_id, StatusWait::Immediate)
+            .await;
+
+        // Status stays wire-stable `running` — the block rides alongside it, so
+        // a consumer that predates the field still resolves the poll correctly.
+        assert_eq!(report.status, TaskStatus::Running);
+        let blocked = report.blocked_on.expect("blocked_on is set");
+        assert_eq!(blocked.kind, BlockedKind::Permission);
+        assert_eq!(blocked.request_id, "req-1");
+        let message = report.message.expect("blocked report carries a message");
+        // First line must stay the bare running marker (content-only hosts
+        // anchor on it), with the note on its own second line.
+        let mut lines = message.lines();
+        assert_eq!(lines.next(), Some("Running."));
+        assert_eq!(
+            lines.next(),
+            Some("Awaiting your decision: rm -rf /tmp/x"),
+            "the blocked note replaces the live reply, which is stale by definition"
+        );
+        assert!(!message.contains("Latest sub-agent reply"));
+    }
+
+    /// The whole point of #447: a `wait_ms: 0` (Infinite) wait must NOT park
+    /// forever behind a permission prompt. Nothing settles this task — if the
+    /// block didn't wake it, this test would hang.
+    #[tokio::test]
+    async fn infinite_wait_returns_when_the_child_becomes_blocked() {
+        let (broker, lookup, task_id) = broker_with_blockable_child().await;
+        lookup.set_blocked(Some(permission_block("req-1", "write to /etc/hosts")));
+
+        let report = broker
+            .get_task_status("parent-conn", Some(1), &task_id, StatusWait::Infinite)
+            .await;
+
+        assert_eq!(report.status, TaskStatus::Running);
+        assert!(report.blocked_on.is_some());
+    }
+
+    /// ...but each prompt is surfaced ONCE. A re-poll while the same prompt is
+    /// still unanswered goes back to waiting instead of returning instantly,
+    /// which is what keeps an LLM's wait loop from spinning. A *second*,
+    /// different prompt is new again and returns.
+    #[tokio::test]
+    async fn a_reported_block_does_not_return_twice() {
+        let (broker, lookup, task_id) = broker_with_blockable_child().await;
+        lookup.set_blocked(Some(permission_block("req-1", "first")));
+
+        // First observation returns.
+        let first = broker
+            .get_task_status("parent-conn", Some(1), &task_id, StatusWait::Infinite)
+            .await;
+        assert_eq!(first.blocked_on.map(|b| b.request_id).as_deref(), Some("req-1"));
+
+        // Same prompt, still unanswered: a bounded wait now runs to its deadline
+        // rather than returning immediately.
+        let started = Instant::now();
+        let second = broker
+            .get_task_status("parent-conn", Some(1), &task_id, StatusWait::Bounded(120))
+            .await;
+        assert!(
+            started.elapsed() >= Duration::from_millis(100),
+            "an already-reported block must not short-circuit the wait"
+        );
+        // It still REPORTS the block on the way out — only the early return is
+        // suppressed, never the information.
+        assert!(second.blocked_on.is_some());
+
+        // A different prompt is a new event and returns early again.
+        lookup.set_blocked(Some(permission_block("req-2", "second")));
+        let started = Instant::now();
+        let third = broker
+            .get_task_status("parent-conn", Some(1), &task_id, StatusWait::Bounded(5_000))
+            .await;
+        assert!(
+            started.elapsed() < Duration::from_millis(2_000),
+            "a NEW blocking prompt must wake the wait"
+        );
+        assert_eq!(third.blocked_on.map(|b| b.request_id).as_deref(), Some("req-2"));
+    }
+
+    /// The delivery-failure valve: marking a block reported is not proof the
+    /// parent RECEIVED it (the report still has to cross the listener, the
+    /// companion's stdout and the agent CLI, and a cancelled or aborted
+    /// `tools/call` discards it silently). So the SAME unanswered prompt
+    /// becomes reportable again after the resurface interval — otherwise that
+    /// one lost report was the only one ever offered and the caller is stranded
+    /// exactly as before #447.
+    ///
+    /// Uses `Infinite`, which has no deadline of its own: if the park weren't
+    /// bounded by the pending resurface, nothing would ever wake it (a blocked
+    /// child emits nothing further) and this test would hang.
+    #[tokio::test]
+    async fn an_undelivered_block_resurfaces_after_the_interval() {
+        let (broker, lookup, task_id) =
+            broker_with_blockable_child_resurfacing(Duration::from_millis(150)).await;
+        lookup.set_blocked(Some(permission_block("req-1", "first")));
+
+        // First report — imagine this one never reaches the LLM.
+        let first = broker
+            .get_task_status("parent-conn", Some(1), &task_id, StatusWait::Infinite)
+            .await;
+        assert!(first.blocked_on.is_some());
+
+        let started = Instant::now();
+        let second = broker
+            .get_task_status("parent-conn", Some(1), &task_id, StatusWait::Infinite)
+            .await;
+        assert_eq!(
+            second.blocked_on.map(|b| b.request_id).as_deref(),
+            Some("req-1"),
+            "the same unanswered prompt must become reportable again"
+        );
+        assert!(
+            started.elapsed() >= Duration::from_millis(120),
+            "it must WAIT out the interval, not return instantly (that would be the spin)"
+        );
+    }
+
+    /// An unblocked child is unchanged: no `blocked_on`, live reply intact, and
+    /// an Infinite wait still parks (proven by a Bounded wait running its full
+    /// deadline out).
+    #[tokio::test]
+    async fn unblocked_child_still_parks_and_keeps_its_live_reply() {
+        let (broker, _lookup, task_id) = broker_with_blockable_child().await;
+
+        let started = Instant::now();
+        let report = broker
+            .get_task_status("parent-conn", Some(1), &task_id, StatusWait::Bounded(120))
+            .await;
+        assert!(started.elapsed() >= Duration::from_millis(100));
+        assert!(report.blocked_on.is_none());
+        assert_eq!(
+            report.message.as_deref(),
+            Some("Running.\nLatest sub-agent reply: Reading x")
+        );
     }
 
     // -- Batch get_tasks_status --------------------------------------------

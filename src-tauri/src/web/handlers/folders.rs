@@ -213,6 +213,7 @@ pub async fn update_folder_default_agent(
 ) -> Result<Json<FolderDetail>, AppCommandError> {
     Ok(Json(
         folder_commands::update_folder_default_agent_core(
+            &state.emitter,
             &state.db,
             params.folder_id,
             params.default_agent_type,

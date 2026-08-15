@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
+import { OverlayPortalContainerProvider } from "@/components/ui/overlay-portal-container"
 import { useNestedLayerDismissGuard } from "@/hooks/use-nested-layer-dismiss-guard"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -60,8 +61,11 @@ function SheetContent({
 }) {
   // Without this, closing a nested Select/DropdownMenu by clicking elsewhere in
   // the sheet closes the sheet too.
-  const { setNode, onPointerDownOutside: guardOutsidePress } =
-    useNestedLayerDismissGuard<HTMLDivElement>(ref)
+  const {
+    node,
+    setNode,
+    onPointerDownOutside: guardOutsidePress,
+  } = useNestedLayerDismissGuard<HTMLDivElement>(ref)
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -79,7 +83,11 @@ function SheetContent({
         )}
         {...props}
       >
-        {children}
+        {/* Nested layers portal in here rather than to the body, so the scroll
+            lock lets the wheel through to them. */}
+        <OverlayPortalContainerProvider container={node}>
+          {children}
+        </OverlayPortalContainerProvider>
         {showCloseButton && (
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
             <Button

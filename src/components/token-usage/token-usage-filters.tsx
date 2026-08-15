@@ -29,7 +29,13 @@ import { cn } from "@/lib/utils"
 
 export interface FilterOption {
   value: string
+  /** Plain text: drives the trigger summary and the search. */
   label: string
+  /** Rendered in place of `label` in the list rows when the option needs more
+   *  than one flat string — a folder shows `alias [ name ]` with the real
+   *  directory name in its own shade. Search still runs over `label`, so keep
+   *  the two spelling the same words. */
+  labelNode?: React.ReactNode
   /** Rendered as a dimmed second line — a folder path, a token total, … */
   hint?: string
 }
@@ -64,7 +70,7 @@ function OptionRow({
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs leading-snug">
-          {option.label}
+          {option.labelNode ?? option.label}
         </span>
         {option.hint ? (
           // Paths render LTR even in RTL locales, and the full value survives

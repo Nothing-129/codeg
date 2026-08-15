@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Popover as PopoverPrimitive } from "radix-ui"
 
+import { useOverlayPortalContainer } from "@/components/ui/overlay-portal-container"
 import { useNestedLayerDismissGuard } from "@/hooks/use-nested-layer-dismiss-guard"
 import { cn } from "@/lib/utils"
 
@@ -30,8 +31,12 @@ function PopoverContent({
   // the popover closes the popover too.
   const { setNode, onPointerDownOutside: guardOutsidePress } =
     useNestedLayerDismissGuard<HTMLDivElement>(ref)
+  // Inside a modal Dialog / Sheet this is the dialog's own content element, so
+  // the content lands inside the scroll lock's whitelisted subtree and a wheel
+  // over a long list actually scrolls it. `null` elsewhere = portal to the body.
+  const container = useOverlayPortalContainer()
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={container ?? undefined}>
       <PopoverPrimitive.Content
         data-slot="popover-content"
         align={align}

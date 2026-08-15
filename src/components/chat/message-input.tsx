@@ -72,7 +72,6 @@ import {
 } from "@/components/chat/conversation-context-bar"
 import { ComposerContextUsage } from "@/components/chat/composer-context-usage"
 import { ComposerConnectionStatus } from "@/components/chat/composer-connection-status"
-import { TokenOutputSpeed } from "@/components/chat/token-output-speed"
 import { InlineModeSelector } from "@/components/chat/mode-selector"
 import {
   InlineSessionConfigSelector,
@@ -1078,8 +1077,8 @@ export function MessageInput({
     // `attachments` holds only images now — files live inline as badges above.
     // The wire encoding is capability-driven inside the hook (native `image`
     // block vs embedded `resource` blob), so an agent that advertises
-    // `image: false` but `embedded_context: true` still receives the bytes
-    // it accepts.
+    // `image: false` but `embedded_context: true` still receives the bytes it
+    // accepts.
     blocks.push(...imagePromptBlocks())
 
     const displayText =
@@ -1987,7 +1986,6 @@ export function MessageInput({
                 send button's right edge in the action bar above — no centring
                 slot, which would inset the narrow icon and break the alignment. */}
             <div className="flex shrink-0 items-center gap-3 pr-px">
-              <TokenOutputSpeed tabId={attachmentTabId ?? null} />
               <ComposerContextUsage tabId={attachmentTabId ?? null} />
               <ComposerConnectionStatus tabId={attachmentTabId ?? null} />
             </div>

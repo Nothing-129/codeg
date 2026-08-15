@@ -226,7 +226,17 @@ export function AgentSelector({
                 : "text-muted-foreground hover:text-foreground/70"
             )}
           >
-            <span className="relative shrink-0">
+            {/* `inline-flex` is load-bearing, not decoration: as a bare
+                inline box this wrapper would lay its icon out on a text
+                baseline, so the strut's descender (~4px at text-xs/Inter)
+                hung below the 16px mark and made the wrapper 20px tall. The
+                row's `items-center` then centered *that* box, parking every
+                icon 2px above the pill's true center while the label — a grid
+                item with no strut — sat dead center. Making the wrapper a
+                flex container drops the line box entirely: its height is the
+                icon's, so icon and label share one centerline. Keep it a flex
+                box if this markup is ever touched. */}
+            <span className="relative inline-flex shrink-0 items-center">
               <AgentIcon agentType={agent.agent_type} className="h-4 w-4" />
               {notInstalled ? (
                 <span

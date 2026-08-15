@@ -755,6 +755,7 @@ fn report_canceled(message: &str) -> DelegationTaskReport {
         error_code: Some("canceled".into()),
         message: Some(message.into()),
         duration_ms: None,
+        blocked_on: None,
     }
 }
 
@@ -769,6 +770,7 @@ fn report_failed(error_code: &str, message: &str) -> DelegationTaskReport {
         error_code: Some(error_code.into()),
         message: Some(message.into()),
         duration_ms: None,
+        blocked_on: None,
     }
 }
 
@@ -784,6 +786,7 @@ fn unknown_report(task_id: &str) -> DelegationTaskReport {
         error_code: None,
         message: Some("unknown task id".into()),
         duration_ms: None,
+        blocked_on: None,
     }
 }
 

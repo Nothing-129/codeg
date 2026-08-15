@@ -745,6 +745,22 @@ pub fn build_router(
             post(handlers::acp::acp_validate_pi_command),
         )
         .route(
+            "/acp_pi_project_trust_state",
+            post(handlers::acp::acp_pi_project_trust_state),
+        )
+        .route(
+            "/acp_pi_set_project_trust",
+            post(handlers::acp::acp_pi_set_project_trust),
+        )
+        .route(
+            "/acp_pi_acknowledge_project_trust",
+            post(handlers::acp::acp_pi_acknowledge_project_trust),
+        )
+        .route(
+            "/acp_pi_list_trust_entries",
+            post(handlers::acp::acp_pi_list_trust_entries),
+        )
+        .route(
             "/acp_install_pi_binary",
             post(handlers::acp::acp_install_pi_binary),
         )
@@ -1307,6 +1323,10 @@ pub fn build_router(
         .route(
             "/work_task_merge",
             post(handlers::work_task::work_task_merge),
+        )
+        .route(
+            "/work_task_merge_unqueue",
+            post(handlers::work_task::work_task_merge_unqueue),
         )
         .route(
             "/work_task_complete",

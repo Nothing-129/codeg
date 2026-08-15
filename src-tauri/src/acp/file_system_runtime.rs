@@ -48,13 +48,23 @@ pub(crate) const FS_EXTRA_ROOTS_ENV: &str = "CODEG_ACP_FS_EXTRA_ROOTS";
 /// serve.
 ///
 /// An EMPTY root list means "unrestricted" for that direction — not "deny
-/// everything". Reads default to unrestricted because the gate buys no safety:
-/// codeg also advertises `terminal(true)`, so an agent that is refused a read
-/// simply `cat`s the file through a shell instead (empirically what grok does —
-/// it fell back to `run_terminal_command` with a `cat > … << 'PLAN_EOF'`
-/// heredoc, re-sending the whole payload as a shell command). Writes keep a
-/// root list mirroring the agents' own sandbox model (grok's `workspace`
-/// profile: CWD + its own home + temp dirs).
+/// everything". Reads default to unrestricted because the gate buys no safety
+/// AS LONG AS codeg also advertises `terminal(true)`: an agent refused a read
+/// simply `cat`s the file through the shell codeg runs for it (empirically what
+/// grok does — it fell back to `run_terminal_command` with a
+/// `cat > … << 'PLAN_EOF'` heredoc, re-sending the whole payload as a shell
+/// command). Writes keep a root list mirroring the agents' own sandbox model
+/// (grok's `workspace` profile: CWD + its own home + temp dirs).
+///
+/// That "buys no safety" reasoning is conditional, and the condition is
+/// [`crate::acp::host_tools_policy::HostToolsPolicy`] — do not read it as "a
+/// read gate can never work". Under `CODEG_ACP_HOST_TOOLS=agent` codeg hosts
+/// NEITHER channel, and the `cat` fallback stops working: measured against grok
+/// 1.0.0 with a kernel `deny`, the read failed `EPERM` and so did every
+/// `run_terminal_command` and `grep` retry, because they were children of the
+/// agent's own sandboxed process. The escape hatch is codeg's terminal, not
+/// some inherent property of shells.
+///
 /// NOTE: deliberately NOT `Default` — an all-empty policy means "unrestricted",
 /// so a derived `Default` would let `..Default::default()` or a stray
 /// `FsAccessPolicy::default()` silently open up writes. Construct through the
@@ -139,6 +149,14 @@ impl FsAccessPolicy {
         }
     }
 
+    /// Whether the READ direction is gated at all — i.e. `strict`, the only
+    /// policy that sets read roots. Read by the connection log to catch the
+    /// combination that promises more than it delivers: a confined fs channel
+    /// next to an advertised `terminal`, which an agent simply walks around.
+    pub fn confines_reads(&self) -> bool {
+        !self.read_roots.is_empty()
+    }
+
     /// One-line summary for the connection log.
     pub fn describe(&self) -> String {
         fn render(roots: &[PathBuf]) -> String {
@@ -175,10 +193,13 @@ fn raw_env_value(runtime_env: &BTreeMap<String, String>, key: &str) -> Option<Os
 /// Read a knob from the agent's `runtime_env` first, then codeg's process env,
 /// trimmed — for values compared as keywords, never as paths.
 ///
-/// Mirrors `PI_ACP_TRUST_WORKSPACE` (`commands::acp`): a codeg-only key that
-/// rides along in the per-agent `env_json`, so it is configurable per agent
+/// Mirrors `CODEG_ACP_HOST_TOOLS` (`acp::host_tools_policy`): a codeg-only key
+/// that rides along in the per-agent `env_json`, so it is configurable per agent
 /// from the existing settings UI without a new surface.
-fn env_value(runtime_env: &BTreeMap<String, String>, key: &str) -> Option<String> {
+///
+/// `pub(crate)` so [`crate::acp::host_tools_policy`] resolves its own knob with
+/// exactly this precedence — one notion of "a codeg launch knob" across both.
+pub(crate) fn env_value(runtime_env: &BTreeMap<String, String>, key: &str) -> Option<String> {
     runtime_env
         .get(key)
         .map(|raw| raw.trim().to_string())

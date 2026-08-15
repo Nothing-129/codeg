@@ -125,7 +125,24 @@ pub enum AcpEvent {
         request_id: String,
         tool_call: serde_json::Value,
         options: Vec<PermissionOptionInfo>,
+        /// How many FURTHER permission requests are queued behind this card.
+        ///
+        /// Only one card is on screen at a time (see `PermissionQueue`), so
+        /// without this the user cannot tell "the agent is waiting on me once"
+        /// from "…three more times" — which is what made the dropped-approval
+        /// bug read as a hang. Always 0 on a freshly-admitted card (a card is
+        /// only published when the screen is free, i.e. nothing was waiting);
+        /// non-zero only when this card was PROMOTED and others still trail it.
+        /// Additive: `#[serde(default)]` keeps older persisted envelopes
+        /// deserializable.
+        #[serde(default)]
+        queued: u32,
     },
+    /// The number of queued-behind requests changed WITHOUT the visible card
+    /// changing — i.e. a new request arrived while another was already on
+    /// screen, which publishes no `PermissionRequest` of its own. Without this,
+    /// the `queued` count on the card already delivered would go stale.
+    PermissionQueueDepth { depth: u32 },
     /// User responded to (or the connection drained) a previously-pending
     /// permission request. The responder.respond() side of the SACP exchange
     /// is RPC-only, so without this event downstream consumers (pet snapshot,
@@ -174,6 +191,32 @@ pub enum AcpEvent {
     /// Session configuration options are available/updated for this connection
     SessionConfigOptions {
         config_options: Vec<SessionConfigOptionInfo>,
+    },
+    /// The agent settled a `session/set_config_option` on a value other than the
+    /// one that was requested.
+    ///
+    /// `session/set_config_option` is advisory: the agent answers with the option
+    /// list it actually adopted, and codeg renders that verbatim — so a refused or
+    /// downgraded pick reads in the composer as the selector springing back for no
+    /// reason. pi does this for a model that never declared `reasoning` (its whole
+    /// thinking vocabulary collapses to `off`); grok does it for a model switch
+    /// mid-conversation.
+    ///
+    /// The comparison lives here rather than in the frontend because only this
+    /// side can correlate a request with its answer: `set_config_option` returns
+    /// as soon as the command is queued, and the resulting option list arrives as
+    /// an ordinary broadcast that is indistinguishable from an unsolicited update
+    /// (codex flips `collaboration_mode` mid-turn; pi emits two echoes per set).
+    ///
+    /// Transient — a notice about one interaction, never part of a snapshot.
+    ConfigOptionRejected {
+        config_id: String,
+        /// Human-readable option name, for the message.
+        option_name: String,
+        /// What the user picked, and what the agent settled on. Display labels
+        /// (resolved against the option's own value list), not raw ids.
+        requested: String,
+        actual: String,
     },
     /// Initial selector payloads (modes/config options) have been emitted
     SelectorsReady,
@@ -473,8 +516,8 @@ pub enum ConfigStaleKind {
 /// Non-image `Resource` / `ResourceLink` prompt blocks are folded into `Text`
 /// markdown links by [`user_blocks_from_prompt`]; an image-mime embedded
 /// `Resource` (how an `image:false` / `embedded_context:true` agent carries a
-/// pasted image) is promoted to `Image` so the viewer renders a thumbnail,
-/// not a link.
+/// pasted image — and still how a format the agent cannot decode travels) is
+/// promoted to `Image` so the viewer renders a thumbnail, not a link.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum UserMessageBlock {
@@ -485,9 +528,11 @@ pub enum UserMessageBlock {
 /// Project the wire `PromptInputBlock`s the sender submitted into the lean
 /// [`UserMessageBlock`]s broadcast to viewers: text and images pass through; an
 /// image-mime embedded resource is promoted to an `Image`; other
-/// resources/resource-links collapse to a `[label](uri)` markdown
-/// line so a viewer still sees what was attached without shipping blob bytes
-/// twice.
+/// resources/resource-links collapse to a `[label](uri)` markdown line so a
+/// viewer still sees what was attached without shipping blob bytes twice.
+///
+/// Both image carriages therefore render identically, which is what keeps the
+/// user turn stable no matter which one the prompt ends up taking.
 pub fn user_blocks_from_prompt(blocks: &[PromptInputBlock]) -> Vec<UserMessageBlock> {
     blocks
         .iter()
@@ -500,8 +545,10 @@ pub fn user_blocks_from_prompt(blocks: &[PromptInputBlock]) -> Vec<UserMessageBl
                 mime_type: mime_type.clone(),
             },
             // An image-mime embedded resource carries a pasted image for agents
-            // that reject native image blocks. Promote it to `Image` so viewers
-            // render the thumbnail; non-image resources still collapse to a link.
+            // that reject native image blocks (an `image:false` +
+            // `embedded_context:true` agent), and for a format the agent cannot
+            // decode. Promote it to `Image` so viewers render the thumbnail;
+            // non-image resources still collapse to a link.
             PromptInputBlock::Resource {
                 uri,
                 mime_type,

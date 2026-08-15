@@ -360,6 +360,34 @@ export function worktreeChildrenByParent(
   return out
 }
 
+/**
+ * The alias half of a worktree sub-group header, in preference order: the user
+ * alias, then the branch. `null` when it has neither.
+ *
+ * The header pairs it with the directory name through the same
+ * `FolderAliasLabel` a repo header uses, so a worktree reads
+ * `task/49 [ codeg-task-49 ]` — the branch is what identifies the worktree, and
+ * the directory is what identifies it on disk. With neither, `FolderAliasLabel`
+ * falls back to the bare directory name on its own.
+ *
+ * The alias leads because worktree folders get theirs seeded with the branch
+ * they were created on (`open_worktree_folder_core`), which makes it the one
+ * value actually present for every worktree: the folder row's own `git_branch`
+ * column is never written by the folder flow (it stays NULL), so relying on it
+ * alone left every worktree labeled by its directory name
+ * (`codeg-automation-3-run-8`) instead. The seeded branch lives in the alias
+ * rather than in `git_branch` on purpose — it is a label fixed at creation, not
+ * a live readout, and `git_branch` seeds the store's branch map, where a stale
+ * value would misreport what is checked out now. A user who renames the folder
+ * still wins over both, since the alias is exactly where that rename lands.
+ */
+export function worktreeHeaderAlias(
+  alias: string | null | undefined,
+  branch: string | null | undefined
+): string | null {
+  return alias?.trim() || branch?.trim() || null
+}
+
 // ── Flat row model (Phase 2 virtualization) ─────────────────────────────────
 // The sidebar tree (folders → their conversation rows) is flattened into a
 // single linear array so it can be windowed by `virtua`. Each visible folder

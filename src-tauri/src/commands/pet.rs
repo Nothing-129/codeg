@@ -17,8 +17,8 @@ use crate::db::service::{app_metadata_service, conversation_service};
 use crate::db::AppDatabase;
 use crate::models::pet::{
     ImportCodexPetsRequest, ImportCodexPetsResult, ImportablePet, NewPetInput, PetCelebrationKind,
-    PetDetail, PetMetaPatch, PetSessionEntry, PetSessionsPayload, PetSpriteAsset, PetState,
-    PetSummary, PetWindowConfig, PetWindowStatePatch,
+    PetDetail, PetMetaPatch, PetParentRef, PetSessionEntry, PetSessionsPayload, PetSpriteAsset,
+    PetState, PetSummary, PetWindowConfig, PetWindowStatePatch,
 };
 use crate::pet_state_mapper::{read_pet_state, PetStateHandle};
 use crate::pets;
@@ -191,12 +191,28 @@ pub fn pet_get_current_state_core(handle: &PetStateHandle) -> PetState {
 /// empty title rather than failing the whole payload.
 ///
 /// Delegation sub-agent sessions (child conversations, i.e. `parent_id` set)
-/// are excluded: they are surfaced inline inside the parent's transcript, not
-/// as standalone user-facing sessions, so they must not inflate the sprite
-/// badge count or appear in the panel list. Filtering happens here — before
-/// `from_entries` — so the precomputed counts and the per-row list come from
-/// the same filtered set and can never disagree (the badge and the panel share
-/// this one payload).
+/// are excluded **while they are working**: their progress is already
+/// represented by the parent connection's own `Prompting` row, so listing them
+/// too would double-count the badge and fill the panel with sessions the user
+/// never opened.
+///
+/// A sub-agent BLOCKED on a permission is the exception, and is kept. Nothing
+/// else surfaces that state: the child is hidden from every tab/picker, and the
+/// parent's row actively mis-reports it as "running". Its only other outlet is
+/// the status badge on the `delegate_to_agent` card inside the parent's
+/// transcript — which the user has to already be looking at. Keeping the row
+/// here gives the state a global signal AND a place to answer it: the panel's
+/// permission card posts to `entry.connection_id`, which is connection-scoped
+/// and therefore works for a child exactly as it does for a tab (see #447).
+/// The row carries [`PetParentRef`] so it reads as a sub-agent and jumps to the
+/// conversation that delegated it.
+///
+/// Filtering happens here — before `from_entries` — so the precomputed counts
+/// and the per-row list come from the same filtered set and can never disagree
+/// (the badge and the panel share this one payload). Kept sub-agent rows always
+/// have `pending`, so they land in `waiting_count` and never in `running_count`
+/// — mirroring `compute_pet_state`, which likewise lets a child's pending
+/// permission (and only that) reach the ambient sprite.
 pub async fn pet_list_active_sessions_core(
     manager: &ConnectionManager,
     db: &DatabaseConnection,
@@ -204,12 +220,26 @@ pub async fn pet_list_active_sessions_core(
     let raw: Vec<PetSessionEntry> = manager.list_active_sessions().await;
     let mut entries: Vec<PetSessionEntry> = Vec::with_capacity(raw.len());
     for mut entry in raw {
-        // A readable row with a parent is a delegation sub-agent → drop it. A
-        // missing/renamed row (the `if let` doesn't match) falls through with an
-        // empty title — degrade, don't fail or drop.
+        // A readable row with a parent is a delegation sub-agent: keep it only
+        // while it's blocking the user. A missing/renamed row (the `if let`
+        // doesn't match) falls through with an empty title — degrade, don't
+        // fail or drop.
         if let Ok(summary) = conversation_service::get_by_id(db, entry.conversation_id).await {
-            if summary.parent_id.is_some() {
-                continue;
+            if let Some(parent_id) = summary.parent_id {
+                if entry.pending.is_none() {
+                    continue;
+                }
+                // A parent row we can't read leaves `parent` unset: the row
+                // still renders (and stays answerable) as a plain session
+                // rather than vanishing over a missing title.
+                if let Ok(parent) = conversation_service::get_by_id(db, parent_id).await {
+                    entry.parent = Some(PetParentRef {
+                        conversation_id: parent.id,
+                        folder_id: parent.folder_id,
+                        agent_type: parent.agent_type,
+                        title: parent.title.unwrap_or_default(),
+                    });
+                }
             }
             entry.title = summary.title.unwrap_or_default();
         }
@@ -592,12 +622,20 @@ mod tests {
         assert_eq!(cfg2.scale, 0.5, "scale clamped to lower bound");
     }
 
-    #[tokio::test]
-    async fn pet_list_active_sessions_excludes_delegation_children() {
+    /// A parent conversation + a delegated child of it, each on its own live
+    /// `Prompting` connection. Returns `(db, manager, parent_id, child_id,
+    /// folder_id)` so a test only has to decide what blocks.
+    #[cfg(test)]
+    async fn seed_parent_and_delegation_child() -> (
+        crate::db::AppDatabase,
+        crate::acp::manager::ConnectionManager,
+        i32,
+        i32,
+        i32,
+    ) {
         use crate::acp::delegation::spawner::DelegationLink;
         use crate::acp::manager::ConnectionManager;
         use crate::acp::types::ConnectionStatus;
-        use crate::db::service::conversation_service;
         use crate::db::test_helpers;
         use crate::models::agent::AgentType;
         use crate::web::event_bridge::EventEmitter;
@@ -605,7 +643,6 @@ mod tests {
         let db = test_helpers::fresh_in_memory_db().await;
         let folder_id = test_helpers::seed_folder(&db, "/tmp/pet-deleg").await;
 
-        // A top-level (parent) conversation and a delegated child of it.
         let parent = conversation_service::create(
             &db.conn,
             folder_id,
@@ -630,7 +667,6 @@ mod tests {
         .await
         .expect("create child");
 
-        // Two live connections, both prompting, bound to those conversations.
         let manager = ConnectionManager::new();
         for id in ["conn-parent", "conn-child"] {
             manager
@@ -644,21 +680,81 @@ mod tests {
             s.folder_id = Some(folder_id);
             s.status = ConnectionStatus::Prompting;
         }
+        (db, manager, parent.id, child.id, folder_id)
+    }
+
+    #[tokio::test]
+    async fn pet_list_active_sessions_excludes_working_delegation_children() {
+        let (db, manager, parent_id, _child_id, _folder_id) =
+            seed_parent_and_delegation_child().await;
 
         let payload = pet_list_active_sessions_core(&manager, &db.conn)
             .await
             .expect("payload");
 
-        // The delegation child is filtered out: only the parent remains, and the
-        // precomputed counts follow the filtered list (badge ↔ panel agree).
+        // A sub-agent that is merely working is filtered out: only the parent
+        // remains, and the precomputed counts follow the filtered list (badge ↔
+        // panel agree).
         assert_eq!(
             payload.sessions.len(),
             1,
-            "delegation child must be excluded from the active-session list"
+            "a working delegation child must be excluded from the active-session list"
         );
-        assert_eq!(payload.sessions[0].conversation_id, parent.id);
+        assert_eq!(payload.sessions[0].conversation_id, parent_id);
+        assert!(payload.sessions[0].parent.is_none());
         assert_eq!(payload.running_count, 1);
         assert_eq!(payload.waiting_count, 0);
+        assert_eq!(payload.error_count, 0);
+    }
+
+    #[tokio::test]
+    async fn pet_list_active_sessions_keeps_permission_blocked_delegation_children() {
+        use crate::acp::session_state::PendingPermissionState;
+        use crate::models::agent::AgentType;
+
+        let (db, manager, parent_id, child_id, folder_id) =
+            seed_parent_and_delegation_child().await;
+
+        // The child hits a permission prompt (#447): it is now blocking the
+        // user, so it must reach the badge count and the panel — the panel's
+        // card is the only place the user can answer it without hunting through
+        // the parent's transcript.
+        {
+            let state = manager.get_state("conn-child").await.expect("state");
+            let mut s = state.write().await;
+            s.pending_permission = Some(PendingPermissionState {
+                request_id: "req-1".into(),
+                tool_call_id: "tc-1".into(),
+                tool_call: serde_json::json!({ "title": "rm -rf /tmp/x" }),
+                options: vec![],
+                created_at: chrono::Utc::now(),
+                queued: 0,
+            });
+        }
+
+        let payload = pet_list_active_sessions_core(&manager, &db.conn)
+            .await
+            .expect("payload");
+
+        assert_eq!(payload.sessions.len(), 2, "parent + blocked sub-agent");
+        let child_row = payload
+            .sessions
+            .iter()
+            .find(|s| s.conversation_id == child_id)
+            .expect("the blocked sub-agent must be listed");
+        assert_eq!(
+            child_row.connection_id, "conn-child",
+            "the row must answer through the CHILD connection, not the parent"
+        );
+        let parent_ref = child_row.parent.as_ref().expect("sub-agent row names its parent");
+        assert_eq!(parent_ref.conversation_id, parent_id);
+        assert_eq!(parent_ref.folder_id, folder_id);
+        assert_eq!(parent_ref.agent_type, AgentType::ClaudeCode);
+        assert_eq!(parent_ref.title, "Parent");
+
+        // Precedence: the blocked child lands in `waiting`, never in `running`.
+        assert_eq!(payload.running_count, 1, "only the parent is running");
+        assert_eq!(payload.waiting_count, 1);
         assert_eq!(payload.error_count, 0);
     }
 }

@@ -2,19 +2,22 @@
 
 import { useTranslations } from "next-intl"
 import {
+  Bot,
   CalendarClock,
   Check,
   CircleAlert,
   CircleCheck,
   CircleX,
   FolderX,
+  GitMerge,
   Loader2,
 } from "lucide-react"
+import { AgentIcon } from "@/components/agent-icon"
 import { Button } from "@/components/ui/button"
 import { formatRelative } from "@/components/conversations/sidebar-conversation-grouping"
 import { formatScheduleFull, formatScheduleShort } from "@/lib/task-schedule"
 import { cn } from "@/lib/utils"
-import { worktreeWasRemoved } from "./task-acceptance"
+import { isMergeQueued, worktreeWasRemoved } from "./task-acceptance"
 import { buildTaskActions, type TaskActionItem } from "./task-actions"
 import type { TaskActionHandlers } from "./task-actions"
 import type { WorkTask } from "@/lib/types"
@@ -170,7 +173,42 @@ interface TaskCardProps extends TaskActionHandlers {
   folderName: string | null
   /** Shared render-tick timestamp for relative times (refreshed by the page). */
   now: number
+  /** Place in line when this task is waiting to merge (see `mergeQueueRanks`);
+   *  the page computes it, because a card cannot see its siblings. */
+  mergeQueueRank?: number
   onOpen: () => void
+}
+
+/**
+ * "Accepted, waiting for the project's merge slot." Merges into one base branch
+ * run one at a time, so a second acceptance takes a place in line instead of
+ * failing — and a row that says nothing about that reads as if the click was
+ * lost. Amber like the review states it sits among, with the rank spelled out
+ * whenever the page knows it (`第 2 位` is the difference between "queued" and
+ * "queued behind one other").
+ */
+export function MergeQueuedChip({
+  task,
+  rank,
+}: {
+  task: WorkTask
+  rank?: number
+}) {
+  const t = useTranslations("Tasks")
+  if (!isMergeQueued(task)) return null
+  const label =
+    rank != null && rank > 1
+      ? t("badgeMergeQueuedRank", { rank })
+      : t("badgeMergeQueued")
+  return (
+    <span
+      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[0.625rem] font-medium leading-none text-amber-600 dark:text-amber-400"
+      title={t("badgeMergeQueuedHint")}
+    >
+      <GitMerge className="size-2.5 shrink-0" aria-hidden="true" />
+      <span className="truncate">{label}</span>
+    </span>
+  )
 }
 
 /** The acceptance red/green light for a reviewed card. */
@@ -234,6 +272,45 @@ export function WorktreeRemovedChip({ task }: { task: WorkTask }) {
 }
 
 /**
+ * The mark of the agent on this task, drawn beside the title in BOTH views —
+ * which agent is on a task belongs to the task, so the board and the list must
+ * answer it identically. The backend resolves it the way the engine does at
+ * launch (see `agent_type`), so a task that simply inherits its folder's
+ * settings still shows the mark it will actually run under; `config.agent_type`
+ * covers a payload that reached the client without that stamp.
+ *
+ * Sized to the title's line rather than framed like the detail sheet's glyph: a
+ * row or card carries one, and at this density a bare mark reads as part of the
+ * title instead of as another chip. Left to name itself through the mark's own
+ * `<title>`, as every other AgentIcon in the app is — the words for it are in
+ * the detail sheet, beside a glyph big enough to deserve them.
+ *
+ * The box is drawn even when no agent is configured anywhere (the one state the
+ * engine refuses to launch): both views align their titles on it, and a
+ * placeholder is worth more than a column that shifts row to row.
+ */
+export function TaskAgentMark({
+  task,
+  className,
+}: {
+  task: WorkTask
+  className?: string
+}) {
+  const agentType = task.agent_type ?? task.config?.agent_type ?? null
+  if (!agentType) {
+    return (
+      <Bot
+        className={cn("size-3.5 shrink-0 text-muted-foreground/40", className)}
+        aria-hidden="true"
+      />
+    )
+  }
+  return (
+    <AgentIcon agentType={agentType} className={cn("size-3.5", className)} />
+  )
+}
+
+/**
  * The planned start of a to-do task. Primary-tinted rather than muted: it is
  * the one thing on a pending card that says something WILL happen, and it is
  * how a card that looks idle explains itself.
@@ -263,6 +340,7 @@ export function TaskCard({
   task,
   folderName,
   now,
+  mergeQueueRank,
   onOpen,
   ...handlers
 }: TaskCardProps) {
@@ -318,7 +396,11 @@ export function TaskCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 break-words text-[0.8125rem] font-medium leading-snug">
+        {/* mt-[0.125rem] rides the mark on the FIRST line of a title that
+            wraps — items-start would otherwise hang it off the block's top
+            edge, half a line above the text it belongs to. */}
+        <TaskAgentMark task={task} className="mt-[0.125rem]" />
+        <span className="min-w-0 flex-1 break-words text-[0.8125rem] font-medium leading-snug">
           {task.title}
         </span>
         <StatusChip task={task} />
@@ -345,6 +427,7 @@ export function TaskCard({
         ) : null}
         {when ? <span className="shrink-0">{when}</span> : null}
         <ScheduleChip task={task} />
+        <MergeQueuedChip task={task} rank={mergeQueueRank} />
         <PreflightChip task={task} />
         <WorktreeRemovedChip task={task} />
         {task.cleanup_state === "failed" ? (

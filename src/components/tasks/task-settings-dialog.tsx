@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import {
   Bot,
+  FolderTree,
   Gauge,
   GitMerge,
   Info,
@@ -49,13 +50,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { DirectoryPathInput } from "@/components/shared/directory-path-input"
+import { FolderSelect } from "@/components/shared/folder-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import type { AgentType, WorkTaskFolderSettings } from "@/lib/types"
@@ -221,6 +217,7 @@ function TaskSettingsBody({
   )
   const [autoMerge, setAutoMerge] = useState(false)
   const [deleteWorktreeDefault, setDeleteWorktreeDefault] = useState(true)
+  const [worktreeRoot, setWorktreeRoot] = useState("")
   const [initCommand, setInitCommand] = useState("")
   const [preflightCommand, setPreflightCommand] = useState("")
   const [stagePrompts, setStagePrompts] = useState<Record<string, string>>({})
@@ -261,6 +258,7 @@ function TaskSettingsBody({
         setMergeStrategy(s.merge_strategy === "merge" ? "merge" : "squash")
         setAutoMerge(s.auto_merge)
         setDeleteWorktreeDefault(s.delete_worktree_default)
+        setWorktreeRoot(s.worktree_root ?? "")
         setInitCommand(s.init_command ?? "")
         setStagePrompts(s.stage_prompts ?? {})
         const legacy =
@@ -318,6 +316,10 @@ function TaskSettingsBody({
         merge_strategy: mergeStrategy,
         auto_merge: autoMerge,
         delete_worktree_default: deleteWorktreeDefault,
+        // Blank = the default layout (next to the project folder), which is
+        // also what an absent field means to the engine — so an emptied box
+        // is stored as null rather than as an empty directory name.
+        worktree_root: worktreeRoot.trim() || null,
         // Free text is the only surface now; a legacy id was migrated into
         // the text field on load, so the id is always cleared on save.
         preflight_command_id: null,
@@ -345,9 +347,15 @@ function TaskSettingsBody({
       <DialogHeader>
         <DialogTitle>{t("settingsTitle")}</DialogTitle>
         <DialogDescription>
-          {folder
-            ? t("settingsDescription", { folder: folder.name })
-            : t("settingsScopeGlobalHint")}
+          {/* Keyed off the scope, not off whether the folder resolves: a folder
+              that left the workspace while the dialog was open still owns the
+              row `save` writes to, so calling that "global defaults" would name
+              the wrong scope. It falls back to the id, like the picker. */}
+          {isGlobal
+            ? t("settingsScopeGlobalHint")
+            : t("settingsDescription", {
+                folder: folder?.name ?? `#${folderId}`,
+              })}
         </DialogDescription>
       </DialogHeader>
 
@@ -362,24 +370,19 @@ function TaskSettingsBody({
             <span className="text-xs font-medium text-muted-foreground">
               {t("settingsScope")}
             </span>
-            <Select
-              value={String(folderId)}
-              onValueChange={(v) => onScopeChange(Number(v))}
-            >
-              <SelectTrigger size="sm" className="w-60">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={String(GLOBAL_SCOPE)}>
-                  {t("settingsScopeGlobal")}
-                </SelectItem>
-                {projectFolders.map((f) => (
-                  <SelectItem key={f.id} value={String(f.id)}>
-                    {f.alias ?? f.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* The shared searchable picker: the global-defaults row rides in
+                as its pinned "all folders" entry, and each folder shows
+                `alias [ name ]` over its path. */}
+            <FolderSelect
+              variant="field"
+              className="h-8 w-60 max-w-none justify-between text-sm"
+              folders={projectFolders}
+              value={isGlobal ? null : folderId}
+              onChange={onScopeChange}
+              allLabel={t("settingsScopeGlobal")}
+              onSelectAll={() => onScopeChange(GLOBAL_SCOPE)}
+              title={t("settingsScope")}
+            />
           </div>
 
           {/* Folder scope: which source is in effect — following the global
@@ -593,8 +596,29 @@ function TaskSettingsBody({
                 />
               </SettingCard>
 
-              {/* The two shell hooks around a task's life, in run order. */}
+              {/* A worktree's life, in order: where it is created, what runs
+                  in it once it exists, and what has to pass before it lands. */}
               <SettingCard>
+                <SettingRow
+                  icon={FolderTree}
+                  title={t("settingsWorktreeRoot")}
+                  description={t("settingsWorktreeRootHint")}
+                  htmlFor="task-worktree-root"
+                >
+                  <DirectoryPathInput
+                    id="task-worktree-root"
+                    value={worktreeRoot}
+                    onValueChange={setWorktreeRoot}
+                    placeholder={t("settingsWorktreeRootPlaceholder")}
+                    browseLabel={t("settingsWorktreeRootBrowse")}
+                    browserTitle={t("settingsWorktreeRoot")}
+                    // The in-app browser (web / remote workspace) opens where
+                    // the worktrees would go today, so "one level up" is a
+                    // click away instead of a walk from the home directory.
+                    initialPath={folder?.path ?? undefined}
+                    className="h-8 bg-background font-mono text-xs"
+                  />
+                </SettingRow>
                 <SettingRow
                   icon={PackagePlus}
                   title={t("settingsInitCommand")}

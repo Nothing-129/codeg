@@ -46,6 +46,7 @@ const h = vi.hoisted(() => {
     // routes to the status-bar alert vs. to the OS notification.
     pushAlert: vi.fn(),
     sendSystemNotification: vi.fn(async () => undefined),
+    toastWarning: vi.fn(),
   }
 })
 
@@ -72,6 +73,10 @@ vi.mock("@/contexts/active-folder-context", () => ({
 
 vi.mock("@/lib/notification", () => ({
   sendSystemNotification: h.sendSystemNotification,
+}))
+
+vi.mock("sonner", () => ({
+  toast: { warning: h.toastWarning },
 }))
 
 vi.mock("@/lib/selector-prefs-storage", () => ({
@@ -462,6 +467,456 @@ describe("AcpConnectionsProvider preview-tab release (disconnectIfIdle)", () => 
     // and the idle sweep skips viewers, so leaving one would leak its stream.
     expect(h.acpDisconnect).not.toHaveBeenCalled()
     expect(h.store!.getConnection(TAB)).toBeUndefined()
+  })
+})
+
+// The composer's connection-status popover. Unlike `reapplyConfig` (live owners
+// only), this has to work from EVERY state the icon can show — including the
+// states where the store holds no entry at all.
+describe("AcpConnectionsProvider reconnect (status-icon button)", () => {
+  async function connectOwner() {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+  }
+
+  it("restarts a live owner with the same identity", async () => {
+    await connectOwner()
+    h.acpConnect.mockResolvedValue("respawned-conn")
+
+    let result: boolean | undefined
+    await act(async () => {
+      result = await h.actions!.reconnect(TAB)
+    })
+
+    expect(result).toBe(true)
+    expect(h.acpDisconnect).toHaveBeenCalledWith("spawned-conn")
+    // Same agent / cwd / session — the point is a fresh PROCESS, not new params,
+    // which is exactly what connect()'s "nothing changed" fast path would skip.
+    expect(h.acpConnect).toHaveBeenLastCalledWith(
+      "claude_code",
+      "/tmp/x",
+      "sess-1",
+      undefined,
+      {}
+    )
+    expect(h.store!.getConnection(TAB)?.connectionId).toBe("respawned-conn")
+  })
+
+  it("rebuilds even when the backend no longer knows the connection", async () => {
+    await connectOwner()
+    // The single most important case for this button: the agent process is
+    // already gone (reaped by another window, crashed, backend restarted), so
+    // the teardown 404s. That must not abort the respawn.
+    h.acpDisconnect.mockRejectedValue(new Error("Connection not found"))
+    h.acpConnect.mockResolvedValue("respawned-conn")
+
+    let result: boolean | undefined
+    await act(async () => {
+      result = await h.actions!.reconnect(TAB)
+    })
+
+    expect(result).toBe(true)
+    expect(h.acpConnect).toHaveBeenLastCalledWith(
+      "claude_code",
+      "/tmp/x",
+      "sess-1",
+      undefined,
+      {}
+    )
+    expect(h.store!.getConnection(TAB)?.connectionId).toBe("respawned-conn")
+  })
+
+  it("reconnects a tab whose connection is gone entirely", async () => {
+    await connectOwner()
+    await act(async () => {
+      await h.actions!.disconnect(TAB)
+    })
+    expect(h.store!.getConnection(TAB)).toBeUndefined()
+    h.acpConnect.mockClear()
+    h.acpDisconnect.mockClear()
+
+    let result: boolean | undefined
+    await act(async () => {
+      result = await h.actions!.reconnect(TAB)
+    })
+
+    expect(result).toBe(true)
+    // Nothing to tear down — the params come from what connect() recorded.
+    expect(h.acpDisconnect).not.toHaveBeenCalled()
+    expect(h.acpConnect).toHaveBeenCalledWith(
+      "claude_code",
+      "/tmp/x",
+      "sess-1",
+      undefined,
+      {}
+    )
+  })
+
+  it("reconnects after a connect that never produced a connection", async () => {
+    // The `error` state the icon shows for an agent that failed its preflight:
+    // no store entry was ever created, so only the recorded params survive.
+    h.acpGetAgentStatus.mockResolvedValue({
+      agent_type: "claude_code",
+      enabled: true,
+      available: false,
+      installed_version: null,
+      is_acp_adapter: true,
+    })
+    await mountProvider()
+    await act(async () => {
+      await h
+        .actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+        .catch(() => {})
+    })
+    expect(h.acpConnect).not.toHaveBeenCalled()
+    expect(h.actions!.getReconnectInfo(TAB)).toEqual({
+      agentType: "claude_code",
+      workingDir: "/tmp/x",
+      sessionId: "sess-1",
+    })
+
+    h.acpGetAgentStatus.mockResolvedValue({
+      agent_type: "claude_code",
+      enabled: true,
+      available: true,
+      installed_version: "1.0.0",
+      is_acp_adapter: true,
+    })
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await act(async () => {
+      await h.actions!.reconnect(TAB)
+    })
+
+    expect(h.acpConnect).toHaveBeenCalledWith(
+      "claude_code",
+      "/tmp/x",
+      "sess-1",
+      undefined,
+      {}
+    )
+  })
+
+  it("re-attaches a viewer without killing the owner's agent", async () => {
+    h.acpFindConnectionForConversation.mockResolvedValue({
+      connection_id: "owner-conn",
+      event_seq: 0,
+    })
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+    expect(h.store!.getConnection(TAB)?.isViewer).toBe(true)
+
+    await act(async () => {
+      await h.actions!.reconnect(TAB)
+    })
+
+    expect(h.acpDisconnect).not.toHaveBeenCalled()
+    expect(h.acpConnect).not.toHaveBeenCalled()
+    expect(h.store!.getConnection(TAB)?.isViewer).toBe(true)
+  })
+
+  it("is a no-op for a key that was never connected", async () => {
+    await mountProvider()
+
+    expect(h.actions!.getReconnectInfo(TAB)).toBeNull()
+    let result: boolean | undefined
+    await act(async () => {
+      result = await h.actions!.reconnect(TAB)
+    })
+
+    expect(result).toBe(false)
+    expect(h.acpConnect).not.toHaveBeenCalled()
+    expect(h.acpDisconnect).not.toHaveBeenCalled()
+  })
+
+  it("refuses a delegation child — the broker owns its lifetime", async () => {
+    await mountProvider()
+    act(() => {
+      h.actions!.attachDelegationChild({
+        connectionId: "child-conn",
+        parentConnectionId: "parent-conn",
+        parentToolUseId: "tool-1",
+        agentType: "claude_code",
+      })
+    })
+    expect(h.store!.getConnection("child-conn")?.isDelegationChild).toBe(true)
+
+    let result: boolean | undefined
+    await act(async () => {
+      result = await h.actions!.reconnect("child-conn")
+    })
+
+    expect(result).toBe(false)
+    expect(h.actions!.getReconnectInfo("child-conn")).toBeNull()
+    expect(h.acpDisconnect).not.toHaveBeenCalled()
+  })
+
+  it("forgets remembered params on disconnectAll, so a recycled key can't resurrect the old session", async () => {
+    await connectOwner()
+    await act(async () => {
+      await h.actions!.disconnectAll()
+    })
+
+    expect(h.actions!.getReconnectInfo(TAB)).toBeNull()
+  })
+
+  it("still rebuilds when a connect for the same key is already in flight", async () => {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+
+    let releaseConnect: (connectionId: string) => void = () => {}
+    h.acpConnect.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          releaseConnect = resolve
+        })
+    )
+
+    let firstConnect: Promise<void> | undefined
+    await act(async () => {
+      firstConnect = h.actions!.connect(
+        TAB,
+        "claude_code",
+        "/tmp/x",
+        "sess-1",
+        42
+      )
+      await Promise.resolve()
+    })
+
+    // The state users actually click this button in: the connect is HUNG, so
+    // there is no store entry to tear down and the params are identical.
+    // connect() parks a same-parameter request as pending and its `finally`
+    // then drops it as a duplicate — so this used to spin the button once and
+    // change nothing at all.
+    h.acpConnect.mockResolvedValue("respawned-conn")
+    let reconnectResult: Promise<boolean> | undefined
+    await act(async () => {
+      reconnectResult = h.actions!.reconnect(TAB)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      releaseConnect("spawned-conn")
+      await firstConnect
+      await reconnectResult
+    })
+
+    expect(await reconnectResult).toBe(true)
+    // Waited for the hung attempt to settle, then rebuilt what it produced.
+    expect(h.acpDisconnect).toHaveBeenCalledWith("spawned-conn")
+    expect(h.acpConnect).toHaveBeenLastCalledWith(
+      "claude_code",
+      "/tmp/x",
+      "sess-1",
+      undefined,
+      {}
+    )
+    expect(h.store!.getConnection(TAB)?.connectionId).toBe("respawned-conn")
+  })
+
+  it("gives the button back when the in-flight connect never answers", async () => {
+    vi.useFakeTimers()
+    try {
+      h.acpFindConnectionForConversation.mockResolvedValue(null)
+      await mountProvider()
+      // Never resolves: a wedged IPC, which is a state users click Reconnect
+      // from. Waiting on it unbounded would spin the button forever.
+      h.acpConnect.mockImplementationOnce(() => new Promise<string>(() => {}))
+      await act(async () => {
+        void h
+          .actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+          .catch(() => {})
+        await Promise.resolve()
+      })
+
+      let settled: boolean | undefined
+      const pending = h.actions!.reconnect(TAB).then((r) => {
+        settled = r
+        return r
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000)
+      })
+      await act(async () => {
+        await pending
+      })
+
+      // Reports "nothing happened" rather than hanging — the user can retry.
+      expect(settled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("resumes a session known only from a snapshot hydrate (cold attach)", async () => {
+    // The event that carries the sessionId fired BEFORE this client attached,
+    // so it is never replayed — the snapshot is the only place identity
+    // appears, and it lands on the store entry alone.
+    h.denormalizeSnapshot.mockReturnValue({
+      connectionId: "spawned-conn",
+      status: "connected",
+      sessionId: "snapshot-session",
+      modes: null,
+      configOptions: null,
+      availableCommands: null,
+      usage: null,
+      liveMessage: null,
+      pendingPermission: null,
+      pendingAskQuestion: null,
+      pendingUserMessage: null,
+      promptCapabilities: null,
+      selectorsReady: false,
+      supportsFork: false,
+      configStale: false,
+      configStaleKind: null,
+      lastError: null,
+      eventSeq: 7,
+      activeDelegations: [],
+    })
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", undefined, 42)
+    })
+    hydrateSnapshot(latestAttachHandlers(), {
+      event_seq: 7,
+    } as unknown as LiveSessionSnapshot)
+    expect(h.store!.getConnection(TAB)?.sessionId).toBe("snapshot-session")
+
+    await act(async () => {
+      await h.actions!.disconnect(TAB)
+    })
+    expect(h.actions!.getReconnectInfo(TAB)?.sessionId).toBe("snapshot-session")
+
+    h.acpConnect.mockClear()
+    await act(async () => {
+      await h.actions!.reconnect(TAB)
+    })
+
+    expect(h.acpConnect).toHaveBeenCalledWith(
+      "claude_code",
+      "/tmp/x",
+      "snapshot-session",
+      undefined,
+      {}
+    )
+  })
+
+  it("resumes the session the BACKEND minted once the entry is gone", async () => {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    // A new conversation connects with no sessionId at all — the backend mints
+    // one later, and it only ever lands on the store entry.
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", undefined, 42)
+    })
+    emitAcpEvent(latestAttachHandlers(), {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_started",
+      session_id: "minted-1",
+    })
+    expect(h.store!.getConnection(TAB)?.sessionId).toBe("minted-1")
+
+    // Whatever removes the entry (backend GC via connection_gone, the idle
+    // sweep, the unmount cleanup) leaves only the recorded params behind.
+    await act(async () => {
+      await h.actions!.disconnect(TAB)
+    })
+    expect(h.store!.getConnection(TAB)).toBeUndefined()
+    expect(h.actions!.getReconnectInfo(TAB)?.sessionId).toBe("minted-1")
+
+    h.acpConnect.mockClear()
+    await act(async () => {
+      await h.actions!.reconnect(TAB)
+    })
+
+    // Reconnecting on the request AS ISSUED would pass sessionId undefined —
+    // a brand-new ACP session, silently abandoning the conversation's history.
+    expect(h.acpConnect).toHaveBeenCalledWith(
+      "claude_code",
+      "/tmp/x",
+      "minted-1",
+      undefined,
+      {}
+    )
+  })
+})
+
+// The local entry is always released — a stranded one sends the next connect()
+// down its "already connected" fast path onto a possibly-dead session — but a
+// teardown that did NOT happen must not be reported as one.
+describe("AcpConnectionsProvider disconnect teardown confirmation", () => {
+  async function connectOwner() {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+  }
+
+  it("counts an already-gone connection as a real teardown", async () => {
+    await connectOwner()
+    h.acpDisconnect.mockRejectedValue(new Error("connection not found: abc"))
+
+    let confirmed: boolean | undefined
+    await act(async () => {
+      confirmed = await h.actions!.disconnect(TAB)
+    })
+
+    // Nothing is left running, so there is nothing to warn about.
+    expect(confirmed).toBe(true)
+    expect(h.store!.getConnection(TAB)).toBeUndefined()
+  })
+
+  it("reports an unconfirmed teardown, and reapplyConfig stops claiming success", async () => {
+    await connectOwner()
+    // reapplyConfig resumes off the LIVE entry's session, which the backend
+    // only supplies here.
+    emitAcpEvent(latestAttachHandlers(), {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_started",
+      session_id: "sess-1",
+    })
+    // A transport blip, not a missing connection: the agent process may still
+    // be alive and still holding the OLD config.
+    h.acpDisconnect.mockRejectedValue(new Error("request timed out"))
+    h.acpConnect.mockResolvedValue("respawned-conn")
+
+    let applied: boolean | undefined
+    await act(async () => {
+      applied = await h.actions!.reapplyConfig(TAB)
+    })
+
+    // Still reconnected — the user is not left stranded...
+    expect(h.acpConnect).toHaveBeenLastCalledWith(
+      "claude_code",
+      "/tmp/x",
+      "sess-1",
+      undefined,
+      {}
+    )
+    // ...but the caller must not show an "applied" confirmation for a restart
+    // that may have landed right back on the process it meant to replace.
+    expect(applied).toBe(false)
+  })
+
+  it("confirms an ordinary teardown", async () => {
+    await connectOwner()
+
+    let confirmed: boolean | undefined
+    await act(async () => {
+      confirmed = await h.actions!.disconnect(TAB)
+    })
+
+    expect(confirmed).toBe(true)
+    expect(h.acpDisconnect).toHaveBeenCalledWith("spawned-conn")
   })
 })
 
@@ -1425,6 +1880,114 @@ describe("AcpConnectionsProvider Grok cross-agent-type model switch", () => {
     // choice), so a fresh session lands on Composer where the switch succeeds.
     expect(saveConfigPreference).toHaveBeenCalledTimes(1)
   })
+
+  it("reports a rejected pick, and only when the backend says so", async () => {
+    // The backend owns the request↔answer correlation (`ConfigOptionRejected`):
+    // `acpSetConfigOption` resolves once the command is merely QUEUED, and the
+    // resulting option list is broadcast as an ordinary update — so this side
+    // must never try to infer a verdict from an option snapshot.
+    const handlers = await connectGrokOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: grokModelOptions("grok-4.5"),
+    })
+
+    h.toastWarning.mockClear()
+    await act(async () => {
+      await h.actions!.setConfigOption(TAB, "model", "grok-composer-2.5-fast")
+    })
+    // The pick alone reports nothing — the agent may still honour it.
+    expect(h.toastWarning).not.toHaveBeenCalled()
+
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "config_option_rejected",
+      config_id: "model",
+      option_name: "Model",
+      requested: "Composer 2.5",
+      actual: "Grok 4.5",
+    })
+    emitAcpEvent(handlers, {
+      seq: 3,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: grokModelOptions("grok-4.5"),
+    })
+
+    expect(h.toastWarning).toHaveBeenCalledTimes(1)
+    // The useTranslations mock echoes the key, so the message itself is the key.
+    expect(h.toastWarning).toHaveBeenCalledWith("configOptionAdjusted")
+  })
+
+  it("stays silent for option snapshots nobody asked for", async () => {
+    // codex-acp flips `collaboration_mode` mid-turn, and pi answers one
+    // `set_config_option` with TWO snapshots (response + notification). None of
+    // those is a verdict; only an explicit rejection event is.
+    const handlers = await connectGrokOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: grokModelOptions("grok-4.5"),
+    })
+
+    h.toastWarning.mockClear()
+    await act(async () => {
+      await h.actions!.setConfigOption(TAB, "model", "grok-composer-2.5-fast")
+    })
+    // Honoured, then a spontaneous switch back, then a duplicate echo.
+    for (const [seq, value] of [
+      [2, "grok-composer-2.5-fast"],
+      [3, "grok-4.5"],
+      [4, "grok-4.5"],
+    ] as const) {
+      emitAcpEvent(handlers, {
+        seq,
+        connection_id: "spawned-conn",
+        type: "session_config_options",
+        config_options: grokModelOptions(value),
+      })
+    }
+
+    expect(h.toastWarning).not.toHaveBeenCalled()
+  })
+
+  it("does not strand a verdict when the set fails outright", async () => {
+    // A failed `set_config_option` emits only a recoverable Error — no option
+    // snapshot at all. Nothing may linger to be charged against a later,
+    // unrelated update.
+    const handlers = await connectGrokOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: grokModelOptions("grok-4.5"),
+    })
+
+    h.toastWarning.mockClear()
+    await act(async () => {
+      await h.actions!.setConfigOption(TAB, "model", "grok-composer-2.5-fast")
+    })
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "error",
+      message: "Failed to set config option: boom",
+      agent_type: "grok",
+      code: null,
+    })
+    emitAcpEvent(handlers, {
+      seq: 3,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: grokModelOptions("grok-4.5"),
+    })
+
+    expect(h.toastWarning).not.toHaveBeenCalled()
+  })
 })
 
 describe("empty-turn error diagnostics", () => {
@@ -1459,7 +2022,7 @@ describe("empty-turn error diagnostics", () => {
     })
   })
 
-  it("appends details to the alert but keeps them out of conn.error and the OS notification", async () => {
+  it("routes details to the alert's evidence slot, keeping them out of detail, conn.error and the OS notification", async () => {
     const handlers = await connectOwner()
     h.pushAlert.mockClear()
     h.sendSystemNotification.mockClear()
@@ -1476,15 +2039,19 @@ describe("empty-turn error diagnostics", () => {
       details,
     })
 
-    // The alert's detail slot carries the localized line AND the evidence.
+    // The evidence rides its own slot so `StatusBarAlerts` can put it behind an
+    // expander; the always-visible detail slot stays the localized line.
     const alertCalls = h.pushAlert.mock.calls
-    const [, , alertDetail] = alertCalls[alertCalls.length - 1]!
-    expect(alertDetail).toContain("backendErrors.turnFailedEmptyProtocol")
-    expect(alertDetail).toContain("Error: 401 Unauthorized")
+    const [, , alertDetail, , alertEvidence] =
+      alertCalls[alertCalls.length - 1]!
+    expect(alertDetail).toBe("backendErrors.turnFailedEmptyProtocol")
+    expect(alertEvidence).toBe(details)
 
-    // `conn.error` feeds the composer tooltip — one line only.
+    // `conn.error` feeds the composer tooltip — the localized line plus a
+    // pointer at the only surface that can expand the evidence, never the
+    // evidence itself.
     expect(h.store!.getConnection(TAB)!.error).toBe(
-      "backendErrors.turnFailedEmptyProtocol"
+      "backendErrors.turnFailedEmptyProtocol backendErrors.detailsInAlerts"
     )
 
     // Notification centers persist their payload outside the app.
@@ -1508,8 +2075,15 @@ describe("empty-turn error diagnostics", () => {
     })
 
     const alertCalls = h.pushAlert.mock.calls
-    const [, , alertDetail] = alertCalls[alertCalls.length - 1]!
+    const [, , alertDetail, , alertEvidence] =
+      alertCalls[alertCalls.length - 1]!
     expect(alertDetail).toBe("backendErrors.turnFailedEmpty")
+    expect(alertEvidence).toBeUndefined()
+    // Nothing to expand, so the tooltip must not send the user looking for an
+    // expander.
+    expect(h.store!.getConnection(TAB)!.error).toBe(
+      "backendErrors.turnFailedEmpty"
+    )
   })
 })
 
@@ -1631,8 +2205,12 @@ describe("HYDRATE_FROM_SNAPSHOT last_error recovery", () => {
     } as unknown as LiveSessionSnapshot)
 
     const alertCalls = h.pushAlert.mock.calls
-    const [, , alertDetail] = alertCalls[alertCalls.length - 1]!
-    expect(alertDetail).toContain("Error: 401 Unauthorized")
+    const [, , alertDetail, , alertEvidence] =
+      alertCalls[alertCalls.length - 1]!
+    expect(alertDetail).toBe(
+      "agent ended the turn without producing any response."
+    )
+    expect(alertEvidence).toBe(details)
     // The tooltip string stays the single-line message.
     expect(h.store!.getConnection(TAB)!.error).toBe(
       "agent ended the turn without producing any response."

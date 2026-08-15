@@ -42,6 +42,8 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { WorkbenchPageTitle } from "@/components/workbench/workbench-page-title"
+import { FolderAliasLabel } from "@/components/conversations/folder-alias-label"
+import { formatFolderLabelWithAlias } from "@/lib/folder-display"
 import {
   tokenUsageFacets,
   tokenUsageReport,
@@ -515,11 +517,23 @@ export function TokenUsagePage() {
     void runSync("incremental", { silent: true })
   }, [status, runSync])
 
+  // `alias [ name ]`, not the alias alone: an aliased folder was otherwise
+  // unidentifiable here — two projects aliased "Work" read as the same row, and
+  // typing the real directory name found neither. `label` (plain) is what the
+  // pill summary shows and what the search matches; `labelNode` is the same
+  // text with the bracketed directory name in its own shade.
   const folderOptions = useMemo(
     () =>
       (facets?.folders ?? []).map((f) => ({
         value: String(f.folder_id),
-        label: f.label,
+        label: formatFolderLabelWithAlias(f),
+        labelNode: (
+          <FolderAliasLabel
+            name={f.name}
+            alias={f.alias}
+            bracketClassName="text-muted-foreground"
+          />
+        ),
         hint: f.path,
       })),
     [facets]

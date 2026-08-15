@@ -32,6 +32,7 @@ import {
   resolvePickerSelectedFolderId,
 } from "@/lib/folder-display"
 import { FolderAliasLabel } from "@/components/conversations/folder-alias-label"
+import { FolderOptionItem } from "@/components/shared/folder-select"
 import { BranchDropdown } from "@/components/layout/branch-dropdown"
 
 interface ConversationContextBarProps {
@@ -488,34 +489,19 @@ const FolderPicker = memo(function FolderPicker({
           <CommandList>
             <CommandEmpty>{labelEmpty}</CommandEmpty>
             <CommandGroup>
+              {/* Shared row (alias [ name ] over the path, alias included in the
+                  search token) — the Tasks / Automations / Token-usage folder
+                  controls render the very same one. */}
               {folders.map((f) => (
-                <CommandItem
+                <FolderOptionItem
                   key={f.id}
-                  // Include the alias in the search token so typing the alias
-                  // matches the row (the visible label leads with the alias too).
-                  value={`${f.alias ?? ""} ${f.name} ${f.path}`}
+                  folder={f}
+                  selected={f.id === currentFolderId}
                   onSelect={() => {
                     setOpen(false)
                     void onSelect(f.id)
                   }}
-                >
-                  <Folder className="h-4 w-4" />
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="truncate font-medium">
-                      <FolderAliasLabel
-                        name={f.name}
-                        alias={f.alias ?? null}
-                        bracketClassName="text-muted-foreground"
-                      />
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {f.path}
-                    </span>
-                  </div>
-                  {f.id === currentFolderId && (
-                    <Check className="h-4 w-4 shrink-0" />
-                  )}
-                </CommandItem>
+                />
               ))}
             </CommandGroup>
             {/* Pinned to the bottom as a sticky footer so the folderless

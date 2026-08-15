@@ -56,6 +56,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { AgentIcon } from "@/components/agent-icon"
 import { WorkbenchPageTitle } from "@/components/workbench/workbench-page-title"
+import {
+  FolderSelect,
+  type FolderSelectOption,
+} from "@/components/shared/folder-select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
@@ -253,22 +257,33 @@ export function AutomationsPage() {
   // editor lets a launch_session run point at a worktree subfolder, which is
   // not a project folder but must still be filterable.
   const folderOptions = useMemo(() => {
-    const options = new Map<number, string>()
+    const options = new Map<number, FolderSelectOption>()
     for (const f of folders) {
       if (f.parent_id == null && f.kind === "regular")
-        options.set(f.id, f.alias ?? f.name)
+        options.set(f.id, {
+          id: f.id,
+          name: f.name,
+          alias: f.alias,
+          path: f.path,
+        })
     }
-    const nameById = new Map(folders.map((f) => [f.id, f.alias ?? f.name]))
+    const byId = new Map(folders.map((f) => [f.id, f]))
     for (const a of automations) {
       if (a.root_folder_id == null || options.has(a.root_folder_id)) continue
-      options.set(
-        a.root_folder_id,
-        nameById.get(a.root_folder_id) ?? `#${a.root_folder_id}`
-      )
+      const known = byId.get(a.root_folder_id)
+      options.set(a.root_folder_id, {
+        id: a.root_folder_id,
+        // A folder the workspace no longer lists is still filterable — by the
+        // only handle left, its id.
+        name: known?.name ?? `#${a.root_folder_id}`,
+        alias: known?.alias ?? null,
+        path: known?.path ?? null,
+      })
     }
-    return [...options]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name))
+    // Sorted by what the row leads with, so the list reads in the order it looks.
+    return [...options.values()].sort((a, b) =>
+      (a.alias ?? a.name).localeCompare(b.alias ?? b.name)
+    )
   }, [automations, folders])
   // Deleting the last automation of a folder strands the filter on an option
   // that no longer exists. Fall back to "all" by derivation (no effect) so the
@@ -579,7 +594,7 @@ function PageToolbar({
   showNew,
   onNew,
 }: {
-  folderOptions: Array<{ id: number; name: string }>
+  folderOptions: readonly FolderSelectOption[]
   folderFilter: number | "all"
   onFolderFilter: (v: number | "all") => void
   statusFilter: "all" | "enabled" | "disabled"
@@ -597,30 +612,16 @@ function PageToolbar({
     <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-2 pt-4">
       {/* Always rendered (like the Tasks board's folder pill) — a filter that
           comes and goes with the data is more disorienting than one that is
-          briefly redundant. */}
-      <Select
-        value={folderFilter === "all" ? "all" : String(folderFilter)}
-        onValueChange={(v) => onFolderFilter(v === "all" ? "all" : Number(v))}
-      >
-        <SelectTrigger
-          size="sm"
-          className={cn(FILTER_PILL_CLASS, "max-w-[14rem]")}
-        >
-          <Folder
-            className="size-3.5 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">{t("allFolders")}</SelectItem>
-          {folderOptions.map((f) => (
-            <SelectItem key={f.id} value={String(f.id)}>
-              {f.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          briefly redundant. Searchable, and every row shows `alias [ name ]`
+          over the folder's path (the shared picker), so an aliased folder is
+          still identifiable — and findable by its real name. */}
+      <FolderSelect
+        folders={folderOptions}
+        value={folderFilter === "all" ? null : folderFilter}
+        onChange={onFolderFilter}
+        allLabel={t("allFolders")}
+        onSelectAll={() => onFolderFilter("all")}
+      />
 
       <Select
         value={statusFilter}

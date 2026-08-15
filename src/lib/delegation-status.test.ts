@@ -389,6 +389,80 @@ describe("parseStatusReport", () => {
     )
   })
 
+  it("reads the two-line 'Running.\\nAwaiting your decision: …' blocked message", () => {
+    // #447: a sub-agent parked on a permission still reports status `running`,
+    // so a content-only host must recognize the blocked second line the same
+    // way it recognizes the live-reply one — otherwise the poll degrades to a
+    // false 'ok' ("done") for a sub-agent that has not moved at all.
+    const report = parseStatusReport(
+      "Running.\nAwaiting your decision: rm -rf /tmp/x",
+      null
+    )
+    expect(report.status).toBe("running")
+    expect(report.blockedOn).toBe("permission")
+    expect(deriveBadge("status", report, "output-available", false)).toEqual({
+      status: "waiting",
+    })
+  })
+
+  it("reads structured blocked_on from the report envelope", () => {
+    const report = parseStatusReport(
+      envelope({
+        task_id: "abc12345",
+        status: "running",
+        message: "Running.\nAwaiting your decision: a question",
+        blocked_on: { kind: "question", request_id: "q-1", title: "which?" },
+      }),
+      null
+    )
+    expect(report.status).toBe("running")
+    expect(report.blockedOn).toBe("question")
+    expect(deriveBadge("status", report, "output-available", false)).toEqual({
+      status: "waiting",
+    })
+  })
+
+  it("treats an unrecognized blocked_on kind as still blocked", () => {
+    // A newer backend adding a fourth kind must not silently degrade to
+    // "working" — the presence of the field is the load-bearing signal.
+    const report = parseStatusReport(
+      envelope({
+        task_id: "abc12345",
+        status: "running",
+        message: "Running.",
+        blocked_on: { kind: "some_future_kind", request_id: "x-1" },
+      }),
+      null
+    )
+    expect(report.blockedOn).toBe("permission")
+    expect(deriveBadge("status", report, "output-available", false)).toEqual({
+      status: "waiting",
+    })
+  })
+
+  it("leaves an ordinary running poll unblocked", () => {
+    const report = parseStatusReport(
+      "Running.\nLatest sub-agent reply: Reading config.rs",
+      null
+    )
+    expect(report.blockedOn).toBeNull()
+    expect(deriveBadge("status", report, "output-available", false)).toEqual({
+      status: "checked",
+    })
+  })
+
+  it("does NOT misread a completed single-line 'Running. Awaiting your decision: …' result as running", () => {
+    // Same anchoring rule as the live-reply variant: the marker must be a
+    // standalone first line, so child-controlled text that merely starts with
+    // the phrase can't fake a block.
+    const report = parseStatusReport(
+      "Running. Awaiting your decision: nothing, I already finished.",
+      null
+    )
+    expect(report.status).toBeNull()
+    expect(report.blockedOn).toBeNull()
+  })
+
   it("does NOT misread a completed single-line 'Running. Latest sub-agent reply: …' result as running", () => {
     // A completed child answer whose text merely STARTS WITH the running phrase
     // on one line (no standalone marker line) must resolve to a terminal status,

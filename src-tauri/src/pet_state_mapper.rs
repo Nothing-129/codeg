@@ -103,6 +103,15 @@ impl PetGlobalState {
             // `StatusChanged{Prompting}` can reach the bus just before this
             // event does. (These two events carry the *parent's* connection id
             // in the envelope; the child id is in the payload.)
+            //
+            // `pending_permissions` is deliberately NOT scrubbed here. The
+            // broker starts the child's turn BEFORE it emits this event
+            // (`send_prompt_linked_for_delegation` precedes `emit_started_if_real`),
+            // so a child that hits a permission immediately raises it first —
+            // and that is precisely the state the sprite must keep showing.
+            // Scrubbing it would leave the sprite Idle/Running while the panel
+            // and badge (which read live `SessionState`, not this event stream)
+            // both say waiting.
             AcpEvent::DelegationStarted {
                 child_connection_id,
                 ..
@@ -110,8 +119,6 @@ impl PetGlobalState {
                 self.delegation_children.insert(child_connection_id.clone());
                 self.prompting.remove(child_connection_id);
                 self.erroring.remove(child_connection_id);
-                self.pending_permissions
-                    .retain(|_, cid| cid != child_connection_id);
             }
             AcpEvent::DelegationCompleted {
                 child_connection_id,
@@ -123,20 +130,43 @@ impl PetGlobalState {
                 self.pending_permissions
                     .retain(|_, cid| cid != child_connection_id);
             }
-            // A known sub-agent's signals never drive ambient state. When it
-            // disconnects, forget it so dead ids don't pile up — this also
-            // cleans up a `DelegationCompleted` that was dropped on a bus
-            // overrun (the child id is otherwise preserved across the reset).
-            _ if self.delegation_children.contains(conn) => {
-                if matches!(
-                    &env.payload,
-                    AcpEvent::StatusChanged {
-                        status: ConnectionStatus::Disconnected,
-                    }
-                ) {
-                    self.delegation_children.remove(conn);
+            // A known sub-agent's WORK never drives ambient state: it must not
+            // land in `prompting` / `erroring`, because the panel (which the
+            // badge shares a payload with) excludes working sub-agents and the
+            // pet would look busy over a list showing nothing.
+            //
+            // Its pending PERMISSION does, though — the child is blocked until
+            // the user clicks, the panel keeps exactly those rows, and no other
+            // ambient surface reports it (#447). So this arm is a filter, not a
+            // blanket drop: permission bookkeeping passes through, everything
+            // else is swallowed.
+            _ if self.delegation_children.contains(conn) => match &env.payload {
+                AcpEvent::PermissionRequest { request_id, .. } => {
+                    self.pending_permissions
+                        .insert(request_id.clone(), conn.clone());
                 }
-            }
+                AcpEvent::PermissionResolved { request_id } => {
+                    self.pending_permissions.remove(request_id);
+                }
+                // Same bound as the root-session arms below: a permission can't
+                // outlive the turn that raised it, and a dead connection can't
+                // be answered. Without these a child torn down mid-prompt would
+                // pin the sprite on `Waiting` forever.
+                AcpEvent::TurnComplete { .. } => {
+                    self.pending_permissions.retain(|_, cid| cid != conn);
+                }
+                // Disconnect also forgets the child so dead ids don't pile up —
+                // this is what cleans up a `DelegationCompleted` dropped on a
+                // bus overrun (the child id is otherwise preserved across the
+                // reset).
+                AcpEvent::StatusChanged {
+                    status: ConnectionStatus::Disconnected,
+                } => {
+                    self.delegation_children.remove(conn);
+                    self.pending_permissions.retain(|_, cid| cid != conn);
+                }
+                _ => {}
+            },
             AcpEvent::StatusChanged { status } => match status {
                 ConnectionStatus::Prompting => {
                     self.prompting.insert(conn.clone());
@@ -218,7 +248,9 @@ impl PetGlobalState {
 ///   any concurrent prompt elsewhere. Renders as `Waiting` (not a separate
 ///   highlight) so the cue blends with the regular idle-but-reachable
 ///   state; the actual permission dialog is what demands the user's
-///   attention, the pet just stops looking busy.
+///   attention, the pet just stops looking busy. This is the ONE signal a
+///   delegation sub-agent can contribute (see `apply`'s sub-agent arm and
+///   `pet_list_active_sessions_core`, which keeps exactly those rows).
 /// * `Running` from `prompting` — active work elsewhere.
 /// * `Idle` — nothing blocking or running.
 ///
@@ -567,6 +599,7 @@ mod tests {
                 request_id: "r1".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
         ));
         assert_eq!(compute_pet_state(&s), PetState::Waiting);
@@ -687,6 +720,7 @@ mod tests {
                 request_id: "r1".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
         ));
         assert_eq!(compute_pet_state(&s), PetState::Waiting);
@@ -737,6 +771,7 @@ mod tests {
                 request_id: "r1".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
         ));
         s.apply(&env(
@@ -745,6 +780,7 @@ mod tests {
                 request_id: "r2".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
         ));
         assert_eq!(s.pending_permissions.len(), 2);
@@ -783,6 +819,7 @@ mod tests {
                 request_id: "r1".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
         ));
         assert_eq!(compute_pet_state(&s), PetState::Waiting);
@@ -812,6 +849,7 @@ mod tests {
                 request_id: "r1".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
         ));
         s.apply(&env(
@@ -844,6 +882,7 @@ mod tests {
                 request_id: "r1".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
         ));
         assert_eq!(compute_pet_state(&s), PetState::Waiting);
@@ -1052,6 +1091,112 @@ mod tests {
         );
     }
 
+    /// A permission request on a delegation child (`child`), matching the
+    /// helpers above.
+    fn child_permission(request_id: &str) -> EventEnvelope {
+        env(
+            "child",
+            AcpEvent::PermissionRequest {
+                request_id: request_id.into(),
+                tool_call: serde_json::json!({}),
+                options: vec![],
+                queued: 0,
+            },
+        )
+    }
+
+    #[test]
+    fn delegation_child_permission_makes_pet_wait() {
+        // #447: a sub-agent blocked on a permission has no other ambient
+        // surface — it's hidden from every tab/picker and the parent's own row
+        // says "running". The sprite is the signal, so this one child event is
+        // deliberately NOT swallowed by the sub-agent filter.
+        let mut s = PetGlobalState::default();
+        s.apply(&delegation_started("parent", "child"));
+        s.apply(&child_permission("r1"));
+        assert_eq!(compute_pet_state(&s), PetState::Waiting);
+    }
+
+    #[test]
+    fn a_child_permission_racing_ahead_of_delegation_started_survives() {
+        // The broker starts the child's turn before announcing the delegation,
+        // so a child that blocks immediately raises its permission FIRST. If
+        // `DelegationStarted` scrubbed it, the sprite would drop back to Idle
+        // while the panel and badge — which read live SessionState, not this
+        // event stream — both still say waiting.
+        let mut s = PetGlobalState::default();
+        s.apply(&child_permission("r1"));
+        s.apply(&delegation_started("parent", "child"));
+        assert_eq!(compute_pet_state(&s), PetState::Waiting);
+
+        // Still bounded: resolving it clears the sprite as usual.
+        s.apply(&env(
+            "child",
+            AcpEvent::PermissionResolved {
+                request_id: "r1".into(),
+            },
+        ));
+        assert_eq!(compute_pet_state(&s), PetState::Idle);
+    }
+
+    #[test]
+    fn delegation_started_still_scrubs_a_childs_prompting() {
+        // The other half of the same race is unchanged: a child's WORK must
+        // never make the pet look busy, since the panel excludes working
+        // sub-agents and the two must agree.
+        let mut s = PetGlobalState::default();
+        s.apply(&env(
+            "child",
+            AcpEvent::StatusChanged {
+                status: ConnectionStatus::Prompting,
+            },
+        ));
+        s.apply(&delegation_started("parent", "child"));
+        assert_eq!(compute_pet_state(&s), PetState::Idle);
+    }
+
+    #[test]
+    fn delegation_child_permission_clears_on_resolve() {
+        let mut s = PetGlobalState::default();
+        s.apply(&delegation_started("parent", "child"));
+        s.apply(&child_permission("r1"));
+        s.apply(&env(
+            "child",
+            AcpEvent::PermissionResolved {
+                request_id: "r1".into(),
+            },
+        ));
+        assert_eq!(compute_pet_state(&s), PetState::Idle);
+    }
+
+    #[test]
+    fn delegation_child_permission_cannot_outlive_its_child() {
+        // Both bounds that keep a child from pinning the sprite on Waiting: the
+        // turn that raised the permission ending, and the connection dying
+        // without ever resolving it.
+        for terminal in [
+            AcpEvent::TurnComplete {
+                session_id: "s".into(),
+                stop_reason: "cancelled".into(),
+                agent_type: "codex".into(),
+            },
+            AcpEvent::StatusChanged {
+                status: ConnectionStatus::Disconnected,
+            },
+        ] {
+            let mut s = PetGlobalState::default();
+            s.apply(&delegation_started("parent", "child"));
+            s.apply(&child_permission("r1"));
+            assert_eq!(compute_pet_state(&s), PetState::Waiting);
+            s.apply(&env("child", terminal.clone()));
+            assert_eq!(
+                compute_pet_state(&s),
+                PetState::Idle,
+                "an unanswered child permission must not survive {terminal:?}"
+            );
+        }
+    }
+
     #[test]
     fn event_filter_accepts_only_pet_relevant_events() {
         // Pet-relevant variants — must pass the filter.
@@ -1070,6 +1215,7 @@ mod tests {
                 request_id: "r1".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
             AcpEvent::PermissionResolved {
                 request_id: "r1".into(),

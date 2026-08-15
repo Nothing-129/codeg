@@ -447,6 +447,27 @@ mod tauri_app {
                     });
                 }
 
+                // Label worktree folders registered before aliases were seeded at
+                // creation with the branch they have checked out, so the sidebar
+                // names them by branch rather than by their (long, derived)
+                // directory. Background, non-blocking; changed folders are
+                // broadcast, so a client that already fetched its folder list
+                // still picks them up.
+                {
+                    let db = db::AppDatabase {
+                        conn: app.state::<db::AppDatabase>().conn.clone(),
+                    };
+                    let emitter = web::event_bridge::EventEmitter::Tauri(app.handle().clone());
+                    tauri::async_runtime::spawn(async move {
+                        let n =
+                            crate::commands::folders::backfill_worktree_folder_aliases(&emitter, &db)
+                                .await;
+                        if n > 0 {
+                            tracing::info!("[folders] labeled {n} worktree folder(s) by branch");
+                        }
+                    });
+                }
+
                 // Start chat channel background tasks
                 {
                     let ccm = app.state::<ChatChannelManager>();
@@ -1203,6 +1224,10 @@ mod tauri_app {
                 acp_commands::acp_update_pi_config,
                 acp_commands::acp_load_pi_config,
                 acp_commands::acp_validate_pi_command,
+                acp_commands::acp_pi_project_trust_state,
+                acp_commands::acp_pi_set_project_trust,
+                acp_commands::acp_pi_acknowledge_project_trust,
+                acp_commands::acp_pi_list_trust_entries,
                 acp_commands::acp_install_pi_binary,
                 acp_commands::acp_uninstall_pi_binary,
                 acp_commands::acp_open_hermes_setup_terminal,
@@ -1307,6 +1332,7 @@ mod tauri_app {
                 work_task_commands::work_task_return,
                 work_task_commands::work_task_cancel,
                 work_task_commands::work_task_merge,
+                work_task_commands::work_task_merge_unqueue,
                 work_task_commands::work_task_complete,
                 work_task_commands::work_task_archive,
                 work_task_commands::work_task_cleanup,

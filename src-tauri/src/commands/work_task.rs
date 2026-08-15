@@ -42,14 +42,14 @@ fn nudge_schedule() {
     }
 }
 
-/// Best-effort auto-merge nudge after a settings change: switching auto-merge
+/// Best-effort merge-pump nudge after a settings change: switching auto-merge
 /// on should drain the review backlog now, not at the next reconcile tick.
 /// Scope 0 is the global row, which any folder without its own row follows —
-/// that one sweeps every folder holding reviewed tasks.
-fn nudge_auto_merge(folder_id: i32) {
+/// that one pumps every folder holding reviewed tasks.
+fn nudge_merge_pump(folder_id: i32) {
     if let Some(engine) = crate::work_task::engine() {
         let scope = (folder_id != 0).then_some(folder_id);
-        tokio::spawn(async move { engine.sweep_auto_merge_backlog(scope).await });
+        tokio::spawn(async move { engine.sweep_merge_backlog(scope).await });
     }
 }
 
@@ -61,12 +61,14 @@ pub async fn work_task_list_core(
 ) -> Result<Vec<WorkTaskInfo>, DbError> {
     let mut infos = work_task_service::list(&db.conn, folder_id).await?;
     annotate_worktree_missing(db, &mut infos).await?;
+    annotate_agent_type(db, &mut infos).await?;
     Ok(infos)
 }
 
 pub async fn work_task_get_core(db: &AppDatabase, id: i32) -> Result<WorkTaskInfo, DbError> {
     let mut infos = vec![work_task_service::get(&db.conn, id).await?];
     annotate_worktree_missing(db, &mut infos).await?;
+    annotate_agent_type(db, &mut infos).await?;
     Ok(infos.pop().expect("annotated the one row"))
 }
 
@@ -109,6 +111,99 @@ async fn annotate_worktree_missing(
         if let Some(wt_id) = info.worktree_folder_id {
             info.worktree_missing = !on_disk.get(&wt_id).copied().unwrap_or(false);
         }
+    }
+    Ok(())
+}
+
+/// Stamp `agent_type` on every row: the agent that runs — or ran — this task,
+/// which both task views draw beside the title. The client cannot resolve it
+/// itself, because an inheriting task's agent lives in the folder's settings
+/// rather than on the row, so the whole list is resolved here in three batched
+/// queries instead of a lookup per card.
+///
+/// The engine's own layering (`effective_agent_config`) with the conversation
+/// in front: a task that already ran is named by the agent that actually ran
+/// it, then by its own override, then by the folder's task settings (its own
+/// row wholesale, else the global one — `settings_get_effective`'s rule), then
+/// by the folder's default agent. All four empty leaves `None`, which is
+/// exactly the state the engine refuses to launch.
+async fn annotate_agent_type(db: &AppDatabase, infos: &mut [WorkTaskInfo]) -> Result<(), DbError> {
+    use crate::db::entities::{conversation, folder, work_task_settings};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    use std::collections::{BTreeSet, HashMap};
+    use work_task_service::GLOBAL_SETTINGS_FOLDER_ID;
+
+    if infos.is_empty() {
+        return Ok(());
+    }
+
+    // Every source read here already stores a wire name ("claude_code",
+    // "custom:<id>"), which is what the client keys its icon map on — so these
+    // strings pass through verbatim.
+    let conv_ids: BTreeSet<i32> = infos.iter().filter_map(|t| t.conversation_id).collect();
+    let conv_agents: HashMap<i32, String> = if conv_ids.is_empty() {
+        HashMap::new()
+    } else {
+        conversation::Entity::find()
+            .filter(conversation::Column::Id.is_in(conv_ids.iter().copied()))
+            .all(&db.conn)
+            .await?
+            .into_iter()
+            .map(|c| (c.id, c.agent_type))
+            .collect()
+    };
+
+    let folder_ids: BTreeSet<i32> = infos.iter().map(|t| t.folder_id).collect();
+    let folder_defaults: HashMap<i32, String> = folder::Entity::find()
+        .filter(folder::Column::Id.is_in(folder_ids.iter().copied()))
+        .all(&db.conn)
+        .await?
+        .into_iter()
+        .filter_map(|f| f.default_agent_type.map(|agent| (f.id, agent)))
+        .collect();
+
+    // Every settings row the list can consult, in one query: the folders it
+    // spans plus the global row they fall back to. An unparseable row is
+    // dropped rather than defaulted, so it falls through to the global one
+    // exactly as `settings_get_effective` would.
+    let settings_ids: BTreeSet<i32> = folder_ids
+        .iter()
+        .copied()
+        .chain(std::iter::once(GLOBAL_SETTINGS_FOLDER_ID))
+        .collect();
+    let settings_agents: HashMap<i32, Option<String>> = work_task_settings::Entity::find()
+        .filter(work_task_settings::Column::FolderId.is_in(settings_ids))
+        .all(&db.conn)
+        .await?
+        .into_iter()
+        .filter_map(|row| {
+            serde_json::from_str::<WorkTaskFolderSettings>(&row.config)
+                .ok()
+                .map(|settings| (row.folder_id, settings.default_agent_type))
+        })
+        .collect();
+
+    for info in infos.iter_mut() {
+        let from_conversation = info
+            .conversation_id
+            .and_then(|id| conv_agents.get(&id))
+            .cloned();
+        let own_override = info
+            .config
+            .get("agent_type")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        // A folder that saved settings of its own detaches from the global row
+        // wholesale — including when its agent field is the empty one.
+        let from_settings = settings_agents
+            .get(&info.folder_id)
+            .or_else(|| settings_agents.get(&GLOBAL_SETTINGS_FOLDER_ID))
+            .cloned()
+            .flatten();
+        info.agent_type = from_conversation
+            .or(own_override)
+            .or(from_settings)
+            .or_else(|| folder_defaults.get(&info.folder_id).cloned());
     }
     Ok(())
 }
@@ -360,15 +455,40 @@ pub async fn work_task_cancel_core(id: i32, reason: Option<String>) -> Result<()
 /// review with a readable error). This awaits only the dispatch (validation +
 /// agent spawn), so refused merges surface directly in the dialog.
 /// `message: None` = the agent writes the commit message itself.
+///
+/// Returns `true` when the merge was QUEUED instead of started — the folder was
+/// already landing another task, and this one goes in as soon as that finishes.
 pub async fn work_task_merge_core(
     id: i32,
     message: Option<String>,
     delete_worktree: bool,
-) -> Result<(), DbError> {
+) -> Result<bool, DbError> {
     engine()?
         .merge_task(id, message, delete_worktree, false)
         .await
+        .map(|dispatch| dispatch.is_queued())
         .map_err(DbError::Validation)
+}
+
+/// Withdraw a merge that is waiting in the folder's queue (the task stays in
+/// review, untouched). Pure DB — no engine needed: the pump only ever reads
+/// intents that are still on the row.
+pub async fn work_task_merge_unqueue_core(
+    emitter: &EventEmitter,
+    db: &AppDatabase,
+    id: i32,
+) -> Result<(), DbError> {
+    if !work_task_service::unqueue_merge(&db.conn, id).await? {
+        return Err(DbError::Validation(
+            "this task is not waiting to merge".to_string(),
+        ));
+    }
+    emit_event(
+        emitter,
+        WORK_TASK_CHANGED_EVENT,
+        WorkTaskChange::Upsert { id },
+    );
+    Ok(())
 }
 
 /// Finish a reviewed task that has nothing to land (review → done, no merge),
@@ -490,7 +610,7 @@ pub async fn work_task_settings_set_core(
         WorkTaskChange::Settings { folder_id },
     );
     nudge_pump(folder_id);
-    nudge_auto_merge(folder_id);
+    nudge_merge_pump(folder_id);
     Ok(())
 }
 
@@ -510,7 +630,7 @@ pub async fn work_task_settings_delete_core(
     nudge_pump(folder_id);
     // Reverting to the global row can also switch auto-merge ON for this
     // folder (the global row may carry it) — same drain-now semantics.
-    nudge_auto_merge(folder_id);
+    nudge_merge_pump(folder_id);
     Ok(())
 }
 
@@ -693,8 +813,18 @@ pub async fn work_task_merge(
     id: i32,
     message: Option<String>,
     delete_worktree: bool,
-) -> Result<(), DbError> {
+) -> Result<bool, DbError> {
     work_task_merge_core(id, message, delete_worktree).await
+}
+
+#[cfg(feature = "tauri-runtime")]
+#[cfg_attr(feature = "tauri-runtime", tauri::command)]
+pub async fn work_task_merge_unqueue(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, AppDatabase>,
+    id: i32,
+) -> Result<(), DbError> {
+    work_task_merge_unqueue_core(&EventEmitter::Tauri(app), &db, id).await
 }
 
 #[cfg(feature = "tauri-runtime")]
@@ -811,4 +941,120 @@ pub async fn work_task_template_delete(
     id: i32,
 ) -> Result<(), DbError> {
     work_task_template_delete_core(&db, id).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::service::folder_service;
+    use crate::db::test_helpers::{fresh_in_memory_db, seed_conversation, seed_folder};
+    use crate::models::agent::AgentType;
+
+    fn draft(folder_id: i32, title: &str, agent: Option<&str>) -> WorkTaskDraft {
+        WorkTaskDraft {
+            folder_id,
+            title: title.to_string(),
+            config: serde_json::json!({
+                "display_text": "do the thing",
+                "prompt_blocks": [{ "type": "text", "text": "do the thing" }],
+                "agent_type": agent,
+            }),
+        }
+    }
+
+    async fn agent_of(db: &AppDatabase, task_id: i32) -> Option<String> {
+        work_task_get_core(db, task_id).await.unwrap().agent_type
+    }
+
+    /// The list must name each task's agent the way the ENGINE would pick it
+    /// (`effective_agent_config`), or the views draw a mark for an agent that
+    /// never runs. Walks the layering from the outside in.
+    #[tokio::test]
+    async fn agent_type_is_stamped_with_the_engines_own_layering() {
+        let db = fresh_in_memory_db().await;
+        let folder_id = seed_folder(&db, "/tmp/wt-agent").await;
+        folder_service::update_folder_default_agent(
+            &db.conn,
+            folder_id,
+            Some(AgentType::ClaudeCode),
+        )
+        .await
+        .unwrap();
+
+        let overridden = work_task_service::create(&db.conn, draft(folder_id, "a", Some("codex")))
+            .await
+            .unwrap();
+        let inheriting = work_task_service::create(&db.conn, draft(folder_id, "b", None))
+            .await
+            .unwrap();
+
+        // Nothing between the task and its folder yet.
+        assert_eq!(agent_of(&db, overridden.id).await.as_deref(), Some("codex"));
+        assert_eq!(
+            agent_of(&db, inheriting.id).await.as_deref(),
+            Some("claude_code")
+        );
+
+        // The folder's task settings sit between the two — and only the
+        // inheriting task feels them.
+        let settings = WorkTaskFolderSettings {
+            default_agent_type: Some("grok".to_string()),
+            ..Default::default()
+        };
+        work_task_service::settings_set(&db.conn, folder_id, &settings)
+            .await
+            .unwrap();
+        assert_eq!(agent_of(&db, overridden.id).await.as_deref(), Some("codex"));
+        assert_eq!(agent_of(&db, inheriting.id).await.as_deref(), Some("grok"));
+
+        // Once the task has actually run, the agent that ran it wins over
+        // every configured layer — including the task's own override.
+        let conversation_id = seed_conversation(&db, folder_id, AgentType::Gemini).await;
+        let run_seq =
+            work_task_service::claim_for_run(&db.conn, overridden.id, WorkTaskStatus::Todo, "user")
+                .await
+                .unwrap()
+                .unwrap();
+        assert!(work_task_service::begin_setup(&db.conn, overridden.id, run_seq)
+            .await
+            .unwrap());
+        assert!(
+            work_task_service::mark_running(&db.conn, overridden.id, run_seq, conversation_id, "c1")
+                .await
+                .unwrap()
+        );
+        assert_eq!(agent_of(&db, overridden.id).await.as_deref(), Some("gemini"));
+
+        // A list stamps every row the same way a get does.
+        let listed = work_task_list_core(&db, Some(folder_id)).await.unwrap();
+        let stamped: Vec<Option<String>> = listed.into_iter().map(|t| t.agent_type).collect();
+        assert!(stamped.iter().all(|a| a.is_some()), "{stamped:?}");
+    }
+
+    /// A folder with no default and no settings anywhere leaves the field
+    /// empty rather than guessing — the same state the engine refuses to
+    /// launch, which both views draw as a placeholder.
+    #[tokio::test]
+    async fn agent_type_is_none_when_nothing_is_configured() {
+        let db = fresh_in_memory_db().await;
+        let folder_id = seed_folder(&db, "/tmp/wt-agent-none").await;
+        let task = work_task_service::create(&db.conn, draft(folder_id, "a", None))
+            .await
+            .unwrap();
+        assert_eq!(agent_of(&db, task.id).await, None);
+
+        // The global settings row is what a folder without its own follows.
+        let settings = WorkTaskFolderSettings {
+            default_agent_type: Some("cursor".to_string()),
+            ..Default::default()
+        };
+        work_task_service::settings_set(
+            &db.conn,
+            work_task_service::GLOBAL_SETTINGS_FOLDER_ID,
+            &settings,
+        )
+        .await
+        .unwrap();
+        assert_eq!(agent_of(&db, task.id).await.as_deref(), Some("cursor"));
+    }
 }

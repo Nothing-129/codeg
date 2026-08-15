@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
-import { BookmarkPlus, Folder, LayoutTemplate, Trash2 } from "lucide-react"
+import { BookmarkPlus, LayoutTemplate, Trash2 } from "lucide-react"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
 import { AgentSelector } from "@/components/chat/agent-selector"
 import {
@@ -28,13 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { FolderSelect } from "@/components/shared/folder-select"
 import { useScrollbarSafeDismiss } from "@/hooks/use-scrollbar-safe-dismiss"
 import {
   workTaskSettingsEffective,
@@ -433,28 +427,16 @@ function TaskEditorBody({
             {t("sectionTarget")}
           </h3>
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={folderId != null ? String(folderId) : undefined}
-              onValueChange={(v) => setFolderId(Number(v))}
+            <FolderSelect
+              variant="field"
+              folders={projectFolders}
+              value={folderId}
+              onChange={setFolderId}
+              placeholder={t("folderPlaceholder")}
               // A task that already ran is pinned to its folder (its worktree
               // lives there) — the backend rejects a move too.
               disabled={task != null && task.worktree_folder_id != null}
-            >
-              <SelectTrigger size="sm" className="h-7 gap-1.5 text-xs">
-                <Folder
-                  className="size-3.5 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <SelectValue placeholder={t("folderPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {projectFolders.map((f) => (
-                  <SelectItem key={f.id} value={String(f.id)}>
-                    {f.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
         </div>
 

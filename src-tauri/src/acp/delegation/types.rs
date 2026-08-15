@@ -167,6 +167,41 @@ pub enum TaskStatus {
     Unknown,
 }
 
+/// What a still-`Running` delegation child is blocked on. A blocked child is
+/// not making progress — it is parked until the USER decides — which is a
+/// materially different thing to report than "running", and the parent LLM has
+/// no other way to tell them apart (#447).
+///
+/// Deliberately NOT a `TaskStatus` variant: those strings are wire-stable and
+/// the frontend's status list is closed, so an unrecognized value would fall
+/// through to the tool-call-state fallback and paint a blocked poll as *done*.
+/// Carried as an extra field on an otherwise ordinary `Running` report instead,
+/// which every existing consumer ignores safely.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlockedKind {
+    /// `session/request_permission` — allow/deny a tool call.
+    Permission,
+    /// `ask_user_question` — a multiple-choice question.
+    Question,
+    /// Plan-mode approval (Grok's `exit_plan_mode` and friends).
+    PlanApproval,
+}
+
+/// The blocking prompt itself: what kind, and a short label for the thing that
+/// needs a decision (a tool title, the first question, the plan's heading).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockedOn {
+    pub kind: BlockedKind,
+    /// Stable id of the blocking request. The broker uses it to tell "still the
+    /// same prompt I already reported" from "a second prompt", so a status
+    /// long-poll surfaces each block exactly once instead of returning
+    /// instantly forever (see `get_tasks_status`).
+    pub request_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
 /// Unified response the broker hands the listener for every delegation tool
 /// (`delegate_to_agent` / `get_delegation_status` / `cancel_delegation`). The
 /// listener serializes it into `BrokerResponse.outcome`; the companion renders
@@ -202,6 +237,11 @@ pub struct DelegationTaskReport {
     pub message: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// Set only on a `Running` report whose child is parked on a user decision.
+    /// Absent means "actually working" — so its absence is as informative as its
+    /// presence, and neither breaks a consumer that doesn't know the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_on: Option<BlockedOn>,
 }
 
 impl DelegationOutcome {

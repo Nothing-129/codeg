@@ -71,6 +71,9 @@ export function PermissionDialog({
   }, [permission?.options])
   if (!permission) return null
 
+  // Approvals are surfaced one at a time (backend FIFO), so the count of the
+  // ones still behind this card has to be visible or they read as a hang.
+  const queued = permission.queued ?? 0
   const hasOptionChanges = Object.keys(optionChanges).length > 0
 
   const hasFileChanges = parsed.fileChanges.length > 0
@@ -109,9 +112,18 @@ export function PermissionDialog({
           </div>
           <p className="text-xs text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <Badge variant="outline" className="shrink-0 text-[10px]">
-          {formatKindLabel(parsed.normalizedKind, t("kindFallbackTool"))}
-        </Badge>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* Only one card shows at a time, so without this the remaining
+              approvals look like the agent has stopped responding. */}
+          {queued > 0 ? (
+            <Badge variant="secondary" className="text-[10px] tabular-nums">
+              {t("queuedCount", { count: queued })}
+            </Badge>
+          ) : null}
+          <Badge variant="outline" className="text-[10px]">
+            {formatKindLabel(parsed.normalizedKind, t("kindFallbackTool"))}
+          </Badge>
+        </div>
       </div>
 
       <div className="mt-3 max-h-[min(36vh,18rem)] space-y-2 overflow-y-auto pr-1">

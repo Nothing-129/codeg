@@ -1,7 +1,10 @@
 "use client"
 
+import { useMemo } from "react"
+import { useLocale } from "next-intl"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { localizeReleaseNotes } from "@/lib/release-notes"
 import { cn } from "@/lib/utils"
 
 /** Typography for GitHub release bodies rendered in a compact panel. Extracted
@@ -21,7 +24,7 @@ const NOTES_PROSE =
   "[&_hr]:my-2 [&_hr]:border-border"
 
 export interface ReleaseNotesProps {
-  /** Raw markdown from the release manifest. */
+  /** Raw markdown from the release manifest, both languages included. */
   notes: string
   /** Shown when the release carries no notes. */
   emptyLabel: string
@@ -32,17 +35,31 @@ export interface ReleaseNotesProps {
  * Release notes panel. This is the module that pulls in the markdown stack, so
  * surfaces outside the settings bundle (the status-bar update popover) load it
  * lazily via `next/dynamic` rather than importing it directly.
+ *
+ * Releases are published in English and Chinese at once, so the half matching
+ * the interface language is picked here rather than at each call site — that
+ * way the popover and the settings page can't drift apart on which one they
+ * show. See {@link localizeReleaseNotes} for what happens to a body that isn't
+ * in that shape.
  */
 export function ReleaseNotes({
   notes,
   emptyLabel,
   className,
 }: ReleaseNotesProps) {
-  const trimmed = notes.trim()
+  const locale = useLocale()
+  // Scanning the body on every render would be wasted work in the popover,
+  // which re-renders on each download-progress event while the notes sit
+  // unchanged beside the progress bar.
+  const localized = useMemo(
+    () => localizeReleaseNotes(notes, locale),
+    [notes, locale]
+  )
+
   return (
     <div className={cn(NOTES_PROSE, className)}>
-      {trimmed ? (
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{trimmed}</ReactMarkdown>
+      {localized ? (
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{localized}</ReactMarkdown>
       ) : (
         emptyLabel
       )}

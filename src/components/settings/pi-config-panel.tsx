@@ -22,7 +22,6 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -31,36 +30,51 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import {
   acpInstallPiBinary,
+  acpPiListTrustEntries,
+  acpPiSetProjectTrust,
   acpUninstallPiBinary,
   acpUpdatePiConfig,
   acpValidatePiCommand,
   loadPiConfig,
+  type PiTrustEntry,
 } from "@/lib/api"
 import { useAgentInstallStream } from "@/hooks/use-agent-install-stream"
 import { PI_CONFIG_DIR_ENV } from "@/lib/pi-config"
+import {
+  PI_THINKING_LEVELS,
+  implicitWireValue,
+  reasoningFromModel,
+  reasoningToMap,
+  toggleLevel,
+  type PiModelReasoning,
+  type PiThinkingLevel,
+} from "@/lib/pi-thinking"
 import type { AcpAgentInfo } from "@/lib/types"
 import { cn, randomUUID } from "@/lib/utils"
 
 const PI_COMMAND_ENV = "PI_ACP_PI_COMMAND"
 const PI_SESSION_DIR_ENV = "PI_CODING_AGENT_SESSION_DIR"
 /**
- * Per-agent `env_json` flag gating launch-time workspace-trust seeding. Absent or
- * any value other than `"0"` ⇒ enabled (default on): when codeg connects pi to a
- * folder, the backend marks that folder trusted in pi's `trust.json` so pi loads
- * the project's local config/skills without a separate prompt. `"0"` disables.
- * Read by `seed_pi_workspace_trust` in the Rust launch path.
+ * LEGACY per-agent `env_json` flag that used to gate launch-time workspace-trust
+ * seeding. codeg no longer seeds pi's `trust.json` — auto-trusting the opened
+ * folder let a repo's own `.pi/extensions` execute at pi startup — so nothing
+ * reads this key any more; project trust is an explicit per-workspace decision
+ * (see `PiProjectTrustBanner` and the Project trust list below). It stays
+ * reserved so a `"0"` persisted by an older build keeps out of the raw env
+ * editor instead of resurfacing there as a user-defined variable.
  */
 const PI_TRUST_WORKSPACE_ENV = "PI_ACP_TRUST_WORKSPACE"
 
 /**
  * Reserved env keys the structured pi UI owns. pi-acp reads `PI_ACP_PI_COMMAND`
  * to pick which `pi` binary to spawn, and forwards `PI_CODING_AGENT_DIR` /
- * `PI_CODING_AGENT_SESSION_DIR` to it; `PI_ACP_TRUST_WORKSPACE` is consumed by
- * codeg's own launch path (never the child). These persist through the same
- * per-agent `env_json` path every other env var uses, so the structured UI needs
- * no bespoke storage — the launch pipeline already injects env_json.
+ * `PI_CODING_AGENT_SESSION_DIR` to it; `PI_ACP_TRUST_WORKSPACE` is the inert
+ * legacy key above. These persist through the same per-agent `env_json` path
+ * every other env var uses, so the structured UI needs no bespoke storage — the
+ * launch pipeline already injects env_json.
  */
 export const PI_RESERVED_ENV_KEYS = [
   PI_COMMAND_ENV,
@@ -71,14 +85,17 @@ export const PI_RESERVED_ENV_KEYS = [
 
 type PiRuntimeMode = "default" | "custom"
 
-const PI_THINKING_LEVELS = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-] as const
+/** A custom provider as `loadPiConfig` projects it out of `models.json`. */
+type PiCustomProvider = Awaited<
+  ReturnType<typeof loadPiConfig>
+>["customProviders"][number]
+
+/** A model that has never declared reasoning — pi treats it as `["off"]` only. */
+const NO_REASONING: PiModelReasoning = {
+  enabled: false,
+  levels: [],
+  wireValues: {},
+}
 
 /**
  * Curated built-in providers for the enum, as `{ id, label }`: the Select stores
@@ -198,9 +215,7 @@ export function PiConfigPanel({
   const [customId, setCustomId] = useState("")
   const [customBaseUrl, setCustomBaseUrl] = useState("")
   const [customApi, setCustomApi] = useState(PI_CUSTOM_API_PROTOCOLS[0])
-  const [customProviders, setCustomProviders] = useState<
-    { id: string; baseUrl: string; api: string }[]
-  >([])
+  const [customProviders, setCustomProviders] = useState<PiCustomProvider[]>([])
   const [model, setModel] = useState("")
   const [thinkingLevel, setThinkingLevel] = useState("")
   const [apiKey, setApiKey] = useState("")
@@ -208,9 +223,32 @@ export function PiConfigPanel({
   const [authProviders, setAuthProviders] = useState<string[]>([])
   const [savingCreds, setSavingCreds] = useState(false)
   const [loadingCreds, setLoadingCreds] = useState(true)
+  const [reasoning, setReasoning] = useState<PiModelReasoning>(NO_REASONING)
+  const [showWireValues, setShowWireValues] = useState(false)
 
   const isCustom = selectedProvider === PI_CUSTOM_SENTINEL
   const effectiveProvider = (isCustom ? customId : selectedProvider).trim()
+
+  // Rehydrate the reasoning controls whenever the edited model's identity changes
+  // (provider switch, or a different model id typed in). Reading the stored entry
+  // rather than defaulting the form to "off" is what stops a save from wiping a
+  // declaration the user hand-wrote into models.json. Adjusting during render is
+  // React's documented pattern for "reset state when the thing it describes
+  // changes" — an effect would render one frame of the previous model's chips.
+  // Newline separator: neither a provider key nor a model id can contain one,
+  // so the halves cannot run together into a colliding key.
+  const reasoningKey =
+    loadingCreds || !isCustom ? null : `${effectiveProvider}\n${model.trim()}`
+  const [lastReasoningKey, setLastReasoningKey] = useState<string | null>(null)
+  if (reasoningKey !== null && reasoningKey !== lastReasoningKey) {
+    setLastReasoningKey(reasoningKey)
+    const stored = customProviders
+      .find((provider) => provider.id === effectiveProvider)
+      ?.models?.find((entry) => entry.id === model.trim())
+    setReasoning(
+      reasoningFromModel(stored?.reasoning, stored?.thinkingLevelMap)
+    )
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -246,6 +284,20 @@ export function PiConfigPanel({
     }
   }, [])
 
+  // Levels the picker may offer. A built-in provider keeps pi's full vocabulary —
+  // pi carries its own, more accurate declaration for those models.
+  const availableLevels: readonly PiThinkingLevel[] =
+    isCustom && reasoning.enabled ? reasoning.levels : PI_THINKING_LEVELS
+  // pi's `defaultThinkingLevel` is global, not per-model, so a level that suits one
+  // model can be unreachable on another. Say so instead of letting pi clamp it.
+  const defaultLevelUnlisted =
+    isCustom &&
+    reasoning.enabled &&
+    thinkingLevel !== "" &&
+    !reasoning.levels.includes(thinkingLevel as PiThinkingLevel)
+  const effectiveThinkingLevel =
+    isCustom && !reasoning.enabled ? "off" : thinkingLevel
+
   const handleSaveCreds = useCallback(async () => {
     const trimmedModel = model.trim()
     if (!effectiveProvider || !trimmedModel) {
@@ -257,15 +309,36 @@ export function PiConfigPanel({
       toast.error(t("pi.baseUrlRequired"))
       return
     }
+    // An enabled declaration with nothing checked leaves pi with an empty
+    // vocabulary, which clamps to `off` — the exact failure the card exists to
+    // prevent, so refuse it rather than write it.
+    if (isCustom && reasoning.enabled && reasoning.levels.length === 0) {
+      toast.error(t("pi.levelsEmptyError"))
+      return
+    }
+    if (defaultLevelUnlisted) {
+      toast.error(t("pi.defaultLevelUnlisted"))
+      return
+    }
+    const thinkingLevelMap = reasoningToMap(reasoning)
     setSavingCreds(true)
     try {
       await acpUpdatePiConfig({
         provider: effectiveProvider,
         model: trimmedModel,
-        thinkingLevel: thinkingLevel || undefined,
+        thinkingLevel: effectiveThinkingLevel || undefined,
         apiKey: apiKey.trim() || undefined,
         customBaseUrl: isCustom ? trimmedBaseUrl : undefined,
         customApi: isCustom ? customApi : undefined,
+        modelReasoning: isCustom
+          ? {
+              reasoning: reasoning.enabled,
+              thinkingLevelMap: thinkingLevelMap as Record<
+                string,
+                string | null
+              >,
+            }
+          : undefined,
       })
       if (apiKey.trim()) {
         setApiKey("")
@@ -276,13 +349,26 @@ export function PiConfigPanel({
         )
       }
       if (isCustom) {
-        // Reflect the just-saved custom provider so a reopen rehydrates it.
+        // Reflect the just-saved custom provider so a reopen rehydrates it —
+        // including the model's declaration, so switching away and back shows
+        // the chips that are now on disk rather than a stale read.
         setCustomProviders((prev) => {
+          const previous = prev.find((c) => c.id === effectiveProvider)
+          const models = (previous?.models ?? []).filter(
+            (entry) => entry.id !== trimmedModel
+          )
+          models.push({
+            id: trimmedModel,
+            reasoning: reasoning.enabled,
+            thinkingLevelMap: thinkingLevelMap as Record<string, string | null>,
+          })
+          models.sort((a, b) => a.id.localeCompare(b.id))
           const next = prev.filter((c) => c.id !== effectiveProvider)
           next.push({
             id: effectiveProvider,
             baseUrl: trimmedBaseUrl,
             api: customApi,
+            models,
           })
           next.sort((a, b) => a.id.localeCompare(b.id))
           return next
@@ -302,7 +388,9 @@ export function PiConfigPanel({
     customBaseUrl,
     customApi,
     model,
-    thinkingLevel,
+    effectiveThinkingLevel,
+    defaultLevelUnlisted,
+    reasoning,
     apiKey,
     onSaved,
     t,
@@ -434,12 +522,38 @@ export function PiConfigPanel({
   const [validating, setValidating] = useState(false)
   const [validation, setValidation] = useState<PiValidation>(null)
 
-  // Workspace trust (default on): seeded into pi's trust.json at launch so pi
-  // loads the opened folder's local config/skills without a separate prompt.
-  const [trustWorkspace, setTrustWorkspace] = useState(
-    () => (agent.env[PI_TRUST_WORKSPACE_ENV] ?? "1") !== "0"
+  // Project-trust decisions recorded in pi's `trust.json`, listed for review.
+  const [trustEntries, setTrustEntries] = useState<PiTrustEntry[] | null>(null)
+  const [revoking, setRevoking] = useState<string | null>(null)
+
+  const loadTrustEntries = useCallback(async () => {
+    try {
+      setTrustEntries(await acpPiListTrustEntries())
+    } catch (error) {
+      console.error("[Pi] list project trust failed", error)
+      setTrustEntries([])
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadTrustEntries()
+  }, [loadTrustEntries])
+
+  const handleRevokeTrust = useCallback(
+    async (path: string) => {
+      setRevoking(path)
+      try {
+        await acpPiSetProjectTrust(path, null)
+        await loadTrustEntries()
+      } catch (error) {
+        console.error("[Pi] revoke project trust failed", error)
+        toast.error(t("toasts.savePiTrustFailed"))
+      } finally {
+        setRevoking(null)
+      }
+    },
+    [loadTrustEntries, t]
   )
-  const [savingTrust, setSavingTrust] = useState(false)
 
   const handleValidate = useCallback(async () => {
     const cmd = command.trim()
@@ -483,28 +597,6 @@ export function PiConfigPanel({
     onSaveEnv,
     t,
   ])
-
-  // Self-persisting toggle: write the flag straight to env_json on change. Default
-  // on ⇒ omit the key when enabling (absence = default), write "0" when disabling.
-  const handleToggleTrust = useCallback(
-    async (next: boolean) => {
-      setTrustWorkspace(next)
-      setSavingTrust(true)
-      const env = { ...agent.env }
-      if (next) delete env[PI_TRUST_WORKSPACE_ENV]
-      else env[PI_TRUST_WORKSPACE_ENV] = "0"
-      try {
-        await onSaveEnv(env, agent.enabled)
-      } catch (error) {
-        console.error("[Pi] save workspace trust failed", error)
-        setTrustWorkspace(!next)
-        toast.error(t("toasts.savePiTrustFailed"))
-      } finally {
-        setSavingTrust(false)
-      }
-    },
-    [agent.env, agent.enabled, onSaveEnv, t]
-  )
 
   return (
     <div className="space-y-4">
@@ -917,26 +1009,162 @@ export function PiConfigPanel({
           />
         </div>
 
+        {/* ---- Reasoning card ----
+            pi reads `reasoning: modelDef.reasoning ?? false`, and an undeclared
+            model gets `["off"]` as its whole thinking vocabulary — so every level
+            the composer sends is clamped back and the picker snaps to Off. Only
+            custom providers need this: a built-in model carries pi's own, more
+            accurate declaration. */}
+        {isCustom && (
+          <div className="space-y-2 rounded-md border bg-background/60 p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-medium">
+                {t("pi.reasoningTitle")}
+              </span>
+              <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Switch
+                  checked={reasoning.enabled}
+                  onCheckedChange={(checked) =>
+                    setReasoning((prev) => ({
+                      ...prev,
+                      enabled: checked,
+                      // First enable with nothing remembered → offer pi's whole
+                      // vocabulary bar xhigh, which most backends reject.
+                      levels:
+                        checked && prev.levels.length === 0
+                          ? PI_THINKING_LEVELS.filter(
+                              (level) => level !== "xhigh"
+                            )
+                          : prev.levels,
+                    }))
+                  }
+                  disabled={savingCreds || loadingCreds}
+                  aria-label={t("pi.reasoningEnableLabel")}
+                />
+                {t("pi.reasoningEnableLabel")}
+              </label>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              {t("pi.reasoningDescription")}
+            </p>
+
+            {reasoning.enabled && (
+              <>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">
+                    {t("pi.levelsLabel")}
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PI_THINKING_LEVELS.map((level) => {
+                      const active = reasoning.levels.includes(level)
+                      return (
+                        <button
+                          key={level}
+                          type="button"
+                          disabled={savingCreds || loadingCreds}
+                          onClick={() =>
+                            setReasoning((prev) => ({
+                              ...prev,
+                              levels: toggleLevel(prev.levels, level),
+                            }))
+                          }
+                          aria-pressed={active}
+                          className={cn(
+                            "rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors",
+                            active
+                              ? "border-primary/40 bg-primary/10 text-foreground"
+                              : "border-border text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {level}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {reasoning.levels.length === 0
+                      ? t("pi.levelsEmptyError")
+                      : t("pi.levelsHint")}
+                  </p>
+                </div>
+
+                {reasoning.levels.length > 0 && (
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowWireValues((prev) => !prev)}
+                      className="text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      {showWireValues ? "▾ " : "▸ "}
+                      {t("pi.wireValuesTitle")}
+                    </button>
+                    {showWireValues && (
+                      <div className="space-y-1.5 rounded-md border border-dashed p-2">
+                        {reasoning.levels.map((level) => (
+                          <div key={level} className="flex items-center gap-2">
+                            <span className="w-16 shrink-0 font-mono text-[11px] text-muted-foreground">
+                              {level}
+                            </span>
+                            <Input
+                              value={reasoning.wireValues[level] ?? ""}
+                              onChange={(event) =>
+                                setReasoning((prev) => ({
+                                  ...prev,
+                                  wireValues: {
+                                    ...prev.wireValues,
+                                    [level]: event.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder={implicitWireValue(level)}
+                              spellCheck={false}
+                              className="h-7 font-mono text-xs"
+                              aria-label={`${t("pi.wireValuesTitle")}: ${level}`}
+                              disabled={savingCreds || loadingCreds}
+                            />
+                          </div>
+                        ))}
+                        <p className="text-[10px] text-muted-foreground">
+                          {t("pi.wireValuesHint")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         <div className="space-y-1.5">
           <label className="text-[11px] text-muted-foreground">
             {t("pi.thinkingLabel")}
           </label>
           <Select
-            value={thinkingLevel || "off"}
+            value={effectiveThinkingLevel || "off"}
             onValueChange={(value) => setThinkingLevel(value)}
-            disabled={savingCreds || loadingCreds}
+            // A model with no reasoning has exactly one reachable level, so the
+            // control would be a lie.
+            disabled={
+              savingCreds || loadingCreds || (isCustom && !reasoning.enabled)
+            }
           >
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="start">
-              {PI_THINKING_LEVELS.map((level) => (
+              {availableLevels.map((level) => (
                 <SelectItem key={level} value={level}>
                   {t(`pi.thinking.${level}`)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {defaultLevelUnlisted && (
+            <p className="text-[11px] text-destructive">
+              {t("pi.defaultLevelUnlisted")}
+            </p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -997,29 +1225,74 @@ export function PiConfigPanel({
         </div>
       </div>
 
-      {/* Workspace trust — auto-trust the folder codeg launches pi into */}
+      {/* Project trust — review/revoke the decisions in pi's trust.json.
+          A trusted folder lets that repo's `.pi/extensions` run at pi startup,
+          and the decision is inherited by every folder beneath it and honored by
+          the standalone `pi` CLI too, so it is worth being able to audit. Older
+          codeg builds auto-trusted every opened workspace; those entries are
+          indistinguishable from ones made inside pi, so they are listed for
+          review rather than pruned automatically. */}
       <div className="space-y-2 rounded-md border bg-muted/10 p-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <label
-              htmlFor="pi-trust-workspace"
-              className="flex items-center gap-1.5 text-xs font-medium"
-            >
-              <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
-              {t("pi.trustTitle")}
-            </label>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {t("pi.trustDescription")}
-            </p>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-xs font-medium">
+            <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
+            {t("pi.projectTrustTitle")}
           </div>
-          <Switch
-            id="pi-trust-workspace"
-            checked={trustWorkspace}
-            onCheckedChange={handleToggleTrust}
-            disabled={savingTrust}
-          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {t("pi.projectTrustDescription")}
+          </p>
         </div>
-        <p className="text-[11px] text-muted-foreground">{t("pi.trustHint")}</p>
+
+        {trustEntries === null ? (
+          <p className="text-[11px] text-muted-foreground">
+            {t("pi.projectTrustLoading")}
+          </p>
+        ) : trustEntries.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">
+            {t("pi.projectTrustEmpty")}
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {trustEntries.map((entry) => (
+              <li
+                key={entry.path}
+                className="flex items-center gap-2 rounded border bg-background/60 px-2 py-1.5"
+              >
+                <span
+                  className={cn(
+                    "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                    entry.trusted
+                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                      : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {entry.trusted
+                    ? t("pi.projectTrustTrusted")
+                    : t("pi.projectTrustDenied")}
+                </span>
+                <span
+                  className="min-w-0 flex-1 truncate font-mono text-[11px]"
+                  title={entry.path}
+                >
+                  {entry.path}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 shrink-0 px-2 text-[11px]"
+                  disabled={revoking === entry.path}
+                  onClick={() => void handleRevokeTrust(entry.path)}
+                >
+                  {revoking === entry.path ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    t("pi.projectTrustRevoke")
+                  )}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )

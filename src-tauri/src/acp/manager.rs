@@ -2078,6 +2078,9 @@ impl ConnectionManager {
                 title: String::new(),
                 status: state.status.clone(),
                 pending,
+                // Same reason as `title`: resolving a delegation child's parent
+                // needs the DB. Filled by `pet_list_active_sessions_core`.
+                parent: None,
             });
         }
         out
@@ -5044,6 +5047,7 @@ mod tests {
                 tool_call: serde_json::json!({ "toolCallId": "tc-1", "title": "test" }),
                 options: vec![],
                 created_at: chrono::Utc::now(),
+                queued: 0,
             });
         }
         let n = mgr.sweep_idle(Duration::from_secs(300)).await;

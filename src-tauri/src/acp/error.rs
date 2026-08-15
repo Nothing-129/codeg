@@ -36,6 +36,14 @@ pub enum AcpError {
     /// a sanity bound keeps a single pathological note from bloating them.
     #[error("invalid feedback: {0}")]
     InvalidFeedback(String),
+    /// pi was asked to start in a folder that pi's own trust store already marks
+    /// trusted, without anyone in codeg having confirmed that grant. Trusting a
+    /// folder lets the repository execute its `.pi/extensions` at pi startup, and
+    /// older codeg builds wrote those grants automatically for every folder they
+    /// opened — so the launch fails closed until the user answers for it. Carries
+    /// the explanation shown to the user; the project-trust notice resolves it.
+    #[error("{0}")]
+    PiProjectTrustRequired(String),
     #[error("binary download failed: {0}")]
     DownloadFailed(String),
     #[error("platform not supported: {0}")]
@@ -90,6 +98,7 @@ impl AcpError {
     pub fn code(&self) -> Option<&'static str> {
         match self {
             Self::SdkNotInstalled(_) => Some("sdk_not_installed"),
+            Self::PiProjectTrustRequired(_) => Some("pi_project_trust_required"),
             Self::PlatformNotSupported(_) => Some("platform_not_supported"),
             Self::InitializeTimeout => Some("initialize_timeout"),
             Self::ProbeTimedOut => Some("probe_timed_out"),

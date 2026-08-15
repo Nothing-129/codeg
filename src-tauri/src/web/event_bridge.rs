@@ -347,7 +347,9 @@ pub enum WorkTaskChange {
     Upsert { id: i32 },
     /// Soft-deleted by id.
     Deleted { id: i32 },
-    /// Folder task settings changed.
+    /// Something the folder's tasks INHERIT changed: its task settings, or the
+    /// folder's own default agent (the layer below them). Either can change
+    /// what an inheriting task runs — and reports — without touching a row.
     Settings { folder_id: i32 },
     /// Bulk change (e.g. boot reconcile) — refetch everything.
     Refresh,

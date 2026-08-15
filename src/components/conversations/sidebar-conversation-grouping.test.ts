@@ -19,6 +19,7 @@ import {
   selectPinnedWithReuse,
   selectRecentConversationsWithReuse,
   worktreeChildrenByParent,
+  worktreeHeaderAlias,
   type SidebarRow,
 } from "./sidebar-conversation-grouping"
 
@@ -242,6 +243,30 @@ describe("worktreeChildrenByParent", () => {
     worktreeChildrenByParent(top, folders)
     expect(top).toEqual([10])
     expect(folders.map((f) => f.id)).toEqual([10, 11])
+  })
+})
+
+describe("worktreeHeaderAlias", () => {
+  it("prefers the alias — where the seeded branch name lands", () => {
+    expect(worktreeHeaderAlias("task/49", "task/49")).toBe("task/49")
+  })
+
+  it("lets a renamed worktree win over its branch", () => {
+    expect(worktreeHeaderAlias("Payment rewrite", "task/49")).toBe(
+      "Payment rewrite"
+    )
+  })
+
+  it("falls back to the branch", () => {
+    expect(worktreeHeaderAlias(null, "task/49")).toBe("task/49")
+  })
+
+  it("gives up rather than inventing one, leaving the bare directory name", () => {
+    expect(worktreeHeaderAlias(null, null)).toBeNull()
+    // Blank-but-present values (a cleared alias round-tripping as "") must not
+    // win the chain and render `[ … ]` against an empty label.
+    expect(worktreeHeaderAlias("  ", "  ")).toBeNull()
+    expect(worktreeHeaderAlias(undefined, undefined)).toBeNull()
   })
 })
 

@@ -268,6 +268,12 @@ pub enum FileTreeNode {
         name: String,
         path: String,
         children: Vec<FileTreeNode>,
+        /// The entry is a symlink on disk. The panel badges it as a link; its
+        /// children are left empty here and lazily fetched when the row is
+        /// expanded, because the walk deliberately does not descend through
+        /// links (a `x -> ..` loop or a pnpm symlink farm would blow up).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        symlink: bool,
     },
 }
 
@@ -689,6 +695,14 @@ pub async fn open_folder_core(
 /// repo groups under that one repo folder. An unknown / non-positive
 /// `source_folder_id` degrades to a top-level folder (`parent_id = None`) rather
 /// than erroring.
+///
+/// Also defaults the folder's display alias to the checked-out branch (see
+/// [`seed_worktree_alias`]) — a worktree's directory name (`codeg-task-49`,
+/// `codeg-automation-3-run-8`) says far less about it than the branch does, and
+/// this is the one place every worktree registration passes through: the branch
+/// dropdown's "new worktree", switch-to-branch landing on an unregistered
+/// checkout, the automation engine's per-run worktree, and the work-task
+/// engine's per-task worktree (fresh mint and re-create-from-branch alike).
 pub async fn open_worktree_folder_core(
     db: &AppDatabase,
     path: String,
@@ -705,10 +719,87 @@ pub async fn open_worktree_folder_core(
     let entry = folder_service::add_folder_with_parent(&db.conn, &path, parent_id)
         .await
         .map_err(AppCommandError::from)?;
+    seed_worktree_alias(db, entry.id, &path).await;
     folder_service::get_folder_by_id(&db.conn, entry.id)
         .await
         .map_err(AppCommandError::from)?
         .ok_or_else(|| AppCommandError::not_found("Folder not found after add"))
+}
+
+/// Default a worktree folder's alias to the branch checked out at `path`.
+///
+/// Best-effort in both directions, and deliberately silent:
+/// - The branch is read from the directory itself rather than threaded from the
+///   caller, so registrations that never knew a branch name (a pre-existing
+///   checkout the branch switcher just adopted) get labeled too, and the label
+///   can never disagree with what is actually checked out there.
+/// - A detached HEAD, a path that is gone, or git missing entirely all resolve to
+///   "no branch" and leave the folder unlabeled — the sidebar then falls back to
+///   the directory name exactly as before.
+/// - The write only lands when no alias is set yet (see
+///   [`folder_service::seed_folder_alias`]), so re-registering a worktree — a
+///   task retry, a re-created checkout — never overwrites a name the user chose.
+async fn seed_worktree_alias(db: &AppDatabase, folder_id: i32, path: &str) {
+    let Some(branch) = resolve_git_head(path).await.ok().and_then(|h| h.branch) else {
+        return;
+    };
+    if let Err(e) = folder_service::seed_folder_alias(&db.conn, folder_id, &branch).await {
+        tracing::warn!("[folders] could not seed folder {folder_id}'s alias from git: {e}");
+    }
+}
+
+/// Label every already-registered worktree folder that has no alias with the
+/// branch it currently has checked out — the one-shot startup counterpart of the
+/// seeding [`open_worktree_folder_core`] now does at registration time.
+///
+/// Without it the feature would only ever reach worktrees created from here on,
+/// leaving every worktree already in the sidebar showing its directory name.
+/// Each row is seeded through the same never-clobber path, so a worktree the
+/// user has already named is skipped, and one whose directory is gone (or is
+/// detached) simply stays unlabeled and is retried next launch — a handful of
+/// fast git failures, not a growing cost, since a successful seed removes the
+/// row from the work list for good.
+///
+/// Folders that are in the workspace when they get labeled are broadcast, so a
+/// client that fetched its folder list before this finished still updates in
+/// place. A closed folder is labeled just the same but deliberately NOT
+/// broadcast: `folder://changed` Upsert means "insert-or-replace in the open
+/// folder list", so announcing one would put a folder the user closed back in
+/// their sidebar. Whether it is open is read fresh at that moment rather than
+/// taken from the work list — walking every folder takes long enough (a git call
+/// each) for the user to close one in the middle — and reopening it later
+/// re-reads the row anyway, so the label still lands. Returns how many were
+/// labeled.
+pub async fn backfill_worktree_folder_aliases(emitter: &EventEmitter, db: &AppDatabase) -> usize {
+    let pending = match folder_service::list_worktree_folders_missing_alias(&db.conn).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!("[folders] worktree alias backfill could not list folders: {e}");
+            return 0;
+        }
+    };
+
+    let mut labeled = 0;
+    for (folder_id, path) in pending {
+        let Some(branch) = resolve_git_head(&path).await.ok().and_then(|h| h.branch) else {
+            continue;
+        };
+        match folder_service::seed_folder_alias(&db.conn, folder_id, &branch).await {
+            Ok(true) => {
+                labeled += 1;
+                if let Ok(Some(detail)) =
+                    folder_service::get_open_folder_by_id(&db.conn, folder_id).await
+                {
+                    emit_folder_upsert(emitter, detail);
+                }
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::warn!("[folders] worktree alias backfill failed for {folder_id}: {e}");
+            }
+        }
+    }
+    labeled
 }
 
 /// Open a folder into the workspace and announce it so the workspace window
@@ -820,15 +911,30 @@ pub async fn update_folder_alias_core(
         .ok_or_else(|| AppCommandError::not_found("Folder not found"))
 }
 
+/// The folder's default agent is the last layer a work task inherits from, and
+/// the task views resolve it live rather than freezing it on the row — so a
+/// change here changes what every inheriting task reports, and the boards have
+/// to be told. Nothing else emits for this column, so without the nudge they
+/// would keep drawing the previous agent's mark until an unrelated task event
+/// happened by. `Settings` is the same signal the folder's task settings send
+/// for the layer directly above this one.
 pub async fn update_folder_default_agent_core(
+    emitter: &EventEmitter,
     db: &AppDatabase,
     folder_id: i32,
     default_agent_type: Option<crate::models::agent::AgentType>,
 ) -> Result<FolderDetail, AppCommandError> {
-    folder_service::update_folder_default_agent(&db.conn, folder_id, default_agent_type)
-        .await
-        .map_err(AppCommandError::from)?
-        .ok_or_else(|| AppCommandError::not_found("Folder not found"))
+    let detail =
+        folder_service::update_folder_default_agent(&db.conn, folder_id, default_agent_type)
+            .await
+            .map_err(AppCommandError::from)?
+            .ok_or_else(|| AppCommandError::not_found("Folder not found"))?;
+    crate::web::event_bridge::emit_event(
+        emitter,
+        crate::web::event_bridge::WORK_TASK_CHANGED_EVENT,
+        crate::web::event_bridge::WorkTaskChange::Settings { folder_id },
+    );
+    Ok(detail)
 }
 
 // ---------------------------------------------------------------------------
@@ -967,11 +1073,18 @@ pub async fn update_folder_alias(
 #[cfg(feature = "tauri-runtime")]
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
 pub async fn update_folder_default_agent(
+    app: tauri::AppHandle,
     db: tauri::State<'_, AppDatabase>,
     folder_id: i32,
     default_agent_type: Option<crate::models::agent::AgentType>,
 ) -> Result<FolderDetail, AppCommandError> {
-    update_folder_default_agent_core(&db, folder_id, default_agent_type).await
+    update_folder_default_agent_core(
+        &EventEmitter::Tauri(app),
+        &db,
+        folder_id,
+        default_agent_type,
+    )
+    .await
 }
 
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
@@ -3654,22 +3767,249 @@ fn compute_etag(content: &[u8], metadata: &std::fs::Metadata) -> String {
 /// `canonical_root`: either it is inside the root, or it is inside a directory
 /// the user explicitly linked into that root (see [`crate::folder_links`]).
 ///
-/// Everything else stays rejected — in particular a symlink that merely happens
-/// to sit in the tree, which is what keeps a cloned repo's `secrets -> ~/.ssh`
-/// out of reach of the HTML preview's sub-resource inlining.
+/// This is the *strict* rule, and it is deliberately reserved for the two
+/// surfaces where the path comes from something other than a user clicking a
+/// row in the file tree:
+///
+/// - [`read_workspace_file_base64`], which the HTML preview uses to inline
+///   sub-resources named by the previewed markup itself. A cloned repo shipping
+///   `secrets -> ~/.ssh` plus an `<img src="secrets/id_rsa">` must not be able
+///   to make us read that file — nobody clicked anything.
+/// - the web upload chain (`web::handlers::workspace_files`), where following
+///   an unvetted link would *create* directories outside the workspace.
+///
+/// Paths the user navigated to go through [`ensure_user_navigable_path`]
+/// instead.
 pub(crate) fn is_within_workspace(canonical_root: &Path, canonical_target: &Path) -> bool {
     canonical_target.starts_with(canonical_root)
         || crate::folder_links::is_allowed(canonical_root, canonical_target)
 }
 
-fn ensure_path_in_workspace(root: &Path, target: &Path) -> Result<(), AppCommandError> {
-    let canonical_root = std::fs::canonicalize(root).map_err(AppCommandError::io)?;
-    let canonical_target = std::fs::canonicalize(target).map_err(AppCommandError::io)?;
-    if !is_within_workspace(&canonical_root, &canonical_target) {
+/// The workspace boundary for a path the user picked in the file panel.
+///
+/// `target` must have been composed by [`resolve_tree_path`] (or the web
+/// handlers' `resolve_relative_path`), which already rejected absolute paths
+/// and every `..`, so it is lexically under the root; this asserts that
+/// invariant rather than re-deriving it.
+///
+/// What it deliberately does *not* do is canonicalize. The only way a
+/// `..`-free relative path leaves the root is a symlink living inside the
+/// workspace — and such a symlink is part of the workspace as far as the user,
+/// the terminal, and the agent CLI (whose cwd is this very root) are concerned.
+/// Canonicalizing here is what made a symlinked folder impossible to open: the
+/// tree showed it, and every click answered "Path is outside workspace root"
+/// (issue #430). `rename`/`move`/`delete` have always drawn the boundary
+/// exactly here; this brings the read/write commands in line.
+///
+/// The strict, registry-only rule stays where the path is *not* user-driven —
+/// see [`is_within_workspace`].
+pub(crate) fn ensure_user_navigable_path(
+    root: &Path,
+    target: &Path,
+) -> Result<(), AppCommandError> {
+    if !target.starts_with(root) {
         return Err(AppCommandError::invalid_input(
             "Path is outside workspace root",
         ));
     }
+    Ok(())
+}
+
+/// Identity of a filesystem *entry*: the canonical directory holding it plus
+/// its own name. Canonicalizing the parent resolves every alias in the path
+/// while leaving the final component alone, so a symlink is identified as the
+/// link itself and two path strings naming the same link compare equal.
+fn entry_identity(path: &Path) -> Option<(PathBuf, std::ffi::OsString)> {
+    let parent = path.parent()?;
+    let name = path.file_name()?;
+    Some((std::fs::canonicalize(parent).ok()?, name.to_os_string()))
+}
+
+/// Every symlink the configured root path is resolved through, as
+/// [`entry_identity`] pairs — the entries that must survive for the workspace
+/// to keep pointing at the right directory.
+///
+/// This resolves the root the way the kernel does, recording each link it
+/// follows, because neither cheaper answer is correct:
+///
+/// - "does it resolve to the canonical root?" both misses and over-reaches. It
+///   misses a root with components *after* the link (`actual/sub/hop -> ..`
+///   opened as `actual/sub/hop/sub` resolves `hop` to `actual`, not to the
+///   root), and it wrongly claims an unrelated `self -> .` that the root does
+///   not depend on at all.
+/// - walking only the root's own components and jumping to `canonicalize` at
+///   each link skips whatever links sit inside *that link's target*
+///   (`actual/hop -> .` reached through a root `workspace -> actual/hop`).
+///
+/// Identity comparison means an alias reaching the same link is caught too.
+/// Names are compared ASCII-case-insensitively by the caller; that leaves one
+/// residual, a differently *Unicode-normalised* (NFC/NFD) spelling on macOS.
+/// Tree paths come from `read_dir` and therefore carry the filesystem's own
+/// spelling, so the UI cannot produce that input.
+fn root_resolution_links(root: &Path) -> Vec<(PathBuf, std::ffi::OsString)> {
+    let mut protected = Vec::new();
+    let mut hops = 0usize;
+    // Roots are stored verbatim, so one can be relative. The walk below builds
+    // its path up from empty, where a leading `..` would pop nothing and a
+    // leading `.` would vanish — the path it then stat'ed would be a *different*
+    // one, silently protecting nothing. `std::path::absolute` anchors it to the
+    // working directory the way the OS would, and deliberately keeps `..`
+    // intact rather than folding it away, which is what the walk needs to
+    // resolve it against real directories.
+    let Ok(anchored) = std::path::absolute(root) else {
+        return protected;
+    };
+    // A root that cannot be resolved (missing, unreadable, a link cycle) simply
+    // protects fewer entries — the outward boundary in
+    // `ensure_entry_is_in_workspace` still applies on its own.
+    let _ = resolve_recording_links(&anchored, &mut protected, &mut hops);
+    protected
+}
+
+/// Resolve `path` to a link-free path, pushing the [`entry_identity`] of every
+/// symlink traversed into `protected`. `None` if resolution cannot finish.
+///
+/// `hops` bounds the work across the whole resolution — every link followed
+/// spends one, and recursion only happens after spending one, so a cycle
+/// (`a -> b`, `b -> a`) terminates and the recursion depth is bounded too.
+fn resolve_recording_links(
+    path: &Path,
+    protected: &mut Vec<(PathBuf, std::ffi::OsString)>,
+    hops: &mut usize,
+) -> Option<PathBuf> {
+    /// Same order of magnitude as the kernel's own `ELOOP` limit.
+    const MAX_HOPS: usize = 40;
+
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {
+                current.push(component.as_os_str());
+                continue;
+            }
+            Component::CurDir => continue,
+            // Everything resolved so far is link-free, so popping is the same
+            // thing the kernel would do.
+            Component::ParentDir => {
+                current.pop();
+                continue;
+            }
+            Component::Normal(name) => current.push(name),
+        }
+
+        let metadata = std::fs::symlink_metadata(&current).ok()?;
+        if !metadata.file_type().is_symlink() {
+            continue;
+        }
+        *hops += 1;
+        if *hops > MAX_HOPS {
+            return None;
+        }
+        if let Some(identity) = entry_identity(&current) {
+            protected.push(identity);
+        }
+        let link_target = std::fs::read_link(&current).ok()?;
+        let absolute_target = if link_target.is_absolute() {
+            link_target
+        } else {
+            current.parent()?.join(link_target)
+        };
+        // Resolve through the target as well, so links *inside* it are recorded
+        // rather than skipped over by a bare `canonicalize`.
+        current = resolve_recording_links(&absolute_target, protected, hops)?;
+    }
+    Some(current)
+}
+
+/// Confinement for the operations that destroy or relocate an entry —
+/// `delete_file_tree_entry`, `rename_file_tree_entry`, `move_file_tree_entry`.
+///
+/// These are the only commands that can make data disappear, and a lexical
+/// check is not enough for them the way it is for reads (see
+/// [`ensure_user_navigable_path`]). Each of them used to compare
+/// `target == root` and nothing else; any link pointing outside the root turns
+/// every path beneath it into an alias, and three separate review rounds found
+/// three different shapes that a blocklist missed:
+///
+/// - `up -> ..` makes `up/<root name>` a second name for the root, so
+///   `remove_dir_all` wiped the workspace;
+/// - a workspace root that is *itself* a symlink (roots are stored verbatim —
+///   `folder_service::add_folder` never canonicalizes) could be unlinked
+///   through that same alias, leaving the folder pointing at nothing;
+/// - an intermediate link in the root's own resolution chain
+///   (`workspace -> ../hop`, `hop -> actual`) could be removed the same way.
+///
+/// So rather than enumerate aliases, require the entry to actually live inside
+/// the workspace. The *parent* is what gets canonicalized, never the entry
+/// itself: all three operations act on a symlink rather than on its target
+/// (`remove_file` unlinks, `fs::rename` moves the link), so a link sitting in
+/// the workspace stays removable however far away it points — what matters is
+/// that its parent is inside the root.
+///
+/// [`is_within_workspace`] keeps the `folder_links` exemption, so a directory
+/// linked in through the "link folder" dialog stays fully mutable — that is
+/// the point of a multi-folder workspace. A symlink the user created by hand
+/// is browsable and its files open and save (issue #430), but destroying
+/// content *through* it needs that explicit authorization.
+fn ensure_entry_is_in_workspace(
+    root: &Path,
+    target: &Path,
+    action: &str,
+) -> Result<(), AppCommandError> {
+    if target == root {
+        return Err(AppCommandError::invalid_input(format!(
+            "Cannot {action} workspace root"
+        )));
+    }
+    let parent = target.parent().ok_or_else(|| {
+        AppCommandError::invalid_input(format!("Cannot {action} a path without a parent"))
+    })?;
+    // Callers have already established that the entry exists, so a failure here
+    // is an unreadable ancestor or a race — neither of which proves the path is
+    // safe. Refuse rather than fall through to a destructive operation.
+    let canonical_root = std::fs::canonicalize(root).map_err(|e| {
+        AppCommandError::io_error("Failed to resolve workspace root").with_detail(e.to_string())
+    })?;
+    let canonical_parent = std::fs::canonicalize(parent).map_err(|e| {
+        AppCommandError::io_error("Failed to resolve target directory").with_detail(e.to_string())
+    })?;
+    if !is_within_workspace(&canonical_root, &canonical_parent) {
+        return Err(AppCommandError::invalid_input(format!(
+            "Cannot {action} an entry that resolves outside the workspace"
+        )));
+    }
+
+    // The check above vouches for the entry's *parent*, which is all a normal
+    // entry needs. A symlink needs one more: the root path may be built on it.
+    // A root is stored verbatim and can be a link that lives inside its own
+    // target (`actual/workspace -> .`, opened as `actual/workspace`), so it
+    // shows up as an ordinary row whose parent is legitimately inside the
+    // workspace — and unlinking it leaves the folder pointing at nothing while
+    // every file survives.
+    //
+    // Identified by walking the root's own resolution and recording what it
+    // passes through — see `root_resolution_links` for why the cheaper
+    // approximations are wrong. Links outside the root were already refused
+    // above, and a dangling link cannot be part of a root's resolution (the
+    // root exists), so it stays deletable.
+    if std::fs::symlink_metadata(target)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        let breaks_the_root = entry_identity(target).is_some_and(|(dir, name)| {
+            root_resolution_links(root)
+                .into_iter()
+                .any(|(protected_dir, protected_name)| {
+                    protected_dir == dir && protected_name.eq_ignore_ascii_case(&name)
+                })
+        });
+        if breaks_the_root {
+            return Err(AppCommandError::invalid_input(format!(
+                "Cannot {action} a link the workspace root resolves through"
+            )));
+        }
+    }
+
     Ok(())
 }
 
@@ -3813,6 +4153,21 @@ where
 
 // ─── Directory browser helpers (for web/server mode) ───
 
+/// Whether an entry should be presented to the UI as a directory.
+///
+/// The directory walkers run with `follow_links` off, so a symlink's own
+/// `FileType` is `symlink` — never `dir` — and classifying on it alone turns a
+/// symlinked *directory* into a leaf file the panel then refuses to open
+/// ("Path is not a file"). Resolving costs one extra `stat`, and only for the
+/// entries that actually are links.
+fn entry_presents_as_dir(file_type: &std::fs::FileType, path: &Path) -> bool {
+    if file_type.is_symlink() {
+        path.is_dir()
+    } else {
+        file_type.is_dir()
+    }
+}
+
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
 pub async fn get_home_directory() -> Result<String, AppCommandError> {
     dirs::home_dir()
@@ -3850,12 +4205,7 @@ pub async fn list_directory_entries(path: String) -> Result<Vec<DirectoryEntry>,
             Err(_) => continue,
         };
         // Follow symlinks: check if the resolved path is a directory
-        let is_dir = if file_type.is_symlink() {
-            entry.path().is_dir()
-        } else {
-            file_type.is_dir()
-        };
-        if !is_dir {
+        if !entry_presents_as_dir(&file_type, &entry.path()) {
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
@@ -3869,13 +4219,7 @@ pub async fn list_directory_entries(path: String) -> Result<Vec<DirectoryEntry>,
         let has_children = match std::fs::read_dir(entry.path()) {
             Ok(sub) => sub.filter_map(|e| e.ok()).any(|e| {
                 let ft = e.file_type().ok();
-                let is_sub_dir = ft.is_some_and(|ft| {
-                    if ft.is_symlink() {
-                        e.path().is_dir()
-                    } else {
-                        ft.is_dir()
-                    }
-                });
+                let is_sub_dir = ft.is_some_and(|ft| entry_presents_as_dir(&ft, &e.path()));
                 if !is_sub_dir {
                     return false;
                 }
@@ -3941,11 +4285,7 @@ pub async fn list_directory_with_files(
             continue;
         }
         // Follow symlinks for the dir/file classification.
-        let is_dir = if file_type.is_symlink() {
-            entry.path().is_dir()
-        } else {
-            file_type.is_dir()
-        };
+        let is_dir = entry_presents_as_dir(&file_type, &entry.path());
         let abs_path = entry.path().to_string_lossy().to_string();
 
         let (has_children, size) = if is_dir {
@@ -4059,9 +4399,10 @@ fn build_file_tree(
         visited.insert(canonical_root);
     }
 
-    // Linked directories are handled separately below: `WalkDir` reports a
-    // symlink's type as "symlink", not "dir", so left in the main walk they
-    // would surface as leaf *files* with no way to expand them.
+    // Linked directories are handled separately below so their subtree is
+    // grafted in *eagerly*: an authorized link is part of the workspace, and
+    // workspace search walks it too. Every other symlinked directory is
+    // reported as an (empty) `Dir` in the main walk and expanded lazily.
     let linked: Vec<(String, PathBuf)> = authorized_links_in(root)
         .into_iter()
         .filter(|(_, target)| !visited.contains(target))
@@ -4082,7 +4423,7 @@ fn build_file_tree(
             if e.depth() == 1 && linked_names.contains(name.as_ref()) {
                 return false;
             }
-            if e.file_type().is_dir() {
+            if entry_presents_as_dir(&e.file_type(), e.path()) {
                 !FILE_TREE_IGNORED_DIRS.contains(&name.as_ref())
             } else {
                 name != ".DS_Store"
@@ -4110,7 +4451,38 @@ fn build_file_tree(
             .to_string_lossy()
             .replace('\\', "/");
 
-        if entry.file_type().is_dir() {
+        if entry.file_type().is_symlink() {
+            // `WalkDir` never descends through a symlink, so this entry is a
+            // leaf of the walk either way. What it must NOT be is a leaf
+            // *file*: a symlinked directory is a directory, and reporting it
+            // as a file gave the panel a file icon and "Path is not a file"
+            // on click (issue #430). Emit an empty `Dir` instead — the panel
+            // fills it in on expand via `get_file_tree(<abs link path>, 1)`,
+            // which resolves the root link (`WalkDir::follow_root_links`).
+            // Doing it lazily is what keeps a `x -> ..` loop or a pnpm
+            // symlink farm from exploding here.
+            if entry_path.is_dir() {
+                dir_children
+                    .entry(parent)
+                    .or_default()
+                    .push(FileTreeNode::Dir {
+                        name,
+                        path: rel_path,
+                        children: vec![],
+                        symlink: true,
+                    });
+            } else {
+                // A link to a file, or a dangling one: a leaf file is the
+                // honest rendering — there is nothing to expand.
+                dir_children
+                    .entry(parent)
+                    .or_default()
+                    .push(FileTreeNode::File {
+                        name,
+                        path: rel_path,
+                    });
+            }
+        } else if entry.file_type().is_dir() {
             dir_paths_by_rel.insert(rel_path.clone(), entry_path.clone());
             dir_children.entry(entry_path.clone()).or_default();
             dir_order.push(entry_path);
@@ -4122,6 +4494,7 @@ fn build_file_tree(
                     name,
                     path: rel_path,
                     children: vec![],
+                    symlink: false,
                 });
         } else {
             dir_children
@@ -4177,9 +4550,13 @@ fn build_file_tree(
             if let FileTreeNode::Dir {
                 name,
                 path: rel_path,
+                symlink,
                 ..
             } = d
             {
+                // A symlinked directory was never registered in
+                // `dir_paths_by_rel` / `dir_children`, so the lookup misses and
+                // it keeps the empty child list the panel lazy-loads into.
                 let full_path = dir_paths_by_rel
                     .get(&rel_path)
                     .cloned()
@@ -4189,6 +4566,7 @@ fn build_file_tree(
                     name,
                     path: rel_path,
                     children: sub_children,
+                    symlink,
                 });
             }
         }
@@ -4227,6 +4605,7 @@ fn build_file_tree(
             name,
             path: prefix,
             children,
+            symlink: true,
         });
     }
 
@@ -4286,7 +4665,9 @@ pub async fn list_workspace_files(
             if e.depth() == 1 && linked_names.contains(name.as_ref()) {
                 return false;
             }
-            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            if e.file_type()
+                .is_some_and(|t| entry_presents_as_dir(&t, e.path()))
+            {
                 !FILE_TREE_IGNORED_DIRS.contains(&name.as_ref())
             } else {
                 name != ".DS_Store"
@@ -4306,7 +4687,11 @@ pub async fn list_workspace_files(
             continue;
         }
 
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        // A symlinked directory is reported as a directory (the walker is not
+        // following it — only its own contents stay out of the index).
+        let is_dir = entry
+            .file_type()
+            .is_some_and(|t| entry_presents_as_dir(&t, entry_path));
         let name = entry.file_name().to_string_lossy().to_string();
         let rel_path = entry_path
             .strip_prefix(&root)
@@ -4355,7 +4740,9 @@ fn list_files_under(root: &Path, prefix: &str) -> Vec<WorkspaceFileEntry> {
         .sort_by_file_name(|a, b| a.cmp(b))
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
-            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            if e.file_type()
+                .is_some_and(|t| entry_presents_as_dir(&t, e.path()))
+            {
                 !FILE_TREE_IGNORED_DIRS.contains(&name.as_ref())
             } else {
                 name != ".DS_Store"
@@ -4373,7 +4760,9 @@ fn list_files_under(root: &Path, prefix: &str) -> Vec<WorkspaceFileEntry> {
         let Ok(rel) = entry_path.strip_prefix(root) else {
             continue;
         };
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let is_dir = entry
+            .file_type()
+            .is_some_and(|t| entry_presents_as_dir(&t, entry_path));
         entries.push(WorkspaceFileEntry {
             name: entry.file_name().to_string_lossy().to_string(),
             path: format!("{prefix}/{}", rel.to_string_lossy().replace('\\', "/")),
@@ -4551,7 +4940,7 @@ pub async fn read_file_preview(
     let path_for_response = path.clone();
 
     run_file_io(move || {
-        ensure_path_in_workspace(&root, &target)?;
+        ensure_user_navigable_path(&root, &target)?;
         let content = read_text_full(&target, FILE_OPEN_HARD_LIMIT)?;
         Ok(FilePreviewContent {
             path: path_for_response,
@@ -4582,7 +4971,7 @@ pub async fn read_file_for_edit(
     let path_for_response = path.clone();
 
     run_file_io(move || {
-        ensure_path_in_workspace(&root, &target)?;
+        ensure_user_navigable_path(&root, &target)?;
         let metadata = std::fs::metadata(&target).map_err(AppCommandError::io)?;
         let content = read_text_full(&target, FILE_OPEN_HARD_LIMIT)?;
         let readonly = metadata.permissions().readonly();
@@ -4630,7 +5019,7 @@ pub async fn save_file_content(
     let path_for_response = path.clone();
 
     run_file_io(move || {
-        ensure_path_in_workspace(&root, &target)?;
+        ensure_user_navigable_path(&root, &target)?;
 
         let link_meta = std::fs::symlink_metadata(&target).map_err(AppCommandError::io)?;
         if link_meta.file_type().is_symlink() {
@@ -4728,7 +5117,7 @@ pub async fn save_file_copy(
     }
 
     run_file_io(move || {
-        ensure_path_in_workspace(&root, &source)?;
+        ensure_user_navigable_path(&root, &source)?;
 
         let source_meta = std::fs::symlink_metadata(&source).map_err(AppCommandError::io)?;
         if source_meta.file_type().is_symlink() {
@@ -4743,7 +5132,7 @@ pub async fn save_file_copy(
                 AppCommandError::invalid_input("Cannot determine parent directory for source file")
             })?
             .to_path_buf();
-        ensure_path_in_workspace(&root, &parent)?;
+        ensure_user_navigable_path(&root, &parent)?;
 
         let source_name = source
             .file_name()
@@ -4808,11 +5197,7 @@ pub async fn rename_file_tree_entry(
     if !target.exists() {
         return Err(AppCommandError::not_found("Target file does not exist"));
     }
-    if target == root {
-        return Err(AppCommandError::invalid_input(
-            "Cannot rename workspace root",
-        ));
-    }
+    ensure_entry_is_in_workspace(&root, &target, "rename")?;
 
     let parent = target
         .parent()
@@ -4868,15 +5253,30 @@ pub async fn move_file_tree_entry(
         }
         Err(e) => return Err(AppCommandError::io(e)),
     }
-    if source == root {
-        return Err(AppCommandError::invalid_input("Cannot move workspace root"));
-    }
+    ensure_entry_is_in_workspace(&root, &source, "move")?;
 
     let dest = resolve_tree_path(&root, &dest_dir)?;
     if !dest.is_dir() {
         return Err(AppCommandError::invalid_input(
             "Destination is not a directory",
         ));
+    }
+    // The destination is a directory, so it is confined directly rather than
+    // through its parent — otherwise a link could be used to move entries out
+    // of the workspace entirely.
+    {
+        let canonical_root = std::fs::canonicalize(&root).map_err(|e| {
+            AppCommandError::io_error("Failed to resolve workspace root").with_detail(e.to_string())
+        })?;
+        let canonical_dest = std::fs::canonicalize(&dest).map_err(|e| {
+            AppCommandError::io_error("Failed to resolve destination directory")
+                .with_detail(e.to_string())
+        })?;
+        if !is_within_workspace(&canonical_root, &canonical_dest) {
+            return Err(AppCommandError::invalid_input(
+                "Destination resolves outside the workspace",
+            ));
+        }
     }
 
     // Reject moving a directory into itself or one of its own descendants —
@@ -4959,12 +5359,18 @@ pub async fn delete_file_tree_entry(
             );
         }
     };
-    if target == root {
-        return Err(AppCommandError::invalid_input(
-            "Cannot delete workspace root",
-        ));
-    }
-    if meta.is_dir() {
+    ensure_entry_is_in_workspace(&root, &target, "delete")?;
+    if meta.file_type().is_symlink() {
+        // Unlink the entry itself, never what it points at. `remove_file`
+        // covers unix and Windows *file* links; a Windows directory symlink or
+        // junction only goes through `remove_dir`, which is why the fallback
+        // exists (same shape as `folder_links::remove_link_entry`). The first
+        // error is the one reported: on unix `remove_dir` on a symlink fails
+        // with a misleading ENOTDIR that hides the real cause.
+        std::fs::remove_file(&target).or_else(|first| {
+            std::fs::remove_dir(&target).map_err(|_| AppCommandError::io(first))
+        })?;
+    } else if meta.is_dir() {
         std::fs::remove_dir_all(&target).map_err(AppCommandError::io)?;
     } else {
         std::fs::remove_file(&target).map_err(AppCommandError::io)?;
@@ -5783,6 +6189,35 @@ mod tests {
     use crate::db::test_helpers::fresh_in_memory_db;
     use crate::models::agent::AgentType;
 
+    /// The frontend reads `symlink` as an optional boolean, and the tree
+    /// snapshot is rebroadcast over the WebSocket on every filesystem change —
+    /// so the flag must be present when true and *absent* (not `false`) on the
+    /// overwhelming majority of directories.
+    #[test]
+    fn file_tree_dir_serializes_the_symlink_flag_only_when_set() {
+        let plain = serde_json::to_value(FileTreeNode::Dir {
+            name: "src".into(),
+            path: "src".into(),
+            children: vec![],
+            symlink: false,
+        })
+        .expect("serialize");
+        assert_eq!(plain["kind"], "dir");
+        assert!(
+            plain.get("symlink").is_none(),
+            "an ordinary directory must not pay for the flag: {plain}"
+        );
+
+        let linked = serde_json::to_value(FileTreeNode::Dir {
+            name: "kb".into(),
+            path: "kb".into(),
+            children: vec![],
+            symlink: true,
+        })
+        .expect("serialize");
+        assert_eq!(linked["symlink"], true);
+    }
+
     #[test]
     fn git_author_match_pattern_anchors_and_escapes() {
         // Anchored to the name start + trailing " <" so it can't match a longer
@@ -6465,6 +6900,233 @@ mod tests {
         );
     }
 
+    /// The point of seeding: a worktree's directory name says far less about it
+    /// than the branch it holds, so registering one labels it by branch.
+    #[tokio::test]
+    async fn open_worktree_folder_core_labels_the_folder_with_its_branch() {
+        let db = fresh_in_memory_db().await;
+        let (_dir, repo, wt_path) = repo_with_worktree();
+        let root = open_folder_core(&db, repo).await.expect("root");
+
+        let wt = open_worktree_folder_core(&db, wt_path, root.id)
+            .await
+            .expect("worktree folder");
+
+        assert_eq!(
+            wt.alias.as_deref(),
+            Some("wt"),
+            "the fresh worktree folder is labeled with its checked-out branch"
+        );
+    }
+
+    /// Re-registering a worktree is routine — a task retry re-creating its
+    /// checkout, an automation re-resolving the same directory — and must never
+    /// undo the name the user gave it in the sidebar.
+    #[tokio::test]
+    async fn open_worktree_folder_core_keeps_a_user_alias_on_re_register() {
+        let db = fresh_in_memory_db().await;
+        let (_dir, repo, wt_path) = repo_with_worktree();
+        let root = open_folder_core(&db, repo).await.expect("root");
+        let wt = open_worktree_folder_core(&db, wt_path.clone(), root.id)
+            .await
+            .expect("worktree folder");
+        update_folder_alias_core(&db, wt.id, Some("Payment rewrite".into()))
+            .await
+            .expect("user renames it");
+
+        let again = open_worktree_folder_core(&db, wt_path, root.id)
+            .await
+            .expect("re-register the same worktree");
+
+        assert_eq!(again.id, wt.id, "same folder row");
+        assert_eq!(
+            again.alias.as_deref(),
+            Some("Payment rewrite"),
+            "the user's name survives re-registration"
+        );
+    }
+
+    /// The seed is best-effort: a directory git knows nothing about (or that is
+    /// gone entirely) still registers, just without a label — the sidebar then
+    /// falls back to the directory name as it always did.
+    #[tokio::test]
+    async fn open_worktree_folder_core_leaves_a_non_repo_unlabeled() {
+        let db = fresh_in_memory_db().await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let plain = dir
+            .path()
+            .join("not-a-repo")
+            .to_str()
+            .expect("utf-8 path")
+            .to_string();
+        std::fs::create_dir_all(&plain).expect("mkdir");
+
+        let wt = open_worktree_folder_core(&db, plain, 0)
+            .await
+            .expect("registers anyway");
+
+        assert_eq!(wt.alias, None, "no branch to label it with");
+    }
+
+    /// Worktrees registered before seeding existed keep showing their directory
+    /// name forever without this — the whole reason the backfill exists.
+    #[tokio::test]
+    async fn backfill_labels_an_already_registered_worktree() {
+        let db = fresh_in_memory_db().await;
+        let (_dir, repo, wt_path) = repo_with_worktree();
+        let root = open_folder_core(&db, repo).await.expect("root");
+        let wt = open_worktree_folder_core(&db, wt_path, root.id)
+            .await
+            .expect("worktree folder");
+        // Back to the pre-seeding state: a worktree folder row with no alias.
+        update_folder_alias_core(&db, wt.id, None)
+            .await
+            .expect("clear the alias");
+
+        let labeled = backfill_worktree_folder_aliases(&test_emitter(), &db).await;
+
+        assert_eq!(labeled, 1);
+        assert_eq!(
+            get_folder_core(&db, wt.id)
+                .await
+                .expect("folder")
+                .alias
+                .as_deref(),
+            Some("wt")
+        );
+        assert_eq!(
+            get_folder_core(&db, root.id).await.expect("root").alias,
+            None,
+            "the root repo is not a worktree and is left alone"
+        );
+    }
+
+    /// A `folder://changed` Upsert means "insert-or-replace in the OPEN folder
+    /// list", so announcing a closed folder would put one the user removed from
+    /// the workspace back in their sidebar. Label it anyway — reopening it later
+    /// should already read as the branch — but stay silent about it.
+    #[tokio::test]
+    async fn backfill_labels_a_closed_worktree_without_announcing_it() {
+        use crate::web::event_bridge::WebEventBroadcaster;
+
+        let db = fresh_in_memory_db().await;
+        let (_dir, repo, wt_path) = repo_with_worktree();
+        let root = open_folder_core(&db, repo.clone()).await.expect("root");
+        let open_wt = open_worktree_folder_core(&db, wt_path, root.id)
+            .await
+            .expect("open worktree folder");
+        let (_dir2, repo2, wt_path2) = repo_with_worktree();
+        let root2 = open_folder_core(&db, repo2).await.expect("second root");
+        let closed_wt = open_worktree_folder_core(&db, wt_path2, root2.id)
+            .await
+            .expect("worktree folder to close");
+        // Back to the pre-seeding state for both, then close the second one the
+        // way the UI does (the row stays alive, just out of the workspace).
+        for id in [open_wt.id, closed_wt.id] {
+            update_folder_alias_core(&db, id, None)
+                .await
+                .expect("clear the alias");
+        }
+        let broadcaster = std::sync::Arc::new(WebEventBroadcaster::new());
+        let emitter = EventEmitter::test_web_only(broadcaster.clone());
+        remove_folder_from_workspace_core(&emitter, &db, closed_wt.id)
+            .await
+            .expect("close the folder");
+
+        // Subscribe only now, so the queue holds just the backfill's events.
+        let mut rx = broadcaster.subscribe();
+        let labeled = backfill_worktree_folder_aliases(&emitter, &db).await;
+
+        // Both rows get the label…
+        assert_eq!(labeled, 2);
+        for id in [open_wt.id, closed_wt.id] {
+            assert_eq!(
+                get_folder_core(&db, id).await.expect("folder").alias,
+                Some("wt".to_string()),
+                "every worktree row is labeled, open or not"
+            );
+        }
+        // …but only the open one is announced.
+        let mut announced = Vec::new();
+        while let Ok(evt) = rx.try_recv() {
+            if evt.channel == crate::web::event_bridge::FOLDER_CHANGED_EVENT {
+                let p = &*evt.payload;
+                if p["kind"] == "upsert" {
+                    announced.push(p["folder"]["id"].as_i64().unwrap_or(-1) as i32);
+                }
+            }
+        }
+        assert_eq!(
+            announced,
+            vec![open_wt.id],
+            "a closed folder must not be broadcast back into the sidebar"
+        );
+    }
+
+    /// The backfill decides whether to announce a folder by re-reading it, not
+    /// from the snapshot its work list was built from — otherwise closing a
+    /// folder while the backfill walks (one git call per folder, so the window is
+    /// real) still announces it and puts it back in the sidebar. This is that
+    /// re-read: the same id that was announceable a moment ago no longer is.
+    #[tokio::test]
+    async fn a_folder_closed_after_enumeration_is_no_longer_announceable() {
+        let db = fresh_in_memory_db().await;
+        let (_dir, repo, wt_path) = repo_with_worktree();
+        let root = open_folder_core(&db, repo).await.expect("root");
+        let wt = open_worktree_folder_core(&db, wt_path, root.id)
+            .await
+            .expect("worktree folder");
+
+        // Enumeration-time reading: open, so this row would be announced.
+        assert!(folder_service::get_open_folder_by_id(&db.conn, wt.id)
+            .await
+            .expect("query")
+            .is_some());
+
+        // The user closes it mid-walk.
+        remove_folder_from_workspace_core(&test_emitter(), &db, wt.id)
+            .await
+            .expect("close the folder");
+
+        assert!(
+            folder_service::get_open_folder_by_id(&db.conn, wt.id)
+                .await
+                .expect("query")
+                .is_none(),
+            "a folder closed since enumeration must not be announced"
+        );
+        // Still a live row the backfill may label — just silently.
+        assert!(get_folder_core(&db, wt.id).await.is_ok());
+    }
+
+    /// A second launch must be a no-op — both for folders it already labeled and
+    /// for ones the user has since named.
+    #[tokio::test]
+    async fn backfill_skips_folders_that_already_have_a_label() {
+        let db = fresh_in_memory_db().await;
+        let (_dir, repo, wt_path) = repo_with_worktree();
+        let root = open_folder_core(&db, repo).await.expect("root");
+        let wt = open_worktree_folder_core(&db, wt_path, root.id)
+            .await
+            .expect("worktree folder");
+        update_folder_alias_core(&db, wt.id, Some("Payment rewrite".into()))
+            .await
+            .expect("user renames it");
+
+        assert_eq!(
+            backfill_worktree_folder_aliases(&test_emitter(), &db).await,
+            0
+        );
+        assert_eq!(
+            get_folder_core(&db, wt.id)
+                .await
+                .expect("folder")
+                .alias
+                .as_deref(),
+            Some("Payment rewrite")
+        );
+    }
+
     /// A repo with one commit on `main` plus a linked worktree at `<dir>/wt`
     /// holding branch `wt`. Returns `(tempdir, repo_path, worktree_path)`.
     fn repo_with_worktree() -> (tempfile::TempDir, String, String) {
@@ -6906,18 +7568,41 @@ branch refs/heads/main";
 
     #[tokio::test]
     async fn update_folder_default_agent_core_set_then_clear() {
+        use crate::web::event_bridge::{WebEventBroadcaster, WORK_TASK_CHANGED_EVENT};
+        use std::sync::Arc;
+
         let db = fresh_in_memory_db().await;
         let entry = add_folder_to_history_core(&db, "/tmp/codeg-agent-test".into())
             .await
             .expect("add");
-        let set = update_folder_default_agent_core(&db, entry.id, Some(AgentType::ClaudeCode))
-            .await
-            .expect("set agent");
+        let broadcaster = Arc::new(WebEventBroadcaster::new());
+        let mut rx = broadcaster.subscribe();
+        let emitter = EventEmitter::test_web_only(broadcaster.clone());
+
+        let set =
+            update_folder_default_agent_core(&emitter, &db, entry.id, Some(AgentType::ClaudeCode))
+                .await
+                .expect("set agent");
         assert_eq!(set.default_agent_type, Some(AgentType::ClaudeCode));
-        let cleared = update_folder_default_agent_core(&db, entry.id, None)
+        // The default is the last layer a work task inherits, and the boards
+        // resolve it live — so the change has to reach them (web clients
+        // included) rather than wait for an unrelated task event.
+        let evt = rx.try_recv().expect("default agent should nudge the tasks");
+        assert_eq!(evt.channel, WORK_TASK_CHANGED_EVENT);
+        assert_eq!(evt.payload["kind"], "settings");
+        assert_eq!(evt.payload["folder_id"], entry.id);
+
+        let cleared = update_folder_default_agent_core(&emitter, &db, entry.id, None)
             .await
             .expect("clear agent");
         assert_eq!(cleared.default_agent_type, None);
+        // Clearing it changes the inherited value just as much as setting it.
+        assert_eq!(
+            rx.try_recv()
+                .expect("clearing should nudge too")
+                .payload["kind"],
+            "settings"
+        );
     }
 
     #[tokio::test]
@@ -7061,15 +7746,27 @@ mod workspace_confinement_tests {
         assert!(res.is_err(), "symlink escaping the workspace must be rejected");
     }
 
+    /// The strict predicate, applied the way the guarded call sites apply it:
+    /// canonicalize both ends, then ask whether the target is reachable.
+    fn strictly_within(root: &Path, target: &Path) -> bool {
+        let Ok(canonical_root) = std::fs::canonicalize(root) else {
+            return false;
+        };
+        let Ok(canonical_target) = std::fs::canonicalize(target) else {
+            return false;
+        };
+        is_within_workspace(&canonical_root, &canonical_target)
+    }
+
     #[test]
-    fn ensure_path_in_workspace_rejects_symlink() {
+    fn strict_guard_rejects_symlink() {
         let root = tempfile::tempdir().expect("root");
         let outside = tempfile::tempdir().expect("outside");
         let secret = outside.path().join("secret.txt");
         std::fs::write(&secret, b"x").expect("write");
         let link = root.path().join("asset.txt");
         symlink(&secret, &link).expect("symlink");
-        assert!(ensure_path_in_workspace(root.path(), &link).is_err());
+        assert!(!strictly_within(root.path(), &link));
     }
 
     #[tokio::test]
@@ -7183,15 +7880,664 @@ mod workspace_confinement_tests {
             _ => unreachable!(),
         }
 
-        // The unregistered symlink stays a leaf: it is not followed.
+        // Both links are flagged so the panel can badge them.
         assert!(
-            nodes
-                .iter()
-                .any(|n| matches!(n, FileTreeNode::File { name, .. } if name == "evil")),
-            "an unauthorized symlink must not be walked into: {nodes:?}"
+            matches!(api, FileTreeNode::Dir { symlink: true, .. }),
+            "an authorized link is still a symlink on disk: {api:?}"
+        );
+
+        // The unregistered symlink is a *directory* — rendering it as a file
+        // was issue #430 — but it is not walked into: empty children, which the
+        // panel lazy-loads on expand.
+        let evil = nodes
+            .iter()
+            .find(|n| matches!(n, FileTreeNode::Dir { name, .. } if name == "evil"))
+            .expect("an unauthorized symlinked directory still renders as a directory");
+        match evil {
+            FileTreeNode::Dir {
+                children,
+                path,
+                symlink,
+                ..
+            } => {
+                assert_eq!(path, "evil");
+                assert!(symlink, "flagged so the row gets the link badge");
+                assert!(
+                    children.is_empty(),
+                    "an unauthorized symlink must not be walked into: {children:?}"
+                );
+            }
+            _ => unreachable!(),
+        }
+
+        // Same answer at the depth the panel actually renders
+        // (`WORKSPACE_TREE_MAX_DEPTH`), which is the snapshot the workspace
+        // broadcaster ships.
+        let shallow = get_file_tree(root.path().to_string_lossy().into_owned(), Some(2))
+            .await
+            .expect("depth-2 tree");
+        assert!(
+            shallow.iter().any(
+                |n| matches!(n, FileTreeNode::Dir { name, symlink: true, .. } if name == "evil")
+            ),
+            "the stray link is a flagged directory in the broadcast snapshot too: {shallow:?}"
         );
 
         crate::folder_links::unregister(root.path(), &canonical_target);
+    }
+
+    /// A link pointing at an ancestor gives the workspace root a second name
+    /// (`up/<root name>`), and expanding symlinked directories (issue #430) put
+    /// that name one click away. The lexical `target == root` guard these three
+    /// commands used did not see it, so deleting the alias ran `remove_dir_all`
+    /// over the workspace itself — verified before the fix: the call returned
+    /// `Ok(())` and took the workspace's files with it.
+    #[tokio::test]
+    async fn ancestor_link_cannot_be_used_to_destroy_the_workspace_root() {
+        let parent = tempfile::tempdir().expect("parent");
+        let root = parent.path().join("workspace");
+        std::fs::create_dir(&root).expect("mkdir root");
+        std::fs::write(root.join("precious.txt"), b"data").expect("write");
+        symlink(parent.path(), root.join("up")).expect("symlink");
+        let root_arg = root.to_string_lossy().into_owned();
+        let alias = "up/workspace".to_string();
+
+        assert!(
+            delete_file_tree_entry(root_arg.clone(), alias.clone())
+                .await
+                .is_err(),
+            "deleting the root under an alias must be refused"
+        );
+        assert!(
+            rename_file_tree_entry(root_arg.clone(), alias.clone(), "renamed".to_string())
+                .await
+                .is_err(),
+            "renaming the root under an alias must be refused"
+        );
+        std::fs::create_dir(root.join("dest")).expect("mkdir dest");
+        assert!(
+            move_file_tree_entry(root_arg.clone(), alias, "dest".to_string())
+                .await
+                .is_err(),
+            "moving the root under an alias must be refused"
+        );
+
+        assert!(
+            root.join("precious.txt").exists(),
+            "the workspace survived every attempt"
+        );
+
+        // The link entry itself lives directly in the workspace, so it stays
+        // removable — these commands act on the link, never on its target.
+        delete_file_tree_entry(root_arg, "up".to_string())
+            .await
+            .expect("unlink the ancestor link");
+        assert!(
+            std::fs::symlink_metadata(root.join("up")).is_err(),
+            "the link is gone"
+        );
+        assert!(
+            parent.path().join("workspace").exists(),
+            "and its target is untouched"
+        );
+    }
+
+    /// Destroying content *through* an unauthorized symlink needs explicit
+    /// authorization: the tree makes such a folder browsable and its files
+    /// open and save (issue #430), but `delete`/`rename`/`move` resolve outside
+    /// the workspace and are refused. Registering the link — what the "link
+    /// folder" dialog does — restores full mutability, which is the point of a
+    /// multi-folder workspace.
+    #[tokio::test]
+    async fn destructive_ops_through_a_link_require_authorization() {
+        let root = tempfile::tempdir().expect("root");
+        let stray = tempfile::tempdir().expect("stray");
+        std::fs::create_dir(stray.path().join("sub")).expect("mkdir");
+        std::fs::write(stray.path().join("sub/note.md"), b"x").expect("write");
+        symlink(stray.path(), root.path().join("kb")).expect("symlink");
+        let root_arg = root.path().to_string_lossy().into_owned();
+
+        assert!(
+            delete_file_tree_entry(root_arg.clone(), "kb/sub".to_string())
+                .await
+                .is_err(),
+            "an unauthorized link is not a licence to delete outside the workspace"
+        );
+        assert!(stray.path().join("sub/note.md").exists(), "untouched");
+
+        // Reading and saving through the same link still work — that is the
+        // relaxation issue #430 asked for, and it is unaffected.
+        read_file_for_edit(root_arg.clone(), "kb/sub/note.md".to_string())
+            .await
+            .expect("files inside the link still open");
+
+        // The link entry itself lives in the workspace, so it stays removable.
+        let canonical_target = std::fs::canonicalize(stray.path()).expect("canon");
+        crate::folder_links::register(root.path(), &canonical_target);
+        delete_file_tree_entry(root_arg, "kb/sub".to_string())
+            .await
+            .expect("an authorized link is fully mutable");
+        assert!(!stray.path().join("sub").exists(), "it really went away");
+        crate::folder_links::unregister(root.path(), &canonical_target);
+    }
+
+    /// A workspace root is stored verbatim (`folder_service::add_folder` never
+    /// canonicalizes), so the root itself can be a symlink. Reaching that link
+    /// under an alias must not let the tree unlink it: the contents would
+    /// survive but the configured workspace would point at nothing. Verified
+    /// before the fix — the delete returned `Ok(())` and the root link was gone.
+    #[tokio::test]
+    async fn a_symlinked_workspace_root_cannot_be_unlinked_through_an_alias() {
+        let base = tempfile::tempdir().expect("base");
+        let parent = base.path().join("parent");
+        std::fs::create_dir(&parent).expect("mkdir parent");
+        let actual = base.path().join("actual");
+        std::fs::create_dir(&actual).expect("mkdir actual");
+        std::fs::write(actual.join("precious.txt"), b"data").expect("write");
+        // The configured root is a symlink, and inside it a link back up to the
+        // directory that holds that symlink.
+        let root = parent.join("workspace");
+        symlink(&actual, &root).expect("root symlink");
+        symlink(&parent, actual.join("up")).expect("up symlink");
+        let root_arg = root.to_string_lossy().into_owned();
+        let alias = "up/workspace".to_string();
+
+        assert!(
+            delete_file_tree_entry(root_arg.clone(), alias.clone())
+                .await
+                .is_err(),
+            "unlinking the root symlink under an alias must be refused"
+        );
+        assert!(
+            rename_file_tree_entry(root_arg.clone(), alias.clone(), "renamed".to_string())
+                .await
+                .is_err(),
+            "renaming the root symlink under an alias must be refused"
+        );
+        std::fs::create_dir(actual.join("dest")).expect("mkdir dest");
+        assert!(
+            move_file_tree_entry(root_arg.clone(), alias, "dest".to_string())
+                .await
+                .is_err(),
+            "moving the root symlink under an alias must be refused"
+        );
+        assert!(
+            std::fs::symlink_metadata(&root).is_ok(),
+            "the root symlink is still there"
+        );
+        assert!(actual.join("precious.txt").exists(), "contents intact");
+
+        // The `up` link is not part of the root path, so it stays removable.
+        delete_file_tree_entry(root_arg, "up".to_string())
+            .await
+            .expect("an ordinary link inside the workspace is still unlinkable");
+        assert!(std::fs::symlink_metadata(actual.join("up")).is_err());
+        assert!(std::fs::symlink_metadata(&root).is_ok(), "root untouched");
+    }
+
+    /// The third alias shape review found: an intermediate link in the root's
+    /// own resolution chain. `workspace -> ../hop`, `hop -> actual`, and a link
+    /// back up inside — removing `hop` would leave the workspace dangling even
+    /// though `hop` is nowhere in the root's *lexical* path. Confining the
+    /// entry's parent to the canonical root closes this without knowing about
+    /// the shape at all.
+    #[tokio::test]
+    async fn a_link_in_the_roots_resolution_chain_cannot_be_removed() {
+        let base = tempfile::tempdir().expect("base");
+        let actual = base.path().join("actual");
+        std::fs::create_dir(&actual).expect("mkdir actual");
+        std::fs::write(actual.join("precious.txt"), b"data").expect("write");
+        let hop = base.path().join("hop");
+        symlink(&actual, &hop).expect("hop");
+        let root = base.path().join("workspace");
+        symlink(&hop, &root).expect("root -> hop -> actual");
+        symlink(base.path(), actual.join("up")).expect("up");
+        let root_arg = root.to_string_lossy().into_owned();
+
+        for path in ["up/hop", "up/workspace"] {
+            assert!(
+                delete_file_tree_entry(root_arg.clone(), path.to_string())
+                    .await
+                    .is_err(),
+                "{path} resolves outside the workspace and must be refused"
+            );
+        }
+        assert!(std::fs::symlink_metadata(&hop).is_ok(), "hop survives");
+        assert!(std::fs::symlink_metadata(&root).is_ok(), "root survives");
+        assert!(actual.join("precious.txt").exists(), "contents intact");
+    }
+
+    /// A genuinely relative path naming `target`, built by walking out of the
+    /// process working directory and back down. Lets a test exercise the
+    /// relative-root path without `set_current_dir`, which is process-global
+    /// and would race the rest of the suite.
+    fn relative_from_cwd(target: &Path) -> PathBuf {
+        let cwd = std::env::current_dir().expect("cwd");
+        let mut relative = PathBuf::new();
+        for _ in cwd
+            .components()
+            .filter(|c| matches!(c, Component::Normal(_)))
+        {
+            relative.push("..");
+        }
+        for component in target.components() {
+            if let Component::Normal(name) = component {
+                relative.push(name);
+            }
+        }
+        relative
+    }
+
+    /// Workspace roots are stored verbatim, so nothing guarantees they are
+    /// absolute or canonical. A relative root has to be anchored to the working
+    /// directory before its resolution is walked: building the walk's path up
+    /// from empty would pop a leading `..` into nothing and stat a different
+    /// path entirely, silently protecting no links at all.
+    #[tokio::test]
+    async fn a_relative_workspace_root_protects_its_links() {
+        let base = tempfile::tempdir().expect("base");
+        let actual = base.path().join("actual");
+        std::fs::create_dir(&actual).expect("mkdir actual");
+        std::fs::write(actual.join("precious.txt"), b"data").expect("write");
+        let hop = actual.join("hop");
+        symlink(Path::new("."), &hop).expect("hop -> .");
+
+        // `<cwd-relative>/…/actual/hop`, i.e. a leading run of `..`.
+        let relative_root = relative_from_cwd(&hop);
+        assert!(!relative_root.is_absolute(), "the test root is relative");
+        assert!(
+            relative_root.is_dir(),
+            "and it names the same directory: {relative_root:?}"
+        );
+        let root_arg = relative_root.to_string_lossy().into_owned();
+
+        // It must protect exactly what the absolute spelling protects.
+        assert_eq!(
+            root_resolution_links(&relative_root),
+            root_resolution_links(&hop),
+            "a relative root resolves to the same protected links"
+        );
+
+        assert!(
+            delete_file_tree_entry(root_arg.clone(), "hop".to_string())
+                .await
+                .is_err(),
+            "deleting the root's own link through a relative root must be refused"
+        );
+        assert!(
+            rename_file_tree_entry(root_arg.clone(), "hop".to_string(), "x".to_string())
+                .await
+                .is_err(),
+            "renaming it must be refused"
+        );
+        std::fs::create_dir(actual.join("dest")).expect("mkdir dest");
+        assert!(
+            move_file_tree_entry(root_arg.clone(), "hop".to_string(), "dest".to_string())
+                .await
+                .is_err(),
+            "moving it must be refused"
+        );
+        assert!(std::fs::symlink_metadata(&hop).is_ok(), "the link survives");
+
+        // Ordinary work through the same relative root still succeeds.
+        delete_file_tree_entry(root_arg, "precious.txt".to_string())
+            .await
+            .expect("in-root work is unaffected by a relative root");
+    }
+
+    /// The same, for a root carrying a leading `./`. Anchoring runs before any
+    /// component is looked at, so this shares a code path with the test above
+    /// rather than isolating a literal `./hop` — isolating that would need the
+    /// fixture to sit inside the working directory, i.e. inside the source
+    /// tree, which is not worth it for a path the anchor already subsumes.
+    #[tokio::test]
+    async fn a_dot_prefixed_relative_root_protects_its_links() {
+        let base = tempfile::tempdir().expect("base");
+        let actual = base.path().join("actual");
+        std::fs::create_dir(&actual).expect("mkdir actual");
+        let hop = actual.join("hop");
+        symlink(Path::new("."), &hop).expect("hop -> .");
+
+        let dotted = Path::new(".").join(relative_from_cwd(&hop));
+        assert!(!dotted.is_absolute(), "still relative");
+        assert_eq!(
+            root_resolution_links(&dotted),
+            root_resolution_links(&hop),
+            "a `./`-prefixed root protects the same links"
+        );
+
+        assert!(
+            delete_file_tree_entry(dotted.to_string_lossy().into_owned(), "hop".to_string())
+                .await
+                .is_err(),
+            "the root's own link stays protected"
+        );
+        assert!(std::fs::symlink_metadata(&hop).is_ok(), "the link survives");
+    }
+
+    /// The root symlink can live *inside* its own canonical target
+    /// (`actual/workspace -> .`, opened as `actual/workspace`). Then it is an
+    /// ordinary entry of the workspace — parent inside the root, so the
+    /// outward boundary has nothing to say — yet unlinking it leaves the
+    /// configured folder pointing at nothing while every file survives.
+    #[tokio::test]
+    async fn the_roots_own_link_cannot_be_destroyed_from_inside() {
+        let base = tempfile::tempdir().expect("base");
+        let actual = base.path().join("actual");
+        std::fs::create_dir(&actual).expect("mkdir actual");
+        std::fs::write(actual.join("precious.txt"), b"data").expect("write");
+        let root = actual.join("workspace");
+        symlink(Path::new("."), &root).expect("workspace -> .");
+        let root_arg = root.to_string_lossy().into_owned();
+
+        assert!(
+            delete_file_tree_entry(root_arg.clone(), "workspace".to_string())
+                .await
+                .is_err(),
+            "unlinking the root's own link must be refused"
+        );
+        assert!(
+            rename_file_tree_entry(root_arg.clone(), "workspace".to_string(), "x".to_string())
+                .await
+                .is_err(),
+            "renaming it must be refused"
+        );
+        std::fs::create_dir(actual.join("dest")).expect("mkdir dest");
+        assert!(
+            move_file_tree_entry(root_arg, "workspace".to_string(), "dest".to_string())
+                .await
+                .is_err(),
+            "moving it must be refused"
+        );
+        assert!(
+            std::fs::symlink_metadata(&root).is_ok(),
+            "root link survives"
+        );
+        assert!(actual.join("precious.txt").exists(), "contents intact");
+    }
+
+    /// The guard identifies root-path links by *position*, never by "resolves
+    /// to the root" — that would refuse an unrelated `self -> .` the root does
+    /// not depend on, turning a legitimate action into an error. An ordinary
+    /// root with links pointing back at it stays fully mutable.
+    #[tokio::test]
+    async fn links_pointing_at_an_ordinary_root_stay_mutable() {
+        let root = tempfile::tempdir().expect("root");
+        std::fs::write(root.path().join("keep.txt"), b"data").expect("write");
+        std::fs::create_dir(root.path().join("dest")).expect("mkdir");
+        for name in ["self", "here", "again"] {
+            symlink(Path::new("."), root.path().join(name)).expect("self link");
+        }
+        let root_arg = root.path().to_string_lossy().into_owned();
+
+        delete_file_tree_entry(root_arg.clone(), "self".to_string())
+            .await
+            .expect("a link pointing at the root is deletable");
+        rename_file_tree_entry(root_arg.clone(), "here".to_string(), "renamed".to_string())
+            .await
+            .expect("...renamable");
+        move_file_tree_entry(root_arg, "again".to_string(), "dest".to_string())
+            .await
+            .expect("...movable");
+
+        assert!(std::fs::symlink_metadata(root.path().join("self")).is_err());
+        assert!(std::fs::symlink_metadata(root.path().join("renamed")).is_ok());
+        assert!(std::fs::symlink_metadata(root.path().join("dest/again")).is_ok());
+        assert!(root.path().join("keep.txt").exists(), "contents intact");
+    }
+
+    /// A root with components *after* a link (`actual/sub/hop -> ..` opened as
+    /// `actual/sub/hop/sub`) resolves that link to something other than the
+    /// canonical root, so "resolves to the root" does not recognise it.
+    /// Following the root's resolution and recording what it passes through
+    /// does.
+    #[tokio::test]
+    async fn a_root_link_with_a_suffix_after_it_cannot_be_destroyed() {
+        let base = tempfile::tempdir().expect("base");
+        let sub = base.path().join("actual/sub");
+        std::fs::create_dir_all(&sub).expect("mkdir");
+        std::fs::write(sub.join("precious.txt"), b"data").expect("write");
+        let hop = sub.join("hop");
+        symlink(Path::new(".."), &hop).expect("hop -> ..");
+        // The configured root walks through `hop` and then back down into `sub`.
+        let root = hop.join("sub");
+        let root_arg = root.to_string_lossy().into_owned();
+
+        assert!(
+            delete_file_tree_entry(root_arg.clone(), "hop".to_string())
+                .await
+                .is_err(),
+            "deleting the link the root walks through must be refused"
+        );
+        assert!(
+            rename_file_tree_entry(root_arg.clone(), "hop".to_string(), "x".to_string())
+                .await
+                .is_err(),
+            "renaming it must be refused"
+        );
+        std::fs::create_dir(sub.join("dest")).expect("mkdir dest");
+        assert!(
+            move_file_tree_entry(root_arg, "hop".to_string(), "dest".to_string())
+                .await
+                .is_err(),
+            "moving it must be refused"
+        );
+        assert!(std::fs::symlink_metadata(&hop).is_ok(), "the link survives");
+        assert!(sub.join("precious.txt").exists(), "contents intact");
+    }
+
+    /// A link that sits inside *another link's target* is still one the root is
+    /// resolved through: `actual/hop -> .` reached through a root
+    /// `workspace -> actual/hop`. `hop` is nowhere in the root's own component
+    /// list, and it resolves to `actual` rather than to the root, so only
+    /// following the resolution the way the kernel does recognises it.
+    #[tokio::test]
+    async fn a_link_inside_the_root_links_target_cannot_be_destroyed() {
+        let base = tempfile::tempdir().expect("base");
+        let actual = base.path().join("actual");
+        std::fs::create_dir(&actual).expect("mkdir actual");
+        std::fs::write(actual.join("precious.txt"), b"data").expect("write");
+        let hop = actual.join("hop");
+        symlink(Path::new("."), &hop).expect("hop -> .");
+        let root = base.path().join("workspace");
+        symlink(&hop, &root).expect("workspace -> actual/hop");
+        let root_arg = root.to_string_lossy().into_owned();
+
+        assert!(
+            delete_file_tree_entry(root_arg.clone(), "hop".to_string())
+                .await
+                .is_err(),
+            "a link inside the root link's target must be refused"
+        );
+        assert!(
+            rename_file_tree_entry(root_arg.clone(), "hop".to_string(), "x".to_string())
+                .await
+                .is_err(),
+            "renaming it must be refused"
+        );
+        std::fs::create_dir(actual.join("dest")).expect("mkdir dest");
+        assert!(
+            move_file_tree_entry(root_arg, "hop".to_string(), "dest".to_string())
+                .await
+                .is_err(),
+            "moving it must be refused"
+        );
+        assert!(std::fs::symlink_metadata(&hop).is_ok(), "hop survives");
+        assert!(std::fs::symlink_metadata(&root).is_ok(), "root survives");
+        assert!(actual.join("precious.txt").exists(), "contents intact");
+    }
+
+    /// A link cycle in the root's resolution must not hang or recurse without
+    /// bound — the hop budget ends it and the outward boundary still applies.
+    #[tokio::test]
+    async fn a_link_cycle_in_the_root_terminates() {
+        let base = tempfile::tempdir().expect("base");
+        let a = base.path().join("a");
+        let b = base.path().join("b");
+        symlink(&b, &a).expect("a -> b");
+        symlink(&a, &b).expect("b -> a");
+        // Resolving this root never finishes; the walk must still return.
+        assert!(
+            root_resolution_links(&a).len() <= 64,
+            "bounded, and returned"
+        );
+
+        // A real workspace alongside the cycle keeps working.
+        let root = base.path().join("workspace");
+        std::fs::create_dir(&root).expect("mkdir");
+        std::fs::write(root.join("keep.txt"), b"x").expect("write");
+        delete_file_tree_entry(root.to_string_lossy().into_owned(), "keep.txt".to_string())
+            .await
+            .expect("unrelated work is unaffected");
+    }
+
+    /// The contract the panel's lazy expand depends on: re-rooting the walk at
+    /// the link itself resolves it (`WalkDir::follow_root_links`), so the empty
+    /// child list `get_file_tree` returns for a symlinked directory can be
+    /// filled in one level at a time — no descent through links needed in the
+    /// bulk walk, and no way for a link loop to run away.
+    #[tokio::test]
+    async fn file_tree_rooted_at_a_stray_symlink_lists_its_contents() {
+        let root = tempfile::tempdir().expect("root");
+        let stray = tempfile::tempdir().expect("stray");
+        std::fs::write(stray.path().join("note.md"), b"x").expect("write");
+        std::fs::create_dir(stray.path().join("sub")).expect("mkdir");
+        symlink(stray.path(), root.path().join("evil")).expect("symlink");
+
+        let nodes = get_file_tree(
+            root.path().join("evil").to_string_lossy().into_owned(),
+            Some(1),
+        )
+        .await
+        .expect("tree rooted at the link");
+
+        assert!(
+            nodes
+                .iter()
+                .any(|n| matches!(n, FileTreeNode::File { path, .. } if path == "note.md")),
+            "the link's own contents are listed: {nodes:?}"
+        );
+        assert!(
+            nodes
+                .iter()
+                .any(|n| matches!(n, FileTreeNode::Dir { path, .. } if path == "sub")),
+            "nested directories come back expandable: {nodes:?}"
+        );
+    }
+
+    /// A link to a file, and a link that resolves to nothing, have no contents
+    /// to expand — a leaf file is the honest rendering for both.
+    #[tokio::test]
+    async fn file_tree_keeps_file_and_dangling_symlinks_as_leaves() {
+        let root = tempfile::tempdir().expect("root");
+        let outside = tempfile::tempdir().expect("outside");
+        std::fs::write(outside.path().join("real.txt"), b"x").expect("write");
+        symlink(outside.path().join("real.txt"), root.path().join("to-file")).expect("symlink");
+        symlink(outside.path().join("gone"), root.path().join("dangling")).expect("symlink");
+
+        let nodes = get_file_tree(root.path().to_string_lossy().into_owned(), None)
+            .await
+            .expect("tree");
+
+        for name in ["to-file", "dangling"] {
+            assert!(
+                nodes
+                    .iter()
+                    .any(|n| matches!(n, FileTreeNode::File { name: n, .. } if n == name)),
+                "{name} stays a leaf file: {nodes:?}"
+            );
+        }
+    }
+
+    /// Search reports the link as a directory (so `@`-mention and the search
+    /// dialog show the right icon) without pulling its contents into the index
+    /// — walking every stray link would mean pnpm symlink farms and loops.
+    #[tokio::test]
+    async fn workspace_search_reports_a_stray_symlink_as_a_dir_without_descending() {
+        let root = tempfile::tempdir().expect("root");
+        let stray = tempfile::tempdir().expect("stray");
+        std::fs::write(stray.path().join("secret.txt"), b"x").expect("write");
+        symlink(stray.path(), root.path().join("evil")).expect("symlink");
+
+        let entries = list_workspace_files(root.path().to_string_lossy().into_owned())
+            .await
+            .expect("list");
+
+        let evil = entries
+            .iter()
+            .find(|e| e.path == "evil")
+            .expect("the link is listed");
+        assert_eq!(evil.kind, WorkspaceEntryKind::Dir);
+        assert!(
+            !entries.iter().any(|e| e.path.starts_with("evil/")),
+            "an unauthorized link's contents stay out of the index: {entries:?}"
+        );
+    }
+
+    /// Issue #430's second half: once the tree lets you into a symlinked
+    /// folder, the files inside it have to actually open. The path is
+    /// user-navigated (`..`-free, relative), which is the boundary
+    /// `ensure_user_navigable_path` draws — the same one `rename`/`move`/
+    /// `delete` have always drawn.
+    #[tokio::test]
+    async fn user_navigated_reads_reach_into_a_stray_symlinked_directory() {
+        let root = tempfile::tempdir().expect("root");
+        let stray = tempfile::tempdir().expect("stray");
+        std::fs::write(stray.path().join("note.md"), b"hello").expect("write");
+        symlink(stray.path(), root.path().join("kb")).expect("symlink");
+        let root_arg = root.path().to_string_lossy().into_owned();
+
+        let preview = read_file_preview(root_arg.clone(), "kb/note.md".to_string())
+            .await
+            .expect("preview a file inside a symlinked folder");
+        assert_eq!(preview.content, "hello");
+
+        let edit = read_file_for_edit(root_arg.clone(), "kb/note.md".to_string())
+            .await
+            .expect("open a file inside a symlinked folder for edit");
+        assert_eq!(edit.content, "hello");
+
+        save_file_content(
+            root_arg.clone(),
+            "kb/note.md".to_string(),
+            "bye".to_string(),
+            Some(edit.etag),
+        )
+        .await
+        .expect("save through the link");
+        assert_eq!(
+            std::fs::read_to_string(stray.path().join("note.md")).expect("read back"),
+            "bye"
+        );
+
+        // The lexical boundary is still enforced: `..` never resolves.
+        assert!(
+            read_file_for_edit(root_arg, "../escape.md".to_string())
+                .await
+                .is_err(),
+            "'..' must stay rejected"
+        );
+    }
+
+    /// The HTML preview inlines paths named by the *markup*, not by a click, so
+    /// its guard must stay strict even though user navigation was relaxed.
+    #[tokio::test]
+    async fn html_preview_inlining_still_refuses_a_stray_symlinked_directory() {
+        let root = tempfile::tempdir().expect("root");
+        let stray = tempfile::tempdir().expect("stray");
+        std::fs::write(stray.path().join("id_rsa"), b"key").expect("write");
+        symlink(stray.path(), root.path().join("secrets")).expect("symlink");
+
+        let res = read_workspace_file_base64(
+            root.path().to_string_lossy().into_owned(),
+            "secrets/id_rsa".to_string(),
+            None,
+        )
+        .await;
+        assert!(
+            res.is_err(),
+            "sub-resource inlining must not follow a stray link"
+        );
     }
 
     #[tokio::test]
@@ -7217,8 +8563,12 @@ mod workspace_confinement_tests {
         crate::folder_links::unregister(root.path(), &canonical_target);
     }
 
+    /// The strict rule now guards only the non-user-driven surfaces (HTML
+    /// preview sub-resource inlining, the web upload chain) — see
+    /// `is_within_workspace`. User-navigated reads go through
+    /// `ensure_user_navigable_path` and are covered separately.
     #[test]
-    fn workspace_guard_allows_a_registered_link_but_not_a_stray_symlink() {
+    fn strict_guard_allows_a_registered_link_but_not_a_stray_symlink() {
         let root = tempfile::tempdir().expect("root");
         let linked = tempfile::tempdir().expect("linked");
         let stray = tempfile::tempdir().expect("stray");
@@ -7231,17 +8581,17 @@ mod workspace_confinement_tests {
         crate::folder_links::register(root.path(), &canonical_target);
 
         assert!(
-            ensure_path_in_workspace(root.path(), &root.path().join("api/ok.txt")).is_ok(),
+            strictly_within(root.path(), &root.path().join("api/ok.txt")),
             "a file inside a user-authorized link is in the workspace"
         );
         assert!(
-            ensure_path_in_workspace(root.path(), &root.path().join("evil/secret.txt")).is_err(),
+            !strictly_within(root.path(), &root.path().join("evil/secret.txt")),
             "an unregistered symlink still cannot escape the root"
         );
 
         crate::folder_links::unregister(root.path(), &canonical_target);
         assert!(
-            ensure_path_in_workspace(root.path(), &root.path().join("api/ok.txt")).is_err(),
+            !strictly_within(root.path(), &root.path().join("api/ok.txt")),
             "revoking the link revokes access"
         );
     }

@@ -20,6 +20,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::acp::delegation::types::BlockedOn;
 use crate::acp::manager::ConnectionManager;
 
 /// Char budget for the inline live-reply hint — one tidy line, not a transcript.
@@ -27,12 +28,25 @@ use crate::acp::manager::ConnectionManager;
 /// [`crate::acp::SessionState::latest_live_reply`].
 pub const LIVE_REPLY_CAP: usize = 120;
 
+/// Cap for the blocking prompt's label. Same reasoning as [`LIVE_REPLY_CAP`] —
+/// this is one line of a tool report, not a transcript.
+pub const BLOCKED_TITLE_CAP: usize = 120;
+
 /// Capability the broker uses to fetch a running child's latest one-line reply.
 #[async_trait]
 pub trait ChildLiveReplyLookup: Send + Sync {
     /// The child's latest single-line activity, or `None` when it hasn't
     /// produced anything renderable yet / the connection is gone.
     async fn latest_reply(&self, child_connection_id: &str) -> Option<String>;
+
+    /// What the child is parked on, if anything — a permission, a question, or
+    /// a plan approval. `None` means it is genuinely working (or is gone).
+    ///
+    /// Defaulted to `None` so the Noop / mock impls and every test call site
+    /// stay untouched; only the production lookup answers for real.
+    async fn blocked_on(&self, _child_connection_id: &str) -> Option<BlockedOn> {
+        None
+    }
 }
 
 /// Default lookup — always `None`. Used by `DelegationBroker::new` / `with_writers`
@@ -66,22 +80,43 @@ impl ChildLiveReplyLookup for ConnectionManagerLiveReplyLookup {
         let guard = state.read().await;
         guard.latest_live_reply(LIVE_REPLY_CAP)
     }
+
+    async fn blocked_on(&self, child_connection_id: &str) -> Option<BlockedOn> {
+        let state = self.manager.get_state(child_connection_id).await?;
+        let guard = state.read().await;
+        guard.blocking_prompt(BLOCKED_TITLE_CAP)
+    }
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mock {
     use super::*;
 
+    use std::sync::Mutex;
+
     /// Returns a fixed reply for every lookup so broker tests can assert the
     /// running-status message composition without a live child session.
-    #[derive(Default, Clone)]
+    ///
+    /// `blocked` is interior-mutable so a test can flip a child into (and out
+    /// of) a blocked state *while a status long-poll is parked* — which is
+    /// exactly the transition `get_tasks_status` must wake on.
+    #[derive(Default)]
     pub struct MockChildLiveReplyLookup {
         pub reply: Option<String>,
+        blocked: Mutex<Option<BlockedOn>>,
     }
 
     impl MockChildLiveReplyLookup {
         pub fn new(reply: Option<String>) -> Self {
-            Self { reply }
+            Self {
+                reply,
+                blocked: Mutex::new(None),
+            }
+        }
+
+        /// Set (or clear) what every child looks blocked on from now on.
+        pub fn set_blocked(&self, blocked: Option<BlockedOn>) {
+            *self.blocked.lock().unwrap() = blocked;
         }
     }
 
@@ -89,6 +124,10 @@ pub mod mock {
     impl ChildLiveReplyLookup for MockChildLiveReplyLookup {
         async fn latest_reply(&self, _child_connection_id: &str) -> Option<String> {
             self.reply.clone()
+        }
+
+        async fn blocked_on(&self, _child_connection_id: &str) -> Option<BlockedOn> {
+            self.blocked.lock().unwrap().clone()
         }
     }
 }

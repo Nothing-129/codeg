@@ -11,9 +11,11 @@ import {
 import { formatRelative } from "@/components/conversations/sidebar-conversation-grouping"
 import { cn } from "@/lib/utils"
 import {
+  MergeQueuedChip,
   ScheduleChip,
   statusAccent,
   StatusChip,
+  TaskAgentMark,
   WorktreeRemovedChip,
 } from "./task-card"
 import {
@@ -56,6 +58,8 @@ interface TaskRowProps extends TaskActionHandlers {
   folderName: string | null
   /** Shared render-tick timestamp for relative times (refreshed by the page). */
   now: number
+  /** Place in line when this task is waiting to merge (see `mergeQueueRanks`). */
+  mergeQueueRank?: number
   onOpen: () => void
 }
 
@@ -84,6 +88,7 @@ export function TaskRow({
   task,
   folderName,
   now,
+  mergeQueueRank,
   onOpen,
   ...handlers
 }: TaskRowProps) {
@@ -151,33 +156,43 @@ export function TaskRow({
         <StatusChip task={task} className="max-w-full" />
       </div>
 
-      <div className={cn(TASK_LIST_CELLS.title, "flex flex-col gap-0.5")}>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-[0.8125rem] font-medium leading-snug">
-            {task.title}
-          </span>
-          {/* Inline rather than in a slot of its own: a planned start is rare,
-              and a dedicated column would cost every row its alignment to
-              serve a handful. Renders nothing when there is no plan. */}
-          <ScheduleChip task={task} />
-          {/* Same reasoning: a deleted worktree is the exception, and the row
-              must say so wherever the board card would. */}
-          <WorktreeRemovedChip task={task} />
+      {/* The mark sits in a gutter of its own rather than inline with the
+          title: a row's second line would otherwise start 20px to the left of
+          the first, and one ragged edge inside the cell undoes what the fixed
+          columns are for. mt-[0.125rem] centres it on the title line, which is
+          where it belongs when a note pushes the block taller. */}
+      <div className={cn(TASK_LIST_CELLS.title, "flex items-start gap-1.5")}>
+        <TaskAgentMark task={task} className="mt-[0.125rem]" />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-[0.8125rem] font-medium leading-snug">
+              {task.title}
+            </span>
+            {/* Inline rather than in a slot of its own: a planned start is
+                rare, and a dedicated column would cost every row its alignment
+                to serve a handful. Renders nothing when there is no plan. */}
+            <ScheduleChip task={task} />
+            {/* Same reasoning: a queued merge and a deleted worktree are the
+                exception, and the row must say so wherever the board card
+                would. */}
+            <MergeQueuedChip task={task} rank={mergeQueueRank} />
+            <WorktreeRemovedChip task={task} />
+          </div>
+          {note ? (
+            <span
+              className={cn(
+                "flex min-w-0 items-center gap-1 text-[0.6875rem] leading-snug",
+                showError ? "text-destructive" : "text-muted-foreground",
+                !showError && live && "italic"
+              )}
+            >
+              {showError ? (
+                <CircleAlert className="size-3 shrink-0" aria-hidden="true" />
+              ) : null}
+              <span className="truncate">{note}</span>
+            </span>
+          ) : null}
         </div>
-        {note ? (
-          <span
-            className={cn(
-              "flex min-w-0 items-center gap-1 text-[0.6875rem] leading-snug",
-              showError ? "text-destructive" : "text-muted-foreground",
-              !showError && live && "italic"
-            )}
-          >
-            {showError ? (
-              <CircleAlert className="size-3 shrink-0" aria-hidden="true" />
-            ) : null}
-            <span className="truncate">{note}</span>
-          </span>
-        ) : null}
       </div>
 
       {/* The three meta columns always render their box, empty or not — that is

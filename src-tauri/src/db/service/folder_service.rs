@@ -237,6 +237,93 @@ pub async fn update_folder_alias(
     Ok(Some(to_detail(updated)))
 }
 
+/// Fill in a folder's alias only when it has none — the worktree flow's
+/// "default the label to the branch name" write.
+///
+/// A single conditional UPDATE (`… WHERE alias IS NULL OR alias = ''`) rather
+/// than read-then-write: a worktree folder can be re-registered concurrently
+/// (task relaunch, automation run, the user re-opening the same directory)
+/// while its owner is renaming it in the sidebar, and the read-then-write shape
+/// would let the seed land on top of that rename. Returns whether a row was
+/// actually written, so the caller only re-reads / broadcasts on a real change.
+/// The alias is user-editable afterwards, including back to empty — clearing it
+/// makes the folder eligible for seeding again, which is the same "no alias set"
+/// state a fresh worktree starts in.
+pub async fn seed_folder_alias(
+    conn: &DatabaseConnection,
+    folder_id: i32,
+    alias: &str,
+) -> Result<bool, DbError> {
+    use sea_orm::sea_query::Expr;
+    let alias = alias.trim();
+    if alias.is_empty() {
+        return Ok(false);
+    }
+    let res = folder::Entity::update_many()
+        .col_expr(folder::Column::Alias, Expr::value(alias))
+        .col_expr(folder::Column::UpdatedAt, Expr::value(Utc::now()))
+        .filter(folder::Column::Id.eq(folder_id))
+        .filter(folder::Column::DeletedAt.is_null())
+        .filter(
+            sea_orm::Condition::any()
+                .add(folder::Column::Alias.is_null())
+                .add(folder::Column::Alias.eq("")),
+        )
+        .exec(conn)
+        .await?;
+    Ok(res.rows_affected > 0)
+}
+
+/// `(id, path)` of every live worktree folder still without an alias — the work
+/// list for the startup backfill that labels worktrees registered before aliases
+/// were seeded at creation. `parent_id IS NOT NULL` is exactly "is a worktree
+/// folder" in this schema (only the worktree flow ever writes a parent).
+///
+/// Closed folders are included on purpose, so reopening one later already reads
+/// as its branch. Whether a row may be *announced* is a separate, later question
+/// — see [`get_open_folder_by_id`].
+pub async fn list_worktree_folders_missing_alias(
+    conn: &DatabaseConnection,
+) -> Result<Vec<(i32, String)>, DbError> {
+    let rows = folder::Entity::find()
+        .filter(folder::Column::DeletedAt.is_null())
+        .filter(folder::Column::ParentId.is_not_null())
+        .filter(
+            sea_orm::Condition::any()
+                .add(folder::Column::Alias.is_null())
+                .add(folder::Column::Alias.eq("")),
+        )
+        .order_by_asc(folder::Column::Id)
+        .all(conn)
+        .await?;
+
+    Ok(rows.into_iter().map(|m| (m.id, m.path)).collect())
+}
+
+/// Like [`get_folder_by_id`], but `None` unless the folder is currently in the
+/// workspace.
+///
+/// For background producers deciding whether to broadcast a `folder://changed`
+/// Upsert, which means "insert-or-replace in the client's OPEN folder list" —
+/// sending one for a closed folder puts it back in the user's sidebar.
+/// `FolderDetail` carries no open state, so that check cannot be made from the
+/// returned value, and a producer that walks many folders must not reuse an
+/// open/closed reading taken when its work list was built: the user can close a
+/// folder while it works. Reading both here, as late as possible, keeps the two
+/// facts consistent.
+pub async fn get_open_folder_by_id(
+    conn: &DatabaseConnection,
+    folder_id: i32,
+) -> Result<Option<FolderDetail>, DbError> {
+    let row = folder::Entity::find_by_id(folder_id)
+        .filter(folder::Column::DeletedAt.is_null())
+        .filter(folder::Column::IsOpen.eq(true))
+        .one(conn)
+        .await?;
+
+    Ok(row.map(to_detail))
+}
+
 pub async fn update_folder_default_agent(
     conn: &DatabaseConnection,
     folder_id: i32,

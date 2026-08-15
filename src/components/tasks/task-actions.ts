@@ -5,13 +5,14 @@ import {
   CalendarClock,
   CircleCheck,
   GitMerge,
+  ListX,
   MessageSquareText,
   Pencil,
   Play,
   RotateCw,
   type LucideIcon,
 } from "lucide-react"
-import { hasNothingToMerge } from "./task-acceptance"
+import { hasNothingToMerge, isMergeQueued } from "./task-acceptance"
 import type { WorkTask } from "@/lib/types"
 
 export interface TaskActionItem {
@@ -29,6 +30,9 @@ export interface TaskActionHandlers {
   /** Opens the read-only live session viewer (TaskTranscriptDialog). */
   onViewSession: () => void
   onMerge: () => void
+  /** Withdraws a merge that is waiting in the project's queue (see
+   *  `isMergeQueued`) — the task stays in review. */
+  onUnqueueMerge: () => void
   /** Takes the merge slot when the task changed nothing (see
    *  `hasNothingToMerge`) — accepts it outright instead. */
   onComplete: () => void
@@ -47,6 +51,7 @@ type ActionLabelKey =
   | "actionRequeue"
   | "actionViewSession"
   | "actionMerge"
+  | "actionUnqueueMerge"
   | "actionComplete"
   | "actionArchive"
   | "actionUnarchive"
@@ -107,6 +112,17 @@ export function buildTaskActions(
         }
         break
       case "review":
+        if (isMergeQueued(task)) {
+          // Already accepted — it is waiting for the project's merge slot, and
+          // the only decision left is to take it back out of the queue. Like
+          // `merging`, there is no primary: nothing here needs a filled button.
+          secondaries.push({
+            icon: ListX,
+            label: t("actionUnqueueMerge"),
+            onClick: handlers.onUnqueueMerge,
+          })
+          break
+        }
         // Nothing was changed ⟹ nothing to merge: offer the acceptance that
         // actually applies.
         primary = hasNothingToMerge(task)

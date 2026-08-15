@@ -200,7 +200,8 @@ export function useComposerAttachments({
 
   // Route pasted / dropped / picked images to the thumbnail strip whenever the
   // agent can receive them in ANY form — either as a native ACP image block
-  // (`image`) or as an embedded resource blob (`embedded_context`).
+  // (`image`) or as an embedded resource blob (`embedded_context`, what an
+  // agent that advertises `image: false` but `embeddedContext: true` takes).
   const canAttachImages =
     promptCapabilities.image || promptCapabilities.embedded_context
 

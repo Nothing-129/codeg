@@ -12,11 +12,13 @@ import {
   buildVersionCheck,
   configTextForClaudeSave,
   getAgentChecks,
+  hostToolsAgentModeEnabled,
   inferGrokMode,
   materializeClaudeHardeningFlags,
   patchCodexConfigTomlText,
   patchImportantConfigText,
   setClaudeEnvFlagInConfigText,
+  setHostToolsAgentMode,
 } from "./acp-agent-settings"
 import { parse as parseTomlDocument } from "smol-toml"
 import type {
@@ -1394,5 +1396,67 @@ describe("patchCodexConfigTomlText — codeg's requires_openai_auth default", ()
     const toml = [BOUND_PROVIDER, 'base_url = "unterminated'].join("\n")
     const result = patchCodexConfigTomlText(toml, ENTRY)
     expect(result).not.toContain("requires_openai_auth")
+  })
+})
+
+describe("host-tools toggle — hand the fs/terminal channels back to the agent", () => {
+  const KEY = "CODEG_ACP_HOST_TOOLS"
+
+  it("is off for an agent that has never touched the knob", () => {
+    expect(hostToolsAgentModeEnabled("")).toBe(false)
+    expect(hostToolsAgentModeEnabled("XAI_API_KEY=abc")).toBe(false)
+  })
+
+  it("round-trips on and back off", () => {
+    const on = setHostToolsAgentMode("XAI_API_KEY=abc", true)
+    expect(on).toContain(`${KEY}=agent`)
+    expect(hostToolsAgentModeEnabled(on)).toBe(true)
+
+    // Off writes an EXPLICIT `default` rather than deleting the key. Deleting
+    // would let a process-wide `CODEG_ACP_HOST_TOOLS=agent` keep winning, so
+    // the switch could not turn the mode off at all — it would read false
+    // while the next connection still withheld the channels.
+    const off = setHostToolsAgentMode(on, false)
+    expect(off).toContain(`${KEY}=default`)
+    expect(hostToolsAgentModeEnabled(off)).toBe(false)
+    expect(off).toContain("XAI_API_KEY=abc")
+  })
+
+  it("leaves the agent's other env vars alone", () => {
+    const before = "XAI_API_KEY=abc\nGROK_HOME=/tmp/grok"
+    const after = setHostToolsAgentMode(before, true)
+    expect(after).toContain("XAI_API_KEY=abc")
+    expect(after).toContain("GROK_HOME=/tmp/grok")
+  })
+
+  it("reads only the exact sentinel, matching the Rust resolver", () => {
+    // The backend fails OPEN on an unrecognized value (a typo must look like a
+    // typo, not like a silently disabled terminal), so the switch must render
+    // unchecked for anything that is not literally `agent`.
+    expect(hostToolsAgentModeEnabled(`${KEY}=default`)).toBe(false)
+    expect(hostToolsAgentModeEnabled(`${KEY}=Agent`)).toBe(false)
+    expect(hostToolsAgentModeEnabled(`${KEY}=off`)).toBe(false)
+    expect(hostToolsAgentModeEnabled(`${KEY}=`)).toBe(false)
+    // Trimmed, though — `parseEnvText` trims, and so does the backend.
+    expect(hostToolsAgentModeEnabled(`${KEY} = agent `)).toBe(true)
+  })
+
+  it("does not double up when toggled on twice", () => {
+    const once = setHostToolsAgentMode("", true)
+    const twice = setHostToolsAgentMode(once, true)
+    expect(twice).toBe(once)
+    expect(twice.match(new RegExp(KEY, "g"))).toHaveLength(1)
+  })
+
+  it("overrides an inherited value in both directions", () => {
+    // The backend resolves env_json first, then codeg's process env. Whatever
+    // the operator exported, one flip of the switch must decide the outcome —
+    // so both states write an explicit value and neither leaves the key absent.
+    const off = setHostToolsAgentMode("", false)
+    expect(off).toBe(`${KEY}=default`)
+    expect(hostToolsAgentModeEnabled(off)).toBe(false)
+    expect(hostToolsAgentModeEnabled(setHostToolsAgentMode(off, true))).toBe(
+      true
+    )
   })
 })

@@ -44,7 +44,8 @@ function task(overrides?: Partial<WorkTask>): WorkTask {
 
 function renderCard(
   t: WorkTask,
-  handlers?: Partial<Record<string, () => void>>
+  handlers?: Partial<Record<string, () => void>>,
+  mergeQueueRank?: number
 ) {
   const noop = () => {}
   const props = {
@@ -55,6 +56,7 @@ function renderCard(
     onRequeue: noop,
     onViewSession: noop,
     onMerge: noop,
+    onUnqueueMerge: noop,
     onComplete: noop,
     onArchive: noop,
     onEdit: noop,
@@ -67,6 +69,7 @@ function renderCard(
         task={t}
         folderName="repo"
         now={Date.parse("2026-08-01T01:00:00Z")}
+        mergeQueueRank={mergeQueueRank}
         {...props}
       />
     </NextIntlClientProvider>
@@ -95,6 +98,48 @@ describe("TaskCard review primary", () => {
 
     expect(screen.getByRole("button", { name: "Merge" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Complete" })).toBeNull()
+  })
+
+  it("says a queued task is waiting, and offers only the way out of the queue", async () => {
+    // Already accepted: re-offering "Merge" would read as if the first click
+    // never landed.
+    const onUnqueueMerge = vi.fn()
+    renderCard(
+      task({
+        files_changed: 3,
+        merge_queued: {
+          message: null,
+          delete_worktree: true,
+          queued_at: "2026-08-01T00:30:00Z",
+        },
+      }),
+      { onUnqueueMerge }
+    )
+
+    expect(screen.getByText("Queued to merge")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Merge" })).toBeNull()
+    await userEvent.click(
+      screen.getByRole("button", { name: "Leave merge queue" })
+    )
+    expect(onUnqueueMerge).toHaveBeenCalledTimes(1)
+  })
+
+  it("spells out the place in line when others are ahead", () => {
+    const queued = task({
+      files_changed: 3,
+      merge_queued: {
+        message: null,
+        delete_worktree: true,
+        queued_at: "2026-08-01T00:30:00Z",
+      },
+    })
+    // Next in line reads plainly — a number there would be noise.
+    const first = renderCard(queued, undefined, 1)
+    expect(screen.getByText("Queued to merge")).toBeInTheDocument()
+    first.unmount()
+
+    renderCard(queued, undefined, 2)
+    expect(screen.getByText("Queued to merge · #2")).toBeInTheDocument()
   })
 })
 
@@ -190,5 +235,20 @@ describe("TaskCard worktree-removed badge", () => {
       })
     )
     expect(screen.queryByText("Worktree removed")).toBeNull()
+  })
+})
+
+describe("TaskCard agent mark", () => {
+  it("names the agent the task runs under", () => {
+    renderCard(task({ agent_type: "claude_code" }))
+    expect(screen.getByTitle("Claude Code")).toBeInTheDocument()
+  })
+
+  it("draws a placeholder when no agent is configured anywhere", () => {
+    // The engine refuses to launch this state; the card still has to lay out
+    // its title the way every other card does.
+    renderCard(task({ agent_type: null }))
+    expect(screen.queryByTitle("Claude Code")).toBeNull()
+    expect(screen.getByText("Answer the question")).toBeInTheDocument()
   })
 })

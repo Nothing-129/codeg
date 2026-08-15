@@ -111,6 +111,7 @@ import {
   selectPinnedWithReuse,
   selectRecentConversationsWithReuse,
   worktreeChildrenByParent,
+  worktreeHeaderAlias,
   type SidebarRow,
 } from "./sidebar-conversation-grouping"
 import { useSubsessionSync } from "@/hooks/use-subsession-sync"
@@ -270,14 +271,15 @@ const FolderHeader = memo(function FolderHeader({
    * Which glyph + label this header renders:
    * - `repo` (default): a top-level repo / plain folder / repo container — the
    *   FolderOpen/FolderClosed glyph and the repo-name alias label.
-   * - `worktree`: a git worktree sub-group — the FolderGit2 glyph and the branch
-   *   label (`worktreeBranch`).
+   * - `worktree`: a git worktree sub-group — the FolderGit2 glyph and the same
+   *   `alias [ name ]` label as a repo, with the branch standing in for the
+   *   alias (see {@link worktreeHeaderAlias}).
    * - `root`: a repo container's own-sessions sub-group — the FolderRoot glyph
    *   and a fixed, non-localized "root" label.
    */
   variant?: "repo" | "worktree" | "root"
-  /** The worktree's branch name (its own `git_branch`), shown as the label when
-   *  `variant === "worktree"`. Falls back to the folder name when absent. */
+  /** The worktree's branch name (its own `git_branch`), used as the alias when
+   *  none is set. Leaves the bare folder name when absent. */
   worktreeBranch?: string | null
 }) {
   // Own the translations here rather than receiving `t` as a prop: next-intl
@@ -398,7 +400,13 @@ const FolderHeader = memo(function FolderHeader({
                     )}
                   >
                     {variant === "worktree" ? (
-                      (worktreeBranch ?? folderName)
+                      // Branch as the alias, directory as the name — the same
+                      // two-part label a repo header renders.
+                      <FolderAliasLabel
+                        name={folderName}
+                        alias={worktreeHeaderAlias(folderAlias, worktreeBranch)}
+                        bracketClassName="text-sidebar-foreground"
+                      />
                     ) : variant === "root" ? (
                       // The container repo's own-sessions sub-group is labeled
                       // with a fixed, non-localized "root" (its glyph is
@@ -931,10 +939,9 @@ export function SidebarConversationList({
     folderId: number
     folderName: string
   } | null>(null)
-  const [manageState, setManageState] = useState<{
-    folderId: number
-    folderName: string
-  } | null>(null)
+  // Folder the "manage conversations" dialog opens on — its initial scope; the
+  // dialog itself can then widen to the workspace or point at another folder.
+  const [manageFolderId, setManageFolderId] = useState<number | null>(null)
   const [cloneOpen, setCloneOpen] = useState(false)
   const [browserOpen, setBrowserOpen] = useState(false)
   // Folder whose links are being managed (context menu -> Linked folders).
@@ -1778,13 +1785,9 @@ export function SidebarConversationList({
     [folderIndex]
   )
 
-  const handleManageConversations = useCallback(
-    (folderId: number) => {
-      const name = folderIndex.get(folderId)?.name ?? String(folderId)
-      setManageState({ folderId, folderName: name })
-    },
-    [folderIndex]
-  )
+  const handleManageConversations = useCallback((folderId: number) => {
+    setManageFolderId(folderId)
+  }, [])
 
   const handleManageFolderLinks = useCallback(
     (folderId: number) => {
@@ -2855,12 +2858,11 @@ export function SidebarConversationList({
         </AlertDialogContent>
       </AlertDialog>
 
-      {manageState && (
+      {manageFolderId != null && (
         <ConversationManageDialog
           open
-          onOpenChange={(o) => !o && setManageState(null)}
-          folderId={manageState.folderId}
-          folderName={manageState.folderName}
+          onOpenChange={(o) => !o && setManageFolderId(null)}
+          folderId={manageFolderId}
         />
       )}
 

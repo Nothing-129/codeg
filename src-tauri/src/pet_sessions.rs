@@ -160,6 +160,7 @@ mod tests {
                 request_id: "r1".into(),
                 tool_call: serde_json::json!({}),
                 options: vec![],
+                queued: 0,
             },
             AcpEvent::PermissionResolved {
                 request_id: "r1".into(),

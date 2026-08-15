@@ -141,6 +141,17 @@ export interface PetPermissionSummary {
   options: PermissionOptionInfo[]
 }
 
+/** Where a delegation sub-agent row belongs — set only on rows the backend kept
+ *  because the sub-agent is blocked on the user. A child is never openable as a
+ *  tab, so the row jumps to the conversation that delegated it and names that
+ *  parent. Mirrors Rust `PetParentRef`. */
+export interface PetParentRef {
+  conversationId: number
+  folderId: number
+  agentType: AgentType
+  title: string
+}
+
 /** One active agent session row. Mirrors Rust `PetSessionEntry`. */
 export interface PetSessionEntry {
   connectionId: string
@@ -150,6 +161,8 @@ export interface PetSessionEntry {
   title: string
   status: ConnectionStatus
   pending?: PetPermissionSummary
+  /** Present iff this row is a delegation sub-agent (see `PetParentRef`). */
+  parent?: PetParentRef
 }
 
 /** Aggregate payload for the `pet://sessions` event + `pet_list_active_sessions`

@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 import { XIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { OverlayPortalContainerProvider } from "@/components/ui/overlay-portal-container"
 import { useNestedLayerDismissGuard } from "@/hooks/use-nested-layer-dismiss-guard"
 import { cn } from "@/lib/utils"
 
@@ -62,8 +63,11 @@ function DialogContent({
 }) {
   // Without this, closing a nested Select/DropdownMenu by clicking elsewhere in
   // the dialog closes the dialog too.
-  const { setNode, onPointerDownOutside: guardOutsidePress } =
-    useNestedLayerDismissGuard<HTMLDivElement>(ref)
+  const {
+    node,
+    setNode,
+    onPointerDownOutside: guardOutsidePress,
+  } = useNestedLayerDismissGuard<HTMLDivElement>(ref)
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -82,7 +86,11 @@ function DialogContent({
           )}
           {...props}
         >
-          {children}
+          {/* Nested layers portal in here rather than to the body, so the
+              scroll lock lets the wheel through to them. */}
+          <OverlayPortalContainerProvider container={node}>
+            {children}
+          </OverlayPortalContainerProvider>
           {showCloseButton && (
             <DialogPrimitive.Close data-slot="dialog-close" asChild>
               <Button

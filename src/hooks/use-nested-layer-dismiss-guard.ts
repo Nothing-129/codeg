@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
   type Ref,
   type RefCallback,
 } from "react"
@@ -54,11 +55,16 @@ function attachRef<T>(ref: Ref<T> | undefined, node: T | null): () => void {
  *
  * Pass the caller's `ref` in; wire the returned `setNode` to the content as its
  * `ref` and chain `onPointerDownOutside` into the content's handler.
+ *
+ * `node` is the same element as a rendered value, for callers that need to lay
+ * something out against it — `Dialog` / `Sheet` publish it as the portal host
+ * for nested layers (see `OverlayPortalContainerProvider`).
  */
 export function useNestedLayerDismissGuard<T extends HTMLElement = HTMLElement>(
   forwardedRef?: Ref<T>
 ) {
   const nodeRef = useRef<T | null>(null)
+  const [node, setNodeState] = useState<T | null>(null)
   const shieldedAtPressRef = useRef(false)
 
   useEffect(() => {
@@ -80,9 +86,11 @@ export function useNestedLayerDismissGuard<T extends HTMLElement = HTMLElement>(
   const setNode = useCallback<RefCallback<T>>(
     (node) => {
       nodeRef.current = node
+      setNodeState(node)
       const detach = attachRef(forwardedRef, node)
       return () => {
         nodeRef.current = null
+        setNodeState(null)
         detach()
       }
     },
@@ -93,5 +101,5 @@ export function useNestedLayerDismissGuard<T extends HTMLElement = HTMLElement>(
     if (shieldedAtPressRef.current) event.preventDefault()
   }, [])
 
-  return { setNode, onPointerDownOutside }
+  return { node, setNode, onPointerDownOutside }
 }

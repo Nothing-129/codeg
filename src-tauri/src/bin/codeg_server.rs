@@ -506,6 +506,24 @@ async fn async_main() -> ExitCode {
         tokio::spawn(codeg_lib::work_task::run_task_engine(engine));
     }
 
+    // Label worktree folders registered before aliases were seeded at creation
+    // with the branch they have checked out (mirrors lib.rs setup). Background;
+    // changed folders are broadcast, so a browser that already fetched its
+    // folder list still picks them up.
+    {
+        let db = codeg_lib::db::AppDatabase {
+            conn: state.db.conn.clone(),
+        };
+        let emitter = state.emitter.clone();
+        tokio::spawn(async move {
+            let n =
+                codeg_lib::commands::folders::backfill_worktree_folder_aliases(&emitter, &db).await;
+            if n > 0 {
+                tracing::info!("[folders] labeled {n} worktree folder(s) by branch");
+            }
+        });
+    }
+
     // Sweep abandoned upload staging files from any prior run before
     // serving the first request. The quota log/validate ran earlier in
     // `main` so strict-mode misconfigurations abort before we touch

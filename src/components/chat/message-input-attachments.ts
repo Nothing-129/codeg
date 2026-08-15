@@ -53,14 +53,17 @@ export type InputAttachment = ResourceInputAttachment | ImageInputAttachment
  * Serialize an image attachment into its outgoing prompt block, choosing the
  * wire encoding by the connected agent's declared capabilities:
  *
- * - Agents that accept native ACP image content (`caps.image` — e.g. Claude,
- *   Codex) → an `image` block.
+ * - Agents that accept native ACP image content (`caps.image` — Claude, Codex,
+ *   and Grok, whose `image: false` the backend overrides because it is simply
+ *   untrue) → an `image` block.
  * - Agents that reject image content but accept embedded context
  *   (`caps.embedded_context`) → an embedded `resource` blob carrying the same
- *   base64 bytes and image mime type. (Grok advertises `image: false` on the
- *   wire, but codeg overrides that to `true` so Grok takes the native `image`
- *   branch — a resource blob is dumped as a binary file attachment and never
- *   reaches Grok's image-describe sidecar.)
+ *   base64 bytes and image mime type.
+ *
+ * The capability is a single bit, so this cannot vary the encoding per mime
+ * type. An agent that takes native images but decodes only some formats is
+ * sorted out at dispatch instead, where the whole prompt is in view — see
+ * `normalize_grok_image_blocks` in `acp/connection.rs`.
  *
  * Pure and deterministic: a path-less pasted image (no `uri`) is given a stable
  * `clipboard://` identifier derived from its name + id, so the emitted block is

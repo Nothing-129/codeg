@@ -1059,7 +1059,8 @@ fn user_chunk_to_block(update: &Value) -> Option<ContentBlock> {
                 }
             }
         }
-        // Native ACP image content — the live send path as of grok 1.0.2.
+        // Native ACP image content — the live send path for every grok that
+        // decodes the format (see `normalize_grok_image_blocks`).
         "image" => {
             let data = content.get("data").and_then(Value::as_str)?;
             Some(ContentBlock::Image {
@@ -2121,9 +2122,10 @@ mod tests {
 
     #[test]
     fn merges_prompt_text_and_native_image_into_one_user_turn() {
-        // Live grok 1.0.2 echoes a native ACP image as its own
-        // `user_message_chunk` (same `promptIndex` as the prose). Same merge
-        // rule as the legacy resource-blob shape below.
+        // Grok echoes a native ACP image as its own `user_message_chunk` (same
+        // `promptIndex` as the prose) — the shape captured from a live 1.0.0 and
+        // re-checked on 1.0.3. Same merge rule as the legacy resource-blob shape
+        // below.
         let updates = concat!(
             r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"这是什么"},"_meta":{"modelId":"grok-4.6","promptIndex":0}}},"timestamp":1783584019}"#, "\n",
             r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"image","data":"QUJD","mimeType":"image/png"},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#, "\n",

@@ -24,6 +24,11 @@ export interface Alert {
   message: string
   detail?: string
   actions?: AlertAction[]
+  /** Raw diagnostic evidence backing the alert (agent stderr tail, unparsed
+   *  update counts). Kept out of `detail`, which is always visible: evidence is
+   *  multi-line machine output, so the alert list renders it behind a collapsed
+   *  disclosure instead of dumping it inline. */
+  evidence?: string
   timestamp: number
 }
 
@@ -34,7 +39,8 @@ interface AlertContextValue {
     level: AlertLevel,
     message: string,
     detail?: string,
-    actions?: AlertAction[]
+    actions?: AlertAction[],
+    evidence?: string
   ) => string
   dismissAlert: (id: string) => void
   clearAll: () => void
@@ -79,12 +85,21 @@ export function AlertProvider({ children }: { children: ReactNode }) {
       level: AlertLevel,
       message: string,
       detail?: string,
-      actions?: AlertAction[]
+      actions?: AlertAction[],
+      evidence?: string
     ) => {
       const id = `alert-${++seq}-${Date.now()}`
       dispatch({
         type: "push",
-        alert: { id, level, message, detail, actions, timestamp: Date.now() },
+        alert: {
+          id,
+          level,
+          message,
+          detail,
+          actions,
+          evidence,
+          timestamp: Date.now(),
+        },
       })
       return id
     },

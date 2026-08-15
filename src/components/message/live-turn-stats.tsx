@@ -12,9 +12,10 @@ import {
   countUnifiedDiffLineChanges,
   estimateChangedLineStats,
 } from "@/lib/line-change-stats"
-import { FilePenLine, Timer, Wrench } from "lucide-react"
+import { FilePenLine, Plane, Timer } from "lucide-react"
 import type { AgentType } from "@/lib/types"
 import { AgentIcon } from "@/components/agent-icon"
+import { useTokenOutputSpeed } from "@/hooks/use-token-output-speed"
 
 interface LiveTurnStatsProps {
   message: LiveMessage
@@ -315,6 +316,7 @@ export function LiveTurnStats({
   const t = useTranslations("Folder.chat.liveTurnStats")
   const [elapsed, setElapsed] = useState(() => Date.now() - message.startedAt)
   const editStats = useMemo(() => extractLiveEditStats(message), [message])
+  const tps = useTokenOutputSpeed(message)
   const compactNumberFormatter = useMemo(
     () =>
       new Intl.NumberFormat(locale, {
@@ -331,17 +333,7 @@ export function LiveTurnStats({
     return () => clearInterval(timer)
   }, [message.startedAt])
 
-  // Count tool calls from live content
-  let toolCallCount = 0
-  let hasThinkingBlock = false
-
-  for (const block of message.content) {
-    if (block.type === "tool_call") {
-      toolCallCount++
-    } else if (block.type === "thinking") {
-      hasThinkingBlock = true
-    }
-  }
+  const hasThinkingBlock = message.content.some((b) => b.type === "thinking")
 
   // Only active streams should show thinking/streaming state.
   const lastBlock = message.content[message.content.length - 1]
@@ -383,14 +375,24 @@ export function LiveTurnStats({
             </span>
           </>
         )}
-        {toolCallCount > 0 && (
+        {tps != null && (
           <>
             <span className="hidden text-border leading-none @[30rem]/turnstats:inline">
               |
             </span>
-            <span className="hidden items-center gap-1 leading-none @[30rem]/turnstats:inline-flex">
-              <Wrench className="h-3 w-3 shrink-0" />
-              {t("toolUseCount", { count: toolCallCount })}
+            {/* `tabular-nums` so the digits stop shimmering as the rate moves. */}
+            <span
+              className="hidden items-center gap-1 leading-none tabular-nums @[30rem]/turnstats:inline-flex"
+              title={t("outputSpeedTooltip")}
+            >
+              {/* Name hangs off the icon, matching `ComposerContextUsage` —
+                  `aria-label` on the bare wrapper span carries no role and
+                  isn't reliably exposed. */}
+              <Plane
+                aria-label={t("outputSpeedAria")}
+                className="h-3 w-3 shrink-0"
+              />
+              {tps.toFixed(1)} tok/s
             </span>
           </>
         )}

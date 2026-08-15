@@ -32,7 +32,10 @@ use tokio::sync::{mpsc, RwLock};
 
 use crate::acp::background_watch;
 use crate::acp::error::AcpError;
-use crate::acp::file_system_runtime::{FileSystemRuntime, FileSystemRuntimeError, FsAccessPolicy};
+use crate::acp::file_system_runtime::{
+    FileSystemRuntime, FileSystemRuntimeError, FsAccessPolicy, FS_POLICY_ENV,
+};
+use crate::acp::host_tools_policy::{HostToolsPolicy, HOST_TOOLS_ENV};
 use crate::acp::registry::{self, AgentDistribution};
 use crate::acp::session_state::SessionState;
 use crate::acp::stderr_tail::{summarize_parser_error, StderrTail, TailScope};
@@ -142,13 +145,43 @@ fn apply_grok_env_policy(merged: &mut Vec<(String, String)>, runtime_env: &BTree
 /// silently stripping codeg-mcp and with it ask_user_question / delegation /
 /// feedback / session_info. The late `retain` + `push` makes the override win
 /// over any user `runtime_env` twin, so the injection is guaranteed to survive.
-fn apply_codex_env_policy(agent_type: AgentType, merged: &mut Vec<(String, String)>) {
+/// Codex launch env policy. `initial_agent_mode` is the preset resolved from
+/// `~/.codex/config.toml` by `codex_launch_initial_agent_mode` — passed in rather
+/// than read here so this stays pure (and so its tests don't depend on whatever
+/// `~/.codex/config.toml` the developer happens to have).
+fn apply_codex_env_policy(
+    agent_type: AgentType,
+    merged: &mut Vec<(String, String)>,
+    initial_agent_mode: Option<&str>,
+) {
     if agent_type != AgentType::Codex {
         return;
     }
     let key = "DISABLE_MCP_CONFIG_FILTERING";
     merged.retain(|(k, _)| k != key);
     merged.push((key.to_string(), "true".to_string()));
+
+    // Make `~/.codex/config.toml`'s sandbox/approval choice mean something.
+    // codex-acp re-sends its own approvalPolicy + sandboxPolicy every turn from
+    // an `AgentMode` seeded once per session, so without this the user's config
+    // is silently overridden by the adapter's default `agent` preset (#442).
+    // Same shape as Grok's `--permission-mode` launch flag.
+    //
+    // A pre-existing value in the runtime env WINS: that is an explicit
+    // user-set key, a stronger signal than a config-file inference. A
+    // `preferred_mode_id` / `config_values["mode"]` still overrides this after
+    // connect via `set_config_option` — explicit choice > config inference.
+    let mode_key = "INITIAL_AGENT_MODE";
+    if merged
+        .iter()
+        .any(|(k, v)| k == mode_key && !v.trim().is_empty())
+    {
+        return;
+    }
+    if let Some(mode) = initial_agent_mode {
+        merged.retain(|(k, _)| k != mode_key);
+        merged.push((mode_key.to_string(), mode.to_string()));
+    }
 }
 
 /// Prepend `dir` to the PATH entry of `env`, seeding from `fallback_path` when
@@ -779,15 +812,40 @@ async fn build_agent(
                 if let Some(message) = pi_launch_preflight(runtime_env) {
                     return Err(AcpError::SdkNotInstalled(message));
                 }
-                // Trust the workspace codeg is launching pi into (default on, via
-                // the PI_ACP_TRUST_WORKSPACE env_json key) so pi loads the
-                // project's local config/skills without a redundant prompt. Gates
-                // config loading only, never execution; scoped, additive, and
-                // best-effort (never blocks the connect).
-                crate::commands::acp::seed_pi_workspace_trust(cwd, runtime_env);
+                // NOTE: codeg deliberately does NOT touch pi's `trust.json` here.
+                // It used to mark this workspace trusted on every launch, which
+                // made pi load the repo's own `.pi/*` — including `.pi/extensions`,
+                // JS/TS modules whose top level executes at pi startup with the
+                // user's permissions, before any prompt is sent. Because pi-acp
+                // spawns `pi --mode rpc` (no UI), pi's own default is to skip those
+                // resources, so the seeding was the sole reason they ran. Trust is
+                // now an explicit per-workspace decision surfaced in the UI
+                // (`acp_pi_set_project_trust`).
+                //
+                // Dropping the seeding does NOT retract the grants it already
+                // wrote: they persist in pi's user-level store and are inherited
+                // by every subdirectory, so a repo cloned into a folder some
+                // earlier session trusted is trusted before it is ever opened.
+                // Since pi resolves trust at startup and runs extensions
+                // immediately, an unconfirmed grant has to stop the launch here —
+                // a notice shown once the connection is up comes after the code it
+                // warns about has already run.
+                if let Some(message) =
+                    crate::commands::acp::pi_project_trust_launch_block(cwd, runtime_env)
+                {
+                    return Err(AcpError::PiProjectTrustRequired(message));
+                }
             }
             let mut merged_env = merge_agent_env(env, runtime_env);
-            apply_codex_env_policy(agent_type, &mut merged_env);
+            // Resolve the config-derived preset HERE (like Grok's
+            // `grok_launch_permission_mode` below) so the policy helper stays a
+            // pure function over the env list.
+            let codex_initial_mode = if agent_type == AgentType::Codex {
+                crate::commands::acp::codex_launch_initial_agent_mode()
+            } else {
+                None
+            };
+            apply_codex_env_policy(agent_type, &mut merged_env, codex_initial_mode.as_deref());
             // codex-acp 1.0.0 honors APP_SERVER_LOGS as a directory for its
             // adapter-side logs. Surface it only under CODEG_ACP_DEBUG so
             // default runs are unchanged; a directory-creation failure silently
@@ -1234,6 +1292,12 @@ pub async fn spawn_agent_connection(
     // agent's state. Uses the same `launch_cwd` the process and ACP session get.
     let fs_policy = FsAccessPolicy::from_env(&launch_cwd, agent_type, &runtime_env);
 
+    // Whether codeg hosts the `fs/*` + `terminal/*` channels at all, or hands
+    // them back to the agent so the agent's OWN sandbox covers them (#436).
+    // Resolved here for the same reason as `fs_policy`: it reads the full
+    // per-agent `runtime_env`, which does not survive into `run_connection`.
+    let host_tools = HostToolsPolicy::from_env(&runtime_env);
+
     // Forward only the codeg git credential helper keys into the terminal
     // runtime — not the agent's API tokens or model provider credentials.
     // This makes `git fetch`/`git push` issued through the ACP
@@ -1325,6 +1389,7 @@ pub async fn spawn_agent_connection(
             preferred_config_values,
             delegation_injection,
             fs_policy,
+            host_tools,
             stderr_tail,
         )
         .await;
@@ -1426,8 +1491,19 @@ enum PendingPermission {
     },
 }
 
-impl PendingPermission {
+/// What [`PermissionQueue`] needs from a parked responder. Abstracted into a
+/// trait ONLY so the queue stays a pure state machine that unit tests can drive:
+/// sacp's `Responder` has private fields and no public constructor, so a real
+/// [`PendingPermission`] cannot be built outside a live ACP connection.
+trait PermissionResponder {
     /// Resolve with the user's chosen option id.
+    fn respond_selected(self, option_id: String);
+    /// Resolve as cancelled — the turn ended / connection tore down before the
+    /// user chose.
+    fn respond_cancelled(self);
+}
+
+impl PermissionResponder for PendingPermission {
     fn respond_selected(self, option_id: String) {
         match self {
             PendingPermission::Acp(responder) => {
@@ -1447,8 +1523,6 @@ impl PendingPermission {
         }
     }
 
-    /// Resolve as cancelled — the turn ended / connection tore down before the
-    /// user chose.
     fn respond_cancelled(self) {
         match self {
             PendingPermission::Acp(responder) => {
@@ -1466,8 +1540,336 @@ impl PendingPermission {
     }
 }
 
-/// Shared state for pending permission responders.
-type PendingPermissions = Arc<tokio::sync::Mutex<HashMap<String, PendingPermission>>>;
+/// A permission card that is waiting for its turn on screen. Holds exactly the
+/// three fields `AcpEvent::PermissionRequest` carries, so promoting a queued
+/// entry is a move, not a rebuild.
+struct QueuedPermission {
+    request_id: String,
+    tool_call: serde_json::Value,
+    options: Vec<PermissionOptionInfo>,
+}
+
+/// What [`PermissionQueue::resolve`] decided.
+struct ResolvedPermission {
+    /// `false` when `request_id` was not ours (already answered, drained, or a
+    /// stale client) — the caller must then emit nothing at all.
+    answered: bool,
+    /// The card promoted onto the screen by this answer, if any.
+    next: Option<QueuedPermission>,
+}
+
+/// Per-connection permission state: the blocked responders AND the display
+/// queue, under ONE lock.
+///
+/// Why they must share a lock (#442): the responder map used to be the only
+/// state, and every `session/request_permission` emitted its card immediately.
+/// But a card is a SINGLE slot both in the snapshot
+/// (`SessionState.pending_permission`) and in the frontend reducer
+/// (`conn.pendingPermission`), so N concurrent requests collapsed to the last
+/// one — the earlier `request_id`s were no longer referenced by any client, so
+/// no `RespondPermission` could ever arrive for them and their responders sat
+/// parked until teardown, blocking the agent's tool calls forever (a work task
+/// then sat at `awaiting_input` because its outstanding-request set kept the
+/// orphan keys). Codex issues these concurrently: codex-acp forwards each
+/// `item/commandExecution/requestApproval` to its own `session/request_permission`
+/// and serializes only its notification queue, not approvals.
+///
+/// So: queue instead of overwrite — one card at a time, FIFO, nothing lost.
+/// Splitting the responder map from the queue would leave a real interleaving
+/// (the request handler runs on sacp's dispatch task, `Cancel` on the
+/// conversation task, so they interleave at every `.await`):
+///
+/// ```text
+/// handler: insert responder for P
+/// cancel : drain responders; clear queue      <- P's responder is gone
+/// handler: enqueue P; emit PermissionRequest(P)   <- clickable but inert card,
+///                                                   and `showing = P` wedges
+///                                                   every later request
+/// ```
+///
+/// Re-checking "is P still in the responder map" before emitting does NOT close
+/// that window (a drain can still land between the check and the publish). One
+/// lock covering both, with the emit performed INSIDE it (see
+/// [`admit_permission`]), makes "responder exists" and "card is on screen"
+/// atomic with respect to a drain.
+///
+/// Invariant, upheld by all three methods: every id in `showing`/`waiting` has a
+/// live entry in `responders`, and every `responders` key is either `showing` or
+/// in `waiting`. That makes "queued card whose responder is gone"
+/// unrepresentable, so promotion never has to skip dead entries.
+///
+/// LOCK ORDER: this mutex is always acquired BEFORE `SessionState`'s `RwLock`,
+/// never after. `emit_with_state` takes the state lock internally, so publishing
+/// while holding this mutex is the sanctioned direction; nothing may acquire
+/// this mutex while already holding a `SessionState` guard.
+struct PermissionQueue<R = PendingPermission> {
+    responders: HashMap<String, R>,
+    /// The card currently published to clients. `None` = nothing on screen.
+    showing: Option<String>,
+    waiting: VecDeque<QueuedPermission>,
+}
+
+// Hand-written rather than derived: `#[derive(Default)]` would demand
+// `R: Default`, which a responder never is.
+impl<R> Default for PermissionQueue<R> {
+    fn default() -> Self {
+        Self {
+            responders: HashMap::new(),
+            showing: None,
+            waiting: VecDeque::new(),
+        }
+    }
+}
+
+impl<R: PermissionResponder> PermissionQueue<R> {
+    /// Register a blocked responder and its card. Returns the card to publish
+    /// NOW — the newcomer itself when the screen was free, otherwise `None`
+    /// (it waits its turn).
+    fn admit(&mut self, responder: R, card: QueuedPermission) -> Option<QueuedPermission> {
+        self.responders.insert(card.request_id.clone(), responder);
+        if self.showing.is_none() {
+            self.showing = Some(card.request_id.clone());
+            Some(card)
+        } else {
+            self.waiting.push_back(card);
+            None
+        }
+    }
+
+    /// Answer `request_id` and advance the screen.
+    ///
+    /// Unknown / already-answered ids are an idempotent no-op (`answered:
+    /// false`) — two clients racing the same card must not double-respond to a
+    /// responder that has already been consumed.
+    fn resolve(&mut self, request_id: &str, option_id: String) -> ResolvedPermission {
+        let Some(pending) = self.responders.remove(request_id) else {
+            return ResolvedPermission {
+                answered: false,
+                next: None,
+            };
+        };
+        pending.respond_selected(option_id);
+        if self.showing.as_deref() == Some(request_id) {
+            let next = self.waiting.pop_front();
+            self.showing = next.as_ref().map(|c| c.request_id.clone());
+            ResolvedPermission {
+                answered: true,
+                next,
+            }
+        } else {
+            // Defensive: a stale client answered a card that never reached the
+            // screen. Drop its queue entry too, or promoting it later would
+            // surface a card with no responder — the state the invariant above
+            // exists to forbid.
+            self.waiting.retain(|c| c.request_id != request_id);
+            ResolvedPermission {
+                answered: true,
+                next: None,
+            }
+        }
+    }
+
+    /// Cancel every blocked responder and clear the queue. Returns the id of the
+    /// card that was on screen, which the caller MUST follow with a compensating
+    /// `PermissionResolved` — otherwise that card stays up on every client with
+    /// no live responder behind it, and a work task keeps its outstanding-request
+    /// key forever (the pre-existing idle-`Cancel` ghost, #442).
+    ///
+    /// Queued cards need no compensation: they were never published, so no
+    /// client rendered them and `track_request` never counted them.
+    fn drain(&mut self) -> Option<String> {
+        for (_, pending) in self.responders.drain() {
+            pending.respond_cancelled();
+        }
+        self.waiting.clear();
+        self.showing.take()
+    }
+
+    /// How many cards are waiting BEHIND the one on screen.
+    fn waiting_len(&self) -> usize {
+        self.waiting.len()
+    }
+}
+
+/// Shared per-connection permission state (responders + display queue).
+type PendingPermissions = Arc<tokio::sync::Mutex<PermissionQueue>>;
+
+/// `conn=<id> conv=<id>` for the permission log lines.
+///
+/// Whose permission a log line is about is not answerable from the request id
+/// alone, and the answer matters most exactly when it is a delegation
+/// sub-agent's — that connection has no tab, so a stall there is the one an
+/// operator is least able to see (#447). With the connection id here and
+/// `child_connection_id` on the `delegation_task` span, an external watchdog can
+/// join the two. `conv` is `-` until the row is bound.
+///
+/// Takes the `SessionState` read lock, so callers must hold the permission queue
+/// mutex — never the reverse (see [`PermissionQueue`]'s LOCK ORDER note).
+async fn permission_log_scope(state: &Arc<RwLock<SessionState>>) -> String {
+    let s = state.read().await;
+    match s.conversation_id {
+        Some(cid) => format!("conn={} conv={cid}", s.connection_id),
+        None => format!("conn={} conv=-", s.connection_id),
+    }
+}
+
+/// Register a blocked permission responder and publish its card if the screen is
+/// free. The emit happens INSIDE the queue lock — see [`PermissionQueue`] for why
+/// that is load-bearing rather than incidental.
+async fn admit_permission(
+    perms: &PendingPermissions,
+    state: &Arc<RwLock<SessionState>>,
+    emitter: &EventEmitter,
+    responder: PendingPermission,
+    card: QueuedPermission,
+) {
+    let mut queue = perms.lock().await;
+    let scope = permission_log_scope(state).await;
+    let request_id = card.request_id.clone();
+    match queue.admit(responder, card) {
+        Some(card) => {
+            tracing::info!(
+                "[ACP] permission {} shown {scope} (waiting={})",
+                card.request_id,
+                queue.waiting_len()
+            );
+            // `queued` is 0 by construction here: a card is only published when
+            // the screen was free, which means nothing was waiting.
+            emit_with_state(
+                state,
+                emitter,
+                AcpEvent::PermissionRequest {
+                    request_id: card.request_id,
+                    tool_call: card.tool_call,
+                    options: card.options,
+                    queued: 0,
+                },
+            )
+            .await;
+        }
+        None => {
+            let depth = queue.waiting_len();
+            tracing::info!(
+                "[ACP] permission {request_id} queued {scope} behind {:?} (waiting={depth})",
+                queue.showing,
+            );
+            // The visible card did not change, so nothing republishes it — send
+            // a depth-only update or its "N more waiting" hint goes stale.
+            emit_with_state(
+                state,
+                emitter,
+                AcpEvent::PermissionQueueDepth {
+                    depth: depth as u32,
+                },
+            )
+            .await;
+        }
+    }
+}
+
+/// Answer a permission card and promote the next one.
+///
+/// Publish order is deliberate: `PermissionRequest(next)` goes out BEFORE
+/// `PermissionResolved(request_id)`. Both clears are id-checked
+/// (`SessionState::apply_event`, and the frontend's `PERMISSION_CLEARED`), so the
+/// trailing resolve is a no-op against the newly-shown card rather than wiping
+/// it. It also keeps a work task's outstanding-request set from transiently
+/// emptying, which would otherwise flip the row `awaiting_input → running →
+/// awaiting_input` on every single approval.
+async fn resolve_permission(
+    perms: &PendingPermissions,
+    state: &Arc<RwLock<SessionState>>,
+    emitter: &EventEmitter,
+    request_id: String,
+    option_id: String,
+) {
+    let mut queue = perms.lock().await;
+    let resolved = queue.resolve(&request_id, option_id);
+    if !resolved.answered {
+        return;
+    }
+    // Pairs with the `shown` line: a watchdog reading only the raise side can't
+    // tell a permission the user answered in seconds from one that has been
+    // blocking the agent since. Resolved AFTER the idempotent no-op check, so a
+    // stale/duplicate answer costs no state read and logs nothing.
+    let scope = permission_log_scope(state).await;
+    tracing::info!("[ACP] permission {request_id} answered {scope}");
+    if let Some(card) = resolved.next {
+        let depth = queue.waiting_len();
+        tracing::info!(
+            "[ACP] permission {} promoted {scope} after {request_id} (waiting={depth})",
+            card.request_id,
+        );
+        emit_with_state(
+            state,
+            emitter,
+            AcpEvent::PermissionRequest {
+                request_id: card.request_id,
+                tool_call: card.tool_call,
+                options: card.options,
+                // Unlike a fresh admit this can be non-zero: promotion happens
+                // with the rest of the queue still behind it.
+                queued: depth as u32,
+            },
+        )
+        .await;
+    }
+    emit_with_state(state, emitter, AcpEvent::PermissionResolved { request_id }).await;
+}
+
+/// Cancel every pending permission on this connection and clear the on-screen
+/// card via a compensating `PermissionResolved`.
+///
+/// Mirrors `ConnectionManager::compensate_if_question_drained`, which solves the
+/// same "broadcast card outlives its backend waiter" problem for questions.
+async fn drain_permissions(
+    perms: &PendingPermissions,
+    state: &Arc<RwLock<SessionState>>,
+    emitter: &EventEmitter,
+) {
+    let mut queue = perms.lock().await;
+    drain_permissions_locked(&mut queue, state, emitter).await;
+}
+
+/// Drain, then publish `follow_up`, WITHOUT releasing the queue lock in between.
+///
+/// The two must be atomic whenever `follow_up` is `TurnComplete`, because
+/// `SessionState::apply_event` nulls `pending_permission` on that event
+/// unconditionally. With a plain drain followed by a separate emit, an
+/// `admit_permission` landing in the gap (the request handler runs on sacp's
+/// dispatch task, this on the conversation task) would publish its card and set
+/// `showing`, and then `TurnComplete` would silently un-display it on every
+/// client — leaving a live responder behind an id nobody can answer, and wedging
+/// every LATER permission behind it for the life of the connection. That is the
+/// exact failure mode this queue exists to prevent.
+///
+/// Holding the lock across both makes an in-flight admit wait until the turn has
+/// ended; its card then lands on an empty queue and displays normally as the
+/// out-of-turn request it now is.
+async fn drain_permissions_then_emit(
+    perms: &PendingPermissions,
+    state: &Arc<RwLock<SessionState>>,
+    emitter: &EventEmitter,
+    follow_up: AcpEvent,
+) {
+    let mut queue = perms.lock().await;
+    drain_permissions_locked(&mut queue, state, emitter).await;
+    emit_with_state(state, emitter, follow_up).await;
+}
+
+/// Shared body of the two drains above. Emits the compensating
+/// `PermissionResolved` for whatever was on screen; queued cards were never
+/// published, so they need none.
+async fn drain_permissions_locked(
+    queue: &mut PermissionQueue,
+    state: &Arc<RwLock<SessionState>>,
+    emitter: &EventEmitter,
+) {
+    if let Some(request_id) = queue.drain() {
+        tracing::info!("[ACP] permission {request_id} cancelled by drain");
+        emit_with_state(state, emitter, AcpEvent::PermissionResolved { request_id }).await;
+    }
+}
 
 fn map_session_modes(mode_state: &SessionModeState) -> SessionModeStateInfo {
     SessionModeStateInfo {
@@ -2525,10 +2927,23 @@ async fn apply_and_emit_session_config_options(
 
 /// Grok's initialize still advertises `image: false` — the coding model
 /// cannot see pixels. Native ACP `image` blocks nevertheless run its
-/// image-describe sidecar (verified against grok 1.0.2). An image-mime
-/// `resource` blob does not: grok dumps it as
-/// `<file_contents type="binary">` and the model only gets a path.
+/// image-describe sidecar. An image-mime `resource` blob does not: grok dumps
+/// it as `<file_contents type="binary">` and the model only gets a path.
 /// Advertise `image: true` so the composer sends Image blocks.
+///
+/// Measured live against 0.2.112, 1.0.0 and 1.0.3: every one of them still
+/// advertises `image: false`, accepts a native `image` block anyway, and answers
+/// correctly about the pixels — while the same bytes as a resource blob make the
+/// model invent an answer. The advertisement has simply been wrong for as long
+/// as codeg has supported grok, across every version tested, so this is
+/// deliberately NOT version-gated (and stays correct if grok ever starts
+/// advertising the truth: `image` is already true then). Deliberately no pinned
+/// version named here either — `registry.rs` moves on its own schedule, and a
+/// claim about "the pinned version" rots at the next bump.
+///
+/// This bit says only that grok takes image blocks AT ALL — it decodes just some
+/// formats, which is a per-mime question a single capability cannot answer, so
+/// [`normalize_grok_image_blocks`] settles that separately at dispatch.
 fn effective_prompt_capabilities(
     agent_type: AgentType,
     capabilities: &sacp::schema::PromptCapabilities,
@@ -2596,7 +3011,13 @@ fn claude_raw_sdk_session_meta(
 /// gates. Extracted for testability — each gate is a documented product
 /// decision:
 ///
-/// - Everyone: filesystem read/write + terminal, for ACP tool execution.
+/// - Everyone, unless `host_tools` says otherwise: filesystem read/write +
+///   terminal, for ACP tool execution. Under
+///   [`HostToolsPolicy::Agent`] BOTH are withheld, which is not a narrowing of
+///   what the agent may do — it moves the doing back inside the agent's own
+///   process, where the agent's own OS sandbox and permission rules already
+///   apply (#436). Withholding one without the other buys nothing: the agent
+///   just reaches the same file through the channel it kept.
 /// - Codex only: form elicitation, so codex's native Plan-mode
 ///   `request_user_input` is delivered as `elicitation/create` (handled by
 ///   `handle_elicitation_request`) instead of being silently answered `{}`.
@@ -2616,12 +3037,18 @@ fn claude_raw_sdk_session_meta(
 ///   `claude_chunk_parent_tool_use_id`). The adapter checks strictly
 ///   `=== true`, and a pre-0.63 binary ignores the unknown key, so this is
 ///   inert everywhere it isn't understood.
-fn build_client_capabilities(agent_type: AgentType) -> ClientCapabilities {
-    let mut client_capabilities = ClientCapabilities::new().terminal(true).fs(
-        FileSystemCapabilities::new()
-            .read_text_file(true)
-            .write_text_file(true),
-    );
+fn build_client_capabilities(
+    agent_type: AgentType,
+    host_tools: HostToolsPolicy,
+) -> ClientCapabilities {
+    let mut client_capabilities = ClientCapabilities::new();
+    if host_tools.hosts_channels() {
+        client_capabilities = client_capabilities.terminal(true).fs(
+            FileSystemCapabilities::new()
+                .read_text_file(true)
+                .write_text_file(true),
+        );
+    }
     if agent_type == AgentType::Codex {
         client_capabilities = client_capabilities
             .elicitation(ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()));
@@ -3071,6 +3498,7 @@ async fn inject_codeg_mcp(
     parent_connection_id: &str,
     working_dir: &Path,
     tasks_enabled: bool,
+    host_tools: HostToolsPolicy,
 ) -> Option<CompanionInjection> {
     // codeg-mcp carries BOTH the delegation tools and the live-feedback tool.
     // Inject it when EITHER feature is enabled; the `--features` arg tells the
@@ -3080,8 +3508,19 @@ async fn inject_codeg_mcp(
     // must get their reporting tools regardless of the settings toggles.
     let feedback_enabled = injection.feedback.is_enabled().await;
     let authoring = injection.authoring.snapshot().await;
+    // Delegation is a THIRD door into the same room as `fs/*` and `terminal/*`:
+    // `delegate_to_agent` has codeg spawn a second agent — in codeg's process
+    // tree, under ITS own (by default `Default`) policy — and hand its output
+    // back. A sandboxed agent that cannot read `.env` itself would just ask a
+    // sibling to read it. That defeats the boundary this switch advertises, for
+    // the same reason withholding only one of fs/terminal would, so `agent`
+    // withholds this group too. The other groups stay: they surface codeg's own
+    // state (feedback, ask, session info, task reporting), not arbitrary file
+    // or command execution on the user's machine.
+    let delegation_enabled =
+        injection.broker.config_snapshot().await.enabled && host_tools.hosts_channels();
     let flags = CompanionFeatureFlags {
-        delegation: injection.broker.config_snapshot().await.enabled,
+        delegation: delegation_enabled,
         feedback: feedback_enabled,
         ask: injection.ask.is_enabled().await,
         sessions: injection.sessions.is_enabled().await,
@@ -3305,12 +3744,14 @@ async fn run_connection(
     preferred_config_values: BTreeMap<String, String>,
     delegation_injection: Option<DelegationInjection>,
     fs_policy: FsAccessPolicy,
+    host_tools: HostToolsPolicy,
     // Connection-scoped agent stderr buffer, shared with the `with_debug`
     // callback installed by `build_agent`. Read only when a turn ends without
     // agent output, to attach evidence to the synthesized error.
     stderr_tail: Arc<StderrTail>,
 ) -> Result<(), AcpError> {
-    let pending_perms: PendingPermissions = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let pending_perms: PendingPermissions =
+        Arc::new(tokio::sync::Mutex::new(PermissionQueue::default()));
     // `terminal_base_env` already filtered to just the credential helper
     // keys upstream — see `spawn_agent_connection` for the rationale and
     // why we don't forward the full agent runtime_env here.
@@ -3324,7 +3765,25 @@ async fn run_connection(
             .with_default_shell_config(terminal_shell_config),
     );
     let cwd_string = cwd.to_string_lossy().to_string();
-    tracing::info!("[ACP] fs policy {}", fs_policy.describe());
+    // The connection's security posture in one place, so what a live session
+    // actually enforces is readable from the log rather than inferred.
+    tracing::info!(
+        "[ACP] fs policy {} | host tools {}",
+        fs_policy.describe(),
+        host_tools.describe()
+    );
+    // `strict` reads as a containment boundary and is not one while codeg also
+    // advertises `terminal`: an agent refused a read just `cat`s the file
+    // through the shell codeg runs for it (empirically what grok does). Say so
+    // rather than letting the knob's name do the promising.
+    if fs_policy.confines_reads() && host_tools.hosts_channels() {
+        tracing::warn!(
+            "[ACP] {FS_POLICY_ENV} confines the fs channel but codeg still advertises \
+             `terminal`, so an agent reaches the same paths through a shell — this is \
+             not a containment boundary. Set {HOST_TOOLS_ENV}=agent to hand file access \
+             and commands back to the agent, where its own sandbox applies."
+        );
+    }
     let file_system_runtime = Arc::new(FileSystemRuntime::with_policy(fs_policy));
 
     let conn_id = connection_id.clone();
@@ -3414,6 +3873,9 @@ async fn run_connection(
                 async move |req: ReadTextFileRequest,
                             responder: Responder<ReadTextFileResponse>,
                             _cx: ConnectionTo<Agent>| {
+                    if !host_tools.hosts_channels() {
+                        return refuse_unadvertised_channel(responder, "fs/read_text_file");
+                    }
                     respond_file_system_request(responder, runtime.read_text_file(req).await)?;
                     Ok(())
                 }
@@ -3426,6 +3888,9 @@ async fn run_connection(
                 async move |req: WriteTextFileRequest,
                             responder: Responder<WriteTextFileResponse>,
                             _cx: ConnectionTo<Agent>| {
+                    if !host_tools.hosts_channels() {
+                        return refuse_unadvertised_channel(responder, "fs/write_text_file");
+                    }
                     respond_file_system_request(responder, runtime.write_text_file(req).await)?;
                     Ok(())
                 }
@@ -3438,6 +3903,9 @@ async fn run_connection(
                 async move |req: CreateTerminalRequest,
                             responder: Responder<CreateTerminalResponse>,
                             _cx: ConnectionTo<Agent>| {
+                    if !host_tools.hosts_channels() {
+                        return refuse_unadvertised_channel(responder, "terminal/create");
+                    }
                     respond_terminal_request(responder, runtime.create_terminal(req).await)?;
                     Ok(())
                 }
@@ -3450,6 +3918,9 @@ async fn run_connection(
                 async move |req: TerminalOutputRequest,
                             responder: Responder<TerminalOutputResponse>,
                             _cx: ConnectionTo<Agent>| {
+                    if !host_tools.hosts_channels() {
+                        return refuse_unadvertised_channel(responder, "terminal/output");
+                    }
                     respond_terminal_request(responder, runtime.terminal_output(req).await)?;
                     Ok(())
                 }
@@ -3462,6 +3933,12 @@ async fn run_connection(
                 async move |req: WaitForTerminalExitRequest,
                             responder: Responder<WaitForTerminalExitResponse>,
                             cx: ConnectionTo<Agent>| {
+                    if !host_tools.hosts_channels() {
+                        // Refuse INLINE, before the spawn below: there is no
+                        // terminal to wait on, so answering immediately is
+                        // correct and keeps the refusal off the spawn path.
+                        return refuse_unadvertised_channel(responder, "terminal/wait_for_exit");
+                    }
                     // `terminal/wait_for_exit` blocks until the command exits,
                     // and sacp awaits request handlers INSIDE its single
                     // dispatch loop ("the loop awaits the handler to completion
@@ -3499,6 +3976,9 @@ async fn run_connection(
                 async move |req: KillTerminalRequest,
                             responder: Responder<KillTerminalResponse>,
                             _cx: ConnectionTo<Agent>| {
+                    if !host_tools.hosts_channels() {
+                        return refuse_unadvertised_channel(responder, "terminal/kill");
+                    }
                     respond_terminal_request(responder, runtime.kill_terminal(req).await)?;
                     Ok(())
                 }
@@ -3511,6 +3991,9 @@ async fn run_connection(
                 async move |req: ReleaseTerminalRequest,
                             responder: Responder<ReleaseTerminalResponse>,
                             _cx: ConnectionTo<Agent>| {
+                    if !host_tools.hosts_channels() {
+                        return refuse_unadvertised_channel(responder, "terminal/release");
+                    }
                     respond_terminal_request(responder, runtime.release_terminal(req).await)?;
                     Ok(())
                 }
@@ -3589,7 +4072,7 @@ async fn run_connection(
             let agent_name_for_log = registry::get_agent_meta(agent_type).name;
 
             let init_request = InitializeRequest::new(ProtocolVersion::LATEST)
-                .client_capabilities(build_client_capabilities(agent_type));
+                .client_capabilities(build_client_capabilities(agent_type, host_tools));
             // Bound the Initialize handshake so an outdated / incompatible
             // cached binary that never responds can't leave the frontend
             // stuck on "Connecting...". A healthy agent answers in <1s; we
@@ -3754,7 +4237,15 @@ async fn run_connection(
                     // task_progress / task_complete tool group.
                     let tasks_enabled =
                         { state.read().await.owner_window_label == "work_task" };
-                    inject_codeg_mcp(&mut mcp_servers, inj, &conn_id, &cwd, tasks_enabled).await
+                    inject_codeg_mcp(
+                        &mut mcp_servers,
+                        inj,
+                        &conn_id,
+                        &cwd,
+                        tasks_enabled,
+                        host_tools,
+                    )
+                    .await
                 } else {
                     None
                 }
@@ -4047,9 +4538,19 @@ async fn run_connection(
                                     .otherwise(async |dispatch| {
                                         // Historical replay: throwaway state,
                                         // mirroring the sibling closure above.
+                                        // An ext notification that raises an
+                                        // ALERT is skipped, though — a
+                                        // compaction failure or a dropped image
+                                        // recorded in a past session is not
+                                        // happening now, and that path also
+                                        // fires an OS notification. The typed
+                                        // closure above draws the same line by
+                                        // forwarding only AvailableCommands.
                                         let mut replay_cb_state =
                                             CodeBuddyLiveState::default();
-                                        maybe_emit_ext_notification(&st, &h, agent_type, dispatch, &mut replay_cb_state).await;
+                                        if !grok_ext_notification_is_alert(&dispatch, agent_type) {
+                                            maybe_emit_ext_notification(&st, &h, agent_type, dispatch, &mut replay_cb_state).await;
+                                        }
                                         Ok(())
                                     })
                                     .await;
@@ -4708,17 +5209,15 @@ async fn handle_elicitation_request(
                     meta: None,
                 })
                 .collect();
-            perms.lock().await.insert(
-                request_id.clone(),
+            admit_permission(
+                perms,
+                state,
+                emitter,
                 PendingPermission::CodexElicitation {
                     responder,
                     approval,
                 },
-            );
-            emit_with_state(
-                state,
-                emitter,
-                AcpEvent::PermissionRequest {
+                QueuedPermission {
                     request_id,
                     tool_call,
                     options,
@@ -4924,15 +5423,12 @@ async fn handle_permission_request(
         }
     }
 
-    perms
-        .lock()
-        .await
-        .insert(request_id.clone(), PendingPermission::Acp(responder));
-
-    emit_with_state(
+    admit_permission(
+        perms,
         state,
         emitter,
-        AcpEvent::PermissionRequest {
+        PendingPermission::Acp(responder),
+        QueuedPermission {
             request_id,
             tool_call: tool_call_value,
             options,
@@ -4949,6 +5445,34 @@ fn respond_terminal_request<T: sacp::JsonRpcResponse>(
         Ok(response) => responder.respond(response),
         Err(error) => responder.respond_with_error(error.into_rpc_error()),
     }
+}
+
+/// Refuse a channel this launch never advertised
+/// ([`HostToolsPolicy::Agent`], #436). Withholding the capability is a
+/// DECLARATION; a non-conforming agent can still call the method, and if codeg
+/// then served it the whole switch would be a suggestion — the operation would
+/// land back in codeg's process, outside the agent's sandbox, which is exactly
+/// the bug. `method_not_found` is the honest wire answer: as far as this
+/// connection is concerned the method does not exist, which is what the agent
+/// was told on Initialize.
+fn refuse_unadvertised_channel<T: sacp::JsonRpcResponse>(
+    responder: Responder<T>,
+    method: &str,
+) -> Result<(), sacp::Error> {
+    tracing::warn!(
+        "[ACP] refusing {method}: {HOST_TOOLS_ENV}=agent, so this channel was never \
+         advertised — the agent must use its own (sandboxable) tools"
+    );
+    responder.respond_with_error(unadvertised_channel_error(method))
+}
+
+/// The error [`refuse_unadvertised_channel`] answers with. Split out because a
+/// `Responder` cannot be built outside a live connection, so this is the part
+/// of the refusal a unit test can pin; the wiring itself is covered end-to-end.
+fn unadvertised_channel_error(method: &str) -> sacp::Error {
+    sacp::Error::method_not_found().data(format!(
+        "codeg does not host {method} for this agent ({HOST_TOOLS_ENV}=agent)"
+    ))
 }
 
 fn respond_file_system_request<T: sacp::JsonRpcResponse>(
@@ -4999,9 +5523,56 @@ async fn set_session_config_option(
         .and_then(|opts| opts.iter().find(|o| o.id == config_id))
         .is_some_and(|o| matches!(o.kind, SessionConfigKindInfo::Boolean(_)));
     let value = encode_config_option_value(is_boolean, &value_id);
-    let updated = set_session_config_option_inner(cx, session_id, config_id, value).await?;
+    let updated =
+        set_session_config_option_inner(cx, session_id, config_id.clone(), value).await?;
+    // Compare BEFORE emitting: the agent's answer is the only place a request and
+    // its outcome are correlated. Once the option list is broadcast it is
+    // indistinguishable from an unsolicited update.
+    if let Some(rejection) =
+        config_option_rejection(&map_session_config_options(&updated), &config_id, &value_id)
+    {
+        emit_with_state(state, emitter, rejection).await;
+    }
     emit_session_config_options_values(state, emitter, agent_type, updated).await;
     Ok(())
+}
+
+/// Build a [`AcpEvent::ConfigOptionRejected`] when the agent's answer settled the
+/// option somewhere other than where the request asked.
+///
+/// Takes the mapped form so grouped and ungrouped selects are already flattened
+/// into one value list. Returns `None` when the pick was honoured, when the agent
+/// didn't advertise the option at all (nothing to compare against), or for a
+/// non-select kind — silence is the right default, since a spurious "your pick was
+/// changed" notice is worse than none.
+fn config_option_rejection(
+    updated: &[SessionConfigOptionInfo],
+    config_id: &str,
+    requested: &str,
+) -> Option<AcpEvent> {
+    let option = updated.iter().find(|o| o.id == config_id)?;
+    let SessionConfigKindInfo::Select(select) = &option.kind else {
+        return None;
+    };
+    if select.current_value == requested {
+        return None;
+    }
+    // Labels, not ids: the composer's dropdown shows names, so the notice has to
+    // name the same things the user was looking at.
+    let label = |value: &str| {
+        select
+            .options
+            .iter()
+            .find(|item| item.value == value)
+            .map(|item| item.name.clone())
+            .unwrap_or_else(|| value.to_string())
+    };
+    Some(AcpEvent::ConfigOptionRejected {
+        config_id: config_id.to_string(),
+        option_name: option.name.clone(),
+        requested: label(requested),
+        actual: label(&select.current_value),
+    })
 }
 
 /// Encode a selector value for `session/set_config_option`.
@@ -5741,26 +6312,80 @@ async fn journal_turn_span(
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), ack).await;
 }
 
-/// Promote image-mime embedded resources to native Image blocks.
+/// The image mime types grok's normalizer actually decodes — verbatim the set
+/// its own clipboard reader accepts (`xai-grok-shared/src/clipboard.rs`), and
+/// the boundary between the two carriages in [`normalize_grok_image_blocks`].
 ///
-/// Codeg used to send Grok images as `resource` blobs because grok
-/// advertised `image:false`. That path never reaches grok's describe
-/// sidecar — see [`effective_prompt_capabilities`]. Queued drafts and
-/// work-task replays can still carry the old shape; lift them here.
-fn promote_grok_image_resources(blocks: Vec<PromptInputBlock>) -> Vec<PromptInputBlock> {
+/// Measured against grok 1.0.0: png / webp / bmp / tiff round-trip through the
+/// describe sidecar (jpeg is one of the two formats grok itself re-encodes to,
+/// gif rides the same table). `image/svg+xml` does NOT — its validator answers
+/// `unsupported or unrecognised image format` and the image never reaches the
+/// model. Deliberately an allow-list, not a `image/*` prefix test: a mime we
+/// have no evidence for keeps the resource carriage, which is where it already
+/// was, so a wrong guess here can never be a regression.
+fn grok_decodes_image_mime(mime: &str) -> bool {
+    matches!(
+        mime.trim().to_ascii_lowercase().as_str(),
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/bmp" | "image/tiff"
+    )
+}
+
+/// Whether a mime names an image at all — the outer guard on the demotion, so a
+/// malformed `Image` block carrying something else entirely is left untouched.
+/// Normalized exactly like [`grok_decodes_image_mime`]: if the two guards
+/// disagreed about the same string (`IMAGE/SVG+XML` reads as "not an image" to a
+/// case-sensitive test), an undecodable format would slip through as native.
+fn is_image_mime(mime: &str) -> bool {
+    mime.trim().to_ascii_lowercase().starts_with("image/")
+}
+
+/// Put every attached image on the carriage grok can actually read.
+///
+/// Two encodings carry the same bytes and grok treats them very differently:
+///
+/// * A native `Image` block runs its describe sidecar — the ONLY path where the
+///   model sees pixels (see [`effective_prompt_capabilities`]). But grok
+///   validates the format first and DROPS anything it cannot decode.
+/// * A `Resource` blob is saved into the session's `assets/` and announced to
+///   the model as a file path. No pixels, but for a text-shaped image (svg) the
+///   model can just read the source — measurably better than a drop.
+///
+/// So decodable images are promoted (queued drafts and work-task prompts
+/// composed before codeg advertised `image:true` still carry the old shape),
+/// and undecodable ones are demoted back — the composer only sees the single
+/// `image` capability bit and cannot make this call per mime.
+fn normalize_grok_image_blocks(blocks: Vec<PromptInputBlock>) -> Vec<PromptInputBlock> {
     blocks
         .into_iter()
-        .map(|block| match block {
+        .enumerate()
+        .map(|(index, block)| match block {
             PromptInputBlock::Resource {
                 uri,
                 mime_type: Some(mime),
                 text: None,
                 blob: Some(blob),
-            } if mime.starts_with("image/") && !blob.is_empty() => PromptInputBlock::Image {
+            } if grok_decodes_image_mime(&mime) && !blob.is_empty() => PromptInputBlock::Image {
                 data: blob,
                 mime_type: mime,
                 uri: Some(uri),
             },
+            PromptInputBlock::Image {
+                data,
+                mime_type,
+                uri,
+            } if is_image_mime(&mime_type)
+                && !grok_decodes_image_mime(&mime_type)
+                && !data.is_empty() =>
+            {
+                PromptInputBlock::Resource {
+                    // A pasted image has no path; its position in this prompt is
+                    // the stable identifier, same as the work-task engine's.
+                    uri: uri.unwrap_or_else(|| format!("clipboard://grok-image-{index}")),
+                    mime_type: Some(mime_type),
+                    text: None,
+                    blob: Some(data),
+                }
+            }
             other => other,
         })
         .collect()
@@ -6558,11 +7183,13 @@ async fn run_conversation_loop<'a>(
                         .collect();
                     (crate::turn_timings::prompt_hash(&text), cursor_turn_ord)
                 });
-                // Grok: lift leftover image-mime resource blobs (queued drafts
-                // composed before we advertised image:true) into native Image
-                // blocks so its describe sidecar actually runs.
+                // Grok: settle each image onto the carriage grok can read —
+                // decodable ones as native Image blocks (so its describe
+                // sidecar runs), the rest back as resource blobs. The last
+                // point that sees the blocks, so every producer (composer,
+                // queued draft, work task, delegation) is covered at once.
                 let blocks = if agent_type == AgentType::Grok {
-                    promote_grok_image_resources(blocks)
+                    normalize_grok_image_blocks(blocks)
                 } else {
                     blocks
                 };
@@ -6840,7 +7467,19 @@ async fn run_conversation_loop<'a>(
                                     if reason_str == "end_turn" {
                                         journal_turn_span(&mut turn_timing_probe, conn_id, &sid.0).await;
                                     }
-                                    emit_with_state(
+                                    // The turn is over, so any card still parked
+                                    // here is moot — `TurnComplete` clears
+                                    // `pending_permission` from the snapshot
+                                    // unconditionally. Drain and emit as ONE
+                                    // critical section so the queue can't keep a
+                                    // `showing` id that no `RespondPermission`
+                                    // will ever match, which would wedge the
+                                    // queue and stop every LATER permission on
+                                    // this connection from displaying. A no-op on
+                                    // the normal path (an agent blocked on
+                                    // approval does not end its turn).
+                                    drain_permissions_then_emit(
+                                        perms,
                                         state,
                                         emitter,
                                         AcpEvent::TurnComplete {
@@ -6928,7 +7567,11 @@ async fn run_conversation_loop<'a>(
                                 current_session_model_id(state).await,
                             )
                             .await;
-                            emit_with_state(
+                            // Same wedge guard as the StopReason-message exit
+                            // above — see that comment for why the drain and the
+                            // event must share one critical section.
+                            drain_permissions_then_emit(
+                                perms,
                                 state,
                                 emitter,
                                 AcpEvent::TurnComplete {
@@ -6970,15 +7613,10 @@ async fn run_conversation_loop<'a>(
                                     request_id,
                                     option_id,
                                 }) => {
-                                    if let Some(pending) = perms.lock().await.remove(&request_id) {
-                                        pending.respond_selected(option_id);
-                                        emit_with_state(
-                                            state,
-                                            emitter,
-                                            AcpEvent::PermissionResolved { request_id },
-                                        )
-                                        .await;
-                                    }
+                                    resolve_permission(
+                                        perms, state, emitter, request_id, option_id,
+                                    )
+                                    .await;
                                 }
                                 Some(ConnectionCommand::SetMode { mode_id }) => {
                                     let req = SetSessionModeRequest::new(sid.clone(), mode_id.clone());
@@ -7111,16 +7749,19 @@ async fn run_conversation_loop<'a>(
                                         .await;
                                     tracked_terminal_tool_calls.clear();
                                     // Also cancel any pending permission requests
-                                    let mut locked = perms.lock().await;
-                                    for (_, pending) in locked.drain() {
-                                        pending.respond_cancelled();
-                                    }
-                                    drop(locked);
-                                    // Immediately emit TurnComplete so the frontend
-                                    // transitions out of "prompting" and the user can
-                                    // send new messages.  Don't wait for the agent --
-                                    // it may be slow to respond or not respond at all.
-                                    emit_with_state(
+                                    // (queued ones included), clearing the card
+                                    // that was on screen, and immediately emit
+                                    // TurnComplete so the frontend transitions out
+                                    // of "prompting" and the user can send new
+                                    // messages. Don't wait for the agent -- it may
+                                    // be slow to respond or not respond at all.
+                                    // One critical section for the same reason as
+                                    // the turn-end exits: a request admitted
+                                    // between the two would be published and then
+                                    // silently un-displayed by TurnComplete,
+                                    // wedging the queue.
+                                    drain_permissions_then_emit(
+                                        perms,
                                         state,
                                         emitter,
                                         AcpEvent::TurnComplete {
@@ -7201,10 +7842,7 @@ async fn run_conversation_loop<'a>(
                                         .release_all_for_session(sid.0.as_ref())
                                         .await;
                                     tracked_terminal_tool_calls.clear();
-                                    let mut locked = perms.lock().await;
-                                    for (_, pending) in locked.drain() {
-                                        pending.respond_cancelled();
-                                    }
+                                    drain_permissions(perms, state, emitter).await;
                                     disconnect_requested = true;
                                     break;
                                 }
@@ -7248,11 +7886,7 @@ async fn run_conversation_loop<'a>(
                 request_id,
                 option_id,
             }) => {
-                if let Some(pending) = perms.lock().await.remove(&request_id) {
-                    pending.respond_selected(option_id);
-                    emit_with_state(state, emitter, AcpEvent::PermissionResolved { request_id })
-                        .await;
-                }
+                resolve_permission(perms, state, emitter, request_id, option_id).await;
             }
             Some(ConnectionCommand::SetMode { mode_id }) => {
                 if let Err(e) = set_session_mode(session, state, emitter, mode_id).await {
@@ -7338,11 +7972,15 @@ async fn run_conversation_loop<'a>(
                 terminal_runtime
                     .release_all_for_session(sid.0.as_ref())
                     .await;
-                let mut locked = perms.lock().await;
-                for (_, pending) in locked.drain() {
-                    pending.respond_cancelled();
-                }
-                drop(locked);
+                // Unlike the mid-turn Cancel branch, this one does NOT emit
+                // `TurnComplete` (there is no turn), so nothing else would ever
+                // clear the on-screen permission card — before the compensating
+                // `PermissionResolved` inside `drain_permissions`, an idle Cancel
+                // left a card up on every client with its responder already
+                // cancelled (clicking it did nothing) and pinned a work task at
+                // `awaiting_input` forever, because `PermissionResolved` was only
+                // emitted from the `RespondPermission` path.
+                drain_permissions(perms, state, emitter).await;
                 // Cascade-cancel any pending delegations owned by this parent.
                 // Reached when Cancel arrives between prompts (idle path); the
                 // inner Cancel handler covers mid-prompt. Both must trigger
@@ -8579,9 +9217,11 @@ fn grok_ext_event_id(params: &serde_json::Value) -> String {
         .unwrap_or_else(|| format!("grok-ext-{}", uuid::Uuid::new_v4().simple()))
 }
 
-/// Map grok's private context-compaction ext notifications into `AcpEvent`s.
+/// Map grok's private ext notifications — context compaction and dropped
+/// prompt images — into `AcpEvent`s.
 ///
-/// grok reports `/compact` (and auto-compaction) results on
+/// grok reports `/compact` (and auto-compaction) results, and the fate of an
+/// image it refused to send, on
 /// `_x.ai/session_notification` / `_x.ai/session/update` rather than as normal
 /// `agent_message_chunk`s. Those methods never match the typed `session/update`
 /// pipeline, so without this the whole turn is blank and `/compact` looks like
@@ -8634,15 +9274,23 @@ fn map_grok_ext_notification(
         // describe sidecar (too small, oversize, decode failure). Surface it
         // so the user isn't left wondering why Grok "can't see" the shot.
         "image_dropped" => {
-            let detail = update
+            // `notes` is grok's own user-facing sentence, one per dropped image
+            // ("Image 1 was dropped before send: too small (1×1); images must be
+            // at least 8×8 pixels."). It already names the subject, so it is
+            // shown verbatim — prefixing it would read "Image dropped: Image 1
+            // was dropped before send: …". Only the shapeless fallbacks get a
+            // prefix, because on their own they say nothing about images.
+            let message = update
                 .get("notes")
                 .and_then(|v| v.as_array())
                 .map(|notes| {
                     notes
                         .iter()
                         .filter_map(|n| n.as_str())
+                        .map(str::trim)
+                        .filter(|n| !n.is_empty())
                         .collect::<Vec<_>>()
-                        .join("; ")
+                        .join(" ")
                 })
                 .filter(|s| !s.is_empty())
                 .or_else(|| {
@@ -8650,11 +9298,15 @@ fn map_grok_ext_notification(
                         .get("reason")
                         .or_else(|| update.get("message"))
                         .and_then(|v| v.as_str())
-                        .map(str::to_string)
+                        .map(str::trim)
+                        // A blank reason would render as a bare "Image dropped: "
+                        // — worse than the generic sentence below.
+                        .filter(|d| !d.is_empty())
+                        .map(|d| format!("Image dropped: {d}"))
                 })
-                .unwrap_or_else(|| "image was dropped before send".to_string());
+                .unwrap_or_else(|| "An image was dropped before send.".to_string());
             Some(AcpEvent::Error {
-                message: format!("Image dropped: {detail}"),
+                message,
                 agent_type: agent_type.to_string(),
                 code: None,
                 details: None,
@@ -8965,18 +9617,40 @@ fn grok_subagent_meta(
 }
 
 /// Whether a dispatch is a grok ext notification that
-/// `map_grok_ext_notification` renders as visible turn output (a compaction card
-/// or a compaction error). The active-turn loop consults this BEFORE the typed
+/// `map_grok_ext_notification` renders as visible turn output (a compaction
+/// card, a compaction error, or a dropped-image error). The active-turn loop
+/// consults this BEFORE the typed
 /// pipeline to mark the turn as non-empty: a `/compact` turn emits only these
 /// ext notifications and no standard `agent_message_chunk`, so without this its
 /// `end_turn` is reclassified as `"empty"` and re-surfaced as a spurious error —
 /// the exact symptom this change removes. Reuses `map_grok_ext_notification` so
-/// the handled-variant set can never drift from what actually emits.
+/// the handled-variant set can never drift from what actually emits. A turn
+/// whose only output was a dropped image therefore reports THAT, rather than
+/// the generic empty-turn failure it used to.
 fn grok_ext_notification_is_turn_output(dispatch: &Dispatch, agent_type: AgentType) -> bool {
     match dispatch {
         Dispatch::Notification(notification) => {
             map_grok_ext_notification(notification, agent_type).is_some()
         }
+        _ => false,
+    }
+}
+
+/// Whether a grok ext notification would raise a user-facing ALERT (status-bar
+/// entry + OS notification), as opposed to rendering a card in the turn.
+///
+/// Only the historical `session/load` replay asks: those notifications describe
+/// a PAST session, so re-raising their alerts would report a compaction failure
+/// or a dropped image as if it were happening now, for a session the user is
+/// merely opening. Reuses the mapper for the same reason
+/// [`grok_ext_notification_is_turn_output`] does — the alerting set cannot drift
+/// away from what actually emits.
+fn grok_ext_notification_is_alert(dispatch: &Dispatch, agent_type: AgentType) -> bool {
+    match dispatch {
+        Dispatch::Notification(notification) => matches!(
+            map_grok_ext_notification(notification, agent_type),
+            Some(AcpEvent::Error { .. })
+        ),
         _ => false,
     }
 }
@@ -9712,6 +10386,246 @@ mod tests {
         }
     }
 
+    // ── PermissionQueue (#442) ──────────────────────────────────────────────
+    //
+    // The queue is what stops N concurrent `session/request_permission`s from
+    // collapsing into the single card slot and stranding the losers' responders
+    // forever. Driven here through a stub responder because sacp's `Responder`
+    // has private fields and no public constructor.
+
+    /// How a stubbed responder was settled. `Ord` so the drain assertions can
+    /// sort — `HashMap::drain` yields an arbitrary order.
+    #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+    enum StubSettled {
+        Selected,
+        Cancelled,
+    }
+
+    /// Records `(request_id, how)` into a shared log when settled, so a test can
+    /// assert that EVERY parked responder was answered exactly once — the whole
+    /// point of the queue is that none is silently dropped.
+    struct StubResponder {
+        request_id: String,
+        log: Arc<std::sync::Mutex<Vec<(String, StubSettled)>>>,
+    }
+
+    impl PermissionResponder for StubResponder {
+        fn respond_selected(self, _option_id: String) {
+            self.log
+                .lock()
+                .unwrap()
+                .push((self.request_id, StubSettled::Selected));
+        }
+
+        fn respond_cancelled(self) {
+            self.log
+                .lock()
+                .unwrap()
+                .push((self.request_id, StubSettled::Cancelled));
+        }
+    }
+
+    type StubLog = Arc<std::sync::Mutex<Vec<(String, StubSettled)>>>;
+
+    /// Admit `id` into `queue`; returns the card the queue says to publish now.
+    fn admit_stub(
+        queue: &mut PermissionQueue<StubResponder>,
+        log: &StubLog,
+        id: &str,
+    ) -> Option<QueuedPermission> {
+        queue.admit(
+            StubResponder {
+                request_id: id.to_string(),
+                log: Arc::clone(log),
+            },
+            QueuedPermission {
+                request_id: id.to_string(),
+                tool_call: serde_json::json!({ "toolCallId": id }),
+                options: vec![],
+            },
+        )
+    }
+
+    fn stub_queue() -> (PermissionQueue<StubResponder>, StubLog) {
+        (
+            PermissionQueue::default(),
+            Arc::new(std::sync::Mutex::new(Vec::new())),
+        )
+    }
+
+    #[test]
+    fn permission_queue_shows_only_the_first_of_concurrent_requests() {
+        let (mut q, log) = stub_queue();
+        // The regression itself: three approvals arrive back-to-back (codex
+        // running parallel shell commands). Before the queue, each emit
+        // overwrote the last and the first two became unanswerable.
+        let first = admit_stub(&mut q, &log, "a").expect("first request must be shown");
+        assert_eq!(first.request_id, "a");
+        assert!(
+            admit_stub(&mut q, &log, "b").is_none(),
+            "a second concurrent request must queue, not replace the visible card"
+        );
+        assert!(admit_stub(&mut q, &log, "c").is_none());
+        assert_eq!(q.waiting_len(), 2);
+        assert_eq!(q.showing.as_deref(), Some("a"));
+        assert!(log.lock().unwrap().is_empty(), "nothing settled yet");
+    }
+
+    #[test]
+    fn permission_queue_promotes_in_fifo_order_and_settles_every_responder() {
+        let (mut q, log) = stub_queue();
+        admit_stub(&mut q, &log, "a");
+        admit_stub(&mut q, &log, "b");
+        admit_stub(&mut q, &log, "c");
+
+        let after_a = q.resolve("a", "allow".into());
+        assert!(after_a.answered);
+        assert_eq!(
+            after_a.next.map(|c| c.request_id).as_deref(),
+            Some("b"),
+            "answering the visible card must promote the FIFO head"
+        );
+        let after_b = q.resolve("b", "allow".into());
+        assert_eq!(after_b.next.map(|c| c.request_id).as_deref(), Some("c"));
+        let after_c = q.resolve("c", "allow".into());
+        assert!(after_c.answered);
+        assert!(after_c.next.is_none(), "queue drained, nothing left to show");
+        assert_eq!(q.showing, None);
+        assert_eq!(q.waiting_len(), 0);
+
+        // Every one of the three agent tool calls got an answer — the bug was
+        // that two of them never did.
+        let settled = log.lock().unwrap().clone();
+        assert_eq!(
+            settled,
+            vec![
+                ("a".to_string(), StubSettled::Selected),
+                ("b".to_string(), StubSettled::Selected),
+                ("c".to_string(), StubSettled::Selected),
+            ]
+        );
+    }
+
+    #[test]
+    fn permission_queue_ignores_unknown_and_duplicate_answers() {
+        let (mut q, log) = stub_queue();
+        admit_stub(&mut q, &log, "a");
+        admit_stub(&mut q, &log, "b");
+
+        let unknown = q.resolve("nope", "allow".into());
+        assert!(
+            !unknown.answered,
+            "an unknown id must not advance the queue (the caller emits nothing)"
+        );
+        assert_eq!(q.showing.as_deref(), Some("a"));
+
+        assert!(q.resolve("a", "allow".into()).answered);
+        // Two clients racing the same card: the second answer must not consume
+        // an already-settled responder or promote a second time.
+        let again = q.resolve("a", "reject".into());
+        assert!(!again.answered);
+        assert_eq!(q.showing.as_deref(), Some("b"));
+        assert_eq!(log.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn permission_queue_answering_a_queued_card_removes_it_from_the_queue() {
+        // Defensive path: a stale client answers a card that never reached the
+        // screen. Its queue entry must go too, or promoting it later would show
+        // a card whose responder is already consumed.
+        let (mut q, log) = stub_queue();
+        admit_stub(&mut q, &log, "a");
+        admit_stub(&mut q, &log, "b");
+        admit_stub(&mut q, &log, "c");
+
+        let out = q.resolve("b", "allow".into());
+        assert!(out.answered);
+        assert!(
+            out.next.is_none(),
+            "answering a non-visible card must not change what is on screen"
+        );
+        assert_eq!(q.showing.as_deref(), Some("a"));
+        assert_eq!(q.waiting_len(), 1);
+
+        assert_eq!(
+            q.resolve("a", "allow".into()).next.map(|c| c.request_id),
+            Some("c".to_string()),
+            "the dead entry must be skipped by removal, not by a promote-time check"
+        );
+    }
+
+    #[test]
+    fn permission_queue_drain_cancels_all_and_reports_the_visible_card() {
+        let (mut q, log) = stub_queue();
+        admit_stub(&mut q, &log, "a");
+        admit_stub(&mut q, &log, "b");
+        admit_stub(&mut q, &log, "c");
+
+        assert_eq!(
+            q.drain().as_deref(),
+            Some("a"),
+            "the visible card must be reported so the caller can emit a \
+             compensating PermissionResolved — without it the card lingers on \
+             every client with no live responder (the idle-Cancel ghost)"
+        );
+        assert_eq!(q.showing, None);
+        assert_eq!(q.waiting_len(), 0);
+
+        let mut settled = log.lock().unwrap().clone();
+        settled.sort();
+        assert_eq!(
+            settled,
+            vec![
+                ("a".to_string(), StubSettled::Cancelled),
+                ("b".to_string(), StubSettled::Cancelled),
+                ("c".to_string(), StubSettled::Cancelled),
+            ],
+            "queued responders must be cancelled too, not leaked"
+        );
+    }
+
+    #[test]
+    fn permission_queue_drain_with_nothing_shown_needs_no_compensation() {
+        let (mut q, _log) = stub_queue();
+        assert!(
+            q.drain().is_none(),
+            "an empty queue must not emit a spurious PermissionResolved"
+        );
+    }
+
+    #[test]
+    fn permission_queue_admits_again_after_drain() {
+        // The TurnComplete wedge guard: if a drain left `showing` set, every
+        // later permission on this connection would queue behind a card that can
+        // never be answered — reproducing the very symptom being fixed.
+        let (mut q, log) = stub_queue();
+        admit_stub(&mut q, &log, "a");
+        admit_stub(&mut q, &log, "b");
+        q.drain();
+
+        let fresh = admit_stub(&mut q, &log, "c");
+        assert_eq!(
+            fresh.map(|c| c.request_id).as_deref(),
+            Some("c"),
+            "a post-drain request must be shown immediately"
+        );
+        assert_eq!(q.showing.as_deref(), Some("c"));
+    }
+
+    #[test]
+    fn permission_queue_admit_then_drain_never_leaves_an_inert_card() {
+        // The interleaving that motivated putting the responder map and the
+        // queue under ONE lock: admit publishes a card, a Cancel drains, and the
+        // card must be reported for compensation rather than left up.
+        let (mut q, log) = stub_queue();
+        let shown = admit_stub(&mut q, &log, "a").expect("shown");
+        assert_eq!(q.drain().as_deref(), Some(shown.request_id.as_str()));
+        assert_eq!(
+            log.lock().unwrap().clone(),
+            vec![("a".to_string(), StubSettled::Cancelled)]
+        );
+    }
+
     #[test]
     fn grok_ask_ext_request_routes_and_parses_captured_wire_shape() {
         use sacp::JsonRpcMessage;
@@ -10226,7 +11140,7 @@ mod tests {
         // Codex gets the flag injected so codex-acp never drops the injected
         // `codeg-mcp` server on a config.toml name collision.
         let mut env = vec![("PATH".to_string(), "/usr/bin".to_string())];
-        apply_codex_env_policy(AgentType::Codex, &mut env);
+        apply_codex_env_policy(AgentType::Codex, &mut env, None);
         assert!(env
             .iter()
             .any(|(k, v)| k == "DISABLE_MCP_CONFIG_FILTERING" && v == "true"));
@@ -10236,7 +11150,7 @@ mod tests {
             "DISABLE_MCP_CONFIG_FILTERING".to_string(),
             "false".to_string(),
         )];
-        apply_codex_env_policy(AgentType::Codex, &mut with_twin);
+        apply_codex_env_policy(AgentType::Codex, &mut with_twin, None);
         let hits: Vec<_> = with_twin
             .iter()
             .filter(|(k, _)| k == "DISABLE_MCP_CONFIG_FILTERING")
@@ -10249,12 +11163,61 @@ mod tests {
     fn codex_env_policy_is_noop_for_other_agents() {
         for agent in [AgentType::Grok, AgentType::ClaudeCode, AgentType::Gemini] {
             let mut env = vec![("PATH".to_string(), "/usr/bin".to_string())];
-            apply_codex_env_policy(agent, &mut env);
+            apply_codex_env_policy(agent, &mut env, Some("read-only"));
             assert!(
                 !env.iter().any(|(k, _)| k == "DISABLE_MCP_CONFIG_FILTERING"),
                 "{agent:?} must not receive the codex-only flag"
             );
+            assert!(
+                !env.iter().any(|(k, _)| k == "INITIAL_AGENT_MODE"),
+                "{agent:?} must not receive codex's approval preset"
+            );
         }
+    }
+
+    #[test]
+    fn codex_env_policy_injects_the_config_derived_approval_preset() {
+        // Without this, codex-acp seeds its default `agent` preset and re-sends
+        // that approvalPolicy every turn, so the user's ~/.codex/config.toml
+        // sandbox/approval choice is dead (#442).
+        let mut env = vec![("PATH".to_string(), "/usr/bin".to_string())];
+        apply_codex_env_policy(AgentType::Codex, &mut env, Some("read-only"));
+        assert!(env
+            .iter()
+            .any(|(k, v)| k == "INITIAL_AGENT_MODE" && v == "read-only"));
+
+        // Nothing mappable → stay out of the way entirely, leaving codex-acp's
+        // own default rather than pinning a preset the user never chose.
+        let mut none = vec![("PATH".to_string(), "/usr/bin".to_string())];
+        apply_codex_env_policy(AgentType::Codex, &mut none, None);
+        assert!(!none.iter().any(|(k, _)| k == "INITIAL_AGENT_MODE"));
+    }
+
+    #[test]
+    fn codex_env_policy_lets_an_explicit_env_preset_win_over_the_config() {
+        // An explicit runtime-env key is a stronger signal than a config-file
+        // inference, so it must NOT be clobbered (and must not be duplicated).
+        let mut env = vec![(
+            "INITIAL_AGENT_MODE".to_string(),
+            "agent-full-access".to_string(),
+        )];
+        apply_codex_env_policy(AgentType::Codex, &mut env, Some("read-only"));
+        let hits: Vec<_> = env
+            .iter()
+            .filter(|(k, _)| k == "INITIAL_AGENT_MODE")
+            .collect();
+        assert_eq!(hits.len(), 1, "no duplicate key");
+        assert_eq!(hits[0].1, "agent-full-access");
+
+        // A blank twin carries no intent, so the config-derived value fills it.
+        let mut blank = vec![("INITIAL_AGENT_MODE".to_string(), "  ".to_string())];
+        apply_codex_env_policy(AgentType::Codex, &mut blank, Some("read-only"));
+        let hits: Vec<_> = blank
+            .iter()
+            .filter(|(k, _)| k == "INITIAL_AGENT_MODE")
+            .collect();
+        assert_eq!(hits.len(), 1, "blank twin replaced, not duplicated");
+        assert_eq!(hits[0].1, "read-only");
     }
 
     #[test]
@@ -10436,7 +11399,8 @@ mod tests {
         // Serialize to inspect the wire shape — `_meta` is the serde rename
         // and the exact key path the adapters read.
         let caps_of = |agent: AgentType| {
-            serde_json::to_value(build_client_capabilities(agent)).expect("caps serialize")
+            serde_json::to_value(build_client_capabilities(agent, HostToolsPolicy::Default))
+                .expect("caps serialize")
         };
 
         // Claude Code: subagent-transcript opt-in (strict boolean true), and
@@ -10459,6 +11423,99 @@ mod tests {
         assert!(other.get("elicitation").is_none());
         assert_eq!(other["terminal"], serde_json::Value::Bool(true));
         assert_eq!(other["fs"]["readTextFile"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn host_tools_agent_withholds_both_execution_channels() {
+        let caps_of = |agent: AgentType, host_tools: HostToolsPolicy| {
+            serde_json::to_value(build_client_capabilities(agent, host_tools))
+                .expect("caps serialize")
+        };
+
+        // #436: the whole point. An agent told codeg hosts neither channel
+        // does its own reads and runs its own shell, so its OS sandbox — the
+        // only control still working under `grok agent stdio` — covers them.
+        // BOTH must go: leaving either advertised hands the agent a way back
+        // into codeg's unsandboxed process for the same file.
+        //
+        // `ClientCapabilities` serializes its unset fields as explicit `false`
+        // rather than omitting them, so assert THAT shape — not absence. The
+        // two are equivalent on the wire, verified against grok 1.0.0 under a
+        // kernel `deny`: sending `{fs:{readTextFile:false,…},terminal:false}`
+        // produced the same outcome as omitting the keys entirely (local read →
+        // `EPERM`, every shell fallback blocked, `FsViolation` audited).
+        let withheld = caps_of(AgentType::Grok, HostToolsPolicy::Agent);
+        assert_eq!(withheld["terminal"], serde_json::Value::Bool(false));
+        assert_eq!(withheld["fs"]["readTextFile"], serde_json::Value::Bool(false));
+        assert_eq!(
+            withheld["fs"]["writeTextFile"],
+            serde_json::Value::Bool(false)
+        );
+
+        // Default is untouched — this is opt-in, and a regression here would
+        // silently break every agent's terminal.
+        let hosted = caps_of(AgentType::Grok, HostToolsPolicy::Default);
+        assert_eq!(hosted["terminal"], serde_json::Value::Bool(true));
+        assert_eq!(hosted["fs"]["readTextFile"], serde_json::Value::Bool(true));
+        assert_eq!(hosted["fs"]["writeTextFile"], serde_json::Value::Bool(true));
+
+        // The per-agent gates are about a DIFFERENT axis (which optional
+        // protocol surfaces each adapter understands) and must survive the
+        // withholding — dropping codex's elicitation would strand its Plan-mode
+        // `request_user_input`, and dropping claude's `_meta` would silently
+        // turn subagent transcripts back off.
+        let codex = caps_of(AgentType::Codex, HostToolsPolicy::Agent);
+        assert!(codex.get("elicitation").is_some());
+        assert_eq!(codex["terminal"], serde_json::Value::Bool(false));
+        let claude = caps_of(AgentType::ClaudeCode, HostToolsPolicy::Agent);
+        assert_eq!(
+            claude["_meta"]["subagent-transcript"],
+            serde_json::Value::Bool(true)
+        );
+        assert_eq!(claude["fs"]["readTextFile"], serde_json::Value::Bool(false));
+    }
+
+    #[test]
+    fn a_withheld_channel_is_refused_as_method_not_found() {
+        // Every channel codeg stops advertising must also stop being SERVED.
+        // Advertisement is a declaration; an agent that calls the method anyway
+        // (or a future adapter that ignores client capabilities) would otherwise
+        // land the operation back in codeg's unsandboxed process — the bug.
+        for method in [
+            "fs/read_text_file",
+            "fs/write_text_file",
+            "terminal/create",
+            "terminal/output",
+            "terminal/wait_for_exit",
+            "terminal/kill",
+            "terminal/release",
+        ] {
+            let error = unadvertised_channel_error(method);
+            assert_eq!(error.code, sacp::Error::method_not_found().code);
+            let text = error.to_string();
+            // The knob has to be named: a bare "Method not found" on a channel
+            // that worked yesterday reads as a codeg bug, not as a setting.
+            assert!(text.contains(method), "{text}");
+            assert!(text.contains(HOST_TOOLS_ENV), "{text}");
+        }
+    }
+
+    #[test]
+    fn strict_fs_policy_is_only_a_boundary_once_the_terminal_is_withheld() {
+        // Pins the condition behind the connect-time warning: `strict` gates
+        // reads, but that gate is walkable through a shell for as long as codeg
+        // serves one. The two knobs are orthogonal — this asserts the predicate
+        // pair the warning keys off, so the warning can't silently stop firing.
+        let strict = FsAccessPolicy::strict(Path::new("/workspace"));
+        assert!(strict.confines_reads());
+        assert!(HostToolsPolicy::Default.hosts_channels());
+        assert!(!HostToolsPolicy::Agent.hosts_channels());
+
+        // The default policy leaves reads open, so there is no false promise to
+        // warn about — only writes are rooted.
+        let permissive =
+            FsAccessPolicy::permissive(Path::new("/workspace"), AgentType::Grok, &BTreeMap::new());
+        assert!(!permissive.confines_reads());
     }
 
     #[test]
@@ -10633,14 +11690,58 @@ mod tests {
                     message.contains("too small"),
                     "error should carry grok's drop reason; got: {message}"
                 );
+                // grok's note already opens with "Image 1 was dropped before
+                // send"; a prefix here would stutter it back at the user.
+                assert!(
+                    message.starts_with("Image 1 was dropped"),
+                    "grok's own sentence must be shown verbatim; got: {message}"
+                );
                 assert!(!terminal, "a dropped image must not kill the connection");
             }
             other => panic!("expected non-terminal Error, got {other:?}"),
         }
     }
 
+    /// Without `notes` there is no sentence to show, so the fallback has to
+    /// supply the subject itself.
     #[test]
-    fn promote_grok_image_resources_lifts_image_blobs_only() {
+    fn map_grok_ext_notification_image_dropped_without_notes_still_names_the_subject() {
+        let raw = UntypedMessage::new(
+            "_x.ai/session_notification",
+            serde_json::json!({
+                "sessionId": "s",
+                "update": { "sessionUpdate": "image_dropped", "reason": "decode failed" }
+            }),
+        )
+        .unwrap();
+        match map_grok_ext_notification(&raw, AgentType::Grok) {
+            Some(AcpEvent::Error { message, .. }) => {
+                assert_eq!(message, "Image dropped: decode failed");
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+
+        let bare = UntypedMessage::new(
+            "_x.ai/session_notification",
+            serde_json::json!({
+                "sessionId": "s",
+                "update": { "sessionUpdate": "image_dropped", "notes": [] }
+            }),
+        )
+        .unwrap();
+        match map_grok_ext_notification(&bare, AgentType::Grok) {
+            Some(AcpEvent::Error { message, .. }) => {
+                assert!(
+                    message.to_lowercase().contains("image"),
+                    "a note-less drop must still say what happened; got: {message}"
+                );
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn normalize_grok_image_blocks_lifts_decodable_image_blobs_only() {
         let blocks = vec![
             PromptInputBlock::Text {
                 text: "see this".into(),
@@ -10663,7 +11764,7 @@ mod tests {
                 uri: None,
             },
         ];
-        let out = promote_grok_image_resources(blocks);
+        let out = normalize_grok_image_blocks(blocks);
         assert!(matches!(&out[0], PromptInputBlock::Text { text } if text == "see this"));
         assert!(
             matches!(
@@ -10687,6 +11788,98 @@ mod tests {
             &out[3],
             PromptInputBlock::Image { data, .. } if data == "already"
         ));
+    }
+
+    /// grok's validator rejects `image/svg+xml` outright ("unsupported or
+    /// unrecognised image format") and the model then sees nothing at all. As a
+    /// resource blob the same file lands in the session's assets, where the
+    /// model can read the source — so an undecodable mime must NOT ride the
+    /// native carriage, whichever producer built the block.
+    #[test]
+    fn normalize_grok_image_blocks_demotes_mimes_grok_cannot_decode() {
+        let blocks = vec![
+            PromptInputBlock::Image {
+                data: "PHN2Zy8+".into(),
+                mime_type: "image/svg+xml".into(),
+                uri: Some("file:///tmp/diagram.svg".into()),
+            },
+            // Path-less (pasted): the demotion has to invent a stable uri.
+            // Upper-cased on purpose — the "is it an image at all" guard and the
+            // allow-list must read the same string the same way, or an
+            // undecodable format sails through as native.
+            PromptInputBlock::Image {
+                data: "PHN2Zy8+".into(),
+                mime_type: "IMAGE/SVG+XML".into(),
+                uri: None,
+            },
+            // Already on the resource carriage and undecodable — left alone,
+            // never promoted.
+            PromptInputBlock::Resource {
+                uri: "clipboard://icon.svg".into(),
+                mime_type: Some("image/svg+xml".into()),
+                text: None,
+                blob: Some("PHN2Zy8+".into()),
+            },
+        ];
+        let out = normalize_grok_image_blocks(blocks);
+        assert!(
+            matches!(
+                &out[0],
+                PromptInputBlock::Resource { uri, mime_type: Some(m), text: None, blob: Some(b) }
+                    if uri == "file:///tmp/diagram.svg"
+                        && m == "image/svg+xml"
+                        && b == "PHN2Zy8+"
+            ),
+            "{:?}",
+            out[0]
+        );
+        assert!(
+            matches!(
+                &out[1],
+                PromptInputBlock::Resource { uri, blob: Some(b), .. }
+                    if uri == "clipboard://grok-image-1" && b == "PHN2Zy8+"
+            ),
+            "{:?}",
+            out[1]
+        );
+        assert!(
+            matches!(
+                &out[2],
+                PromptInputBlock::Resource { mime_type: Some(m), .. } if m == "image/svg+xml"
+            ),
+            "{:?}",
+            out[2]
+        );
+    }
+
+    /// The allow-list is the boundary between the two carriages, so pin it:
+    /// grok's own raster set in, everything else out.
+    #[test]
+    fn grok_decodes_image_mime_covers_groks_raster_set_only() {
+        for mime in [
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+            "image/webp",
+            "image/bmp",
+            "image/tiff",
+            "IMAGE/PNG",
+        ] {
+            assert!(grok_decodes_image_mime(mime), "{mime} should be decodable");
+        }
+        for mime in [
+            "image/svg+xml",
+            "image/avif",
+            "image/heic",
+            "image/x-icon",
+            "text/markdown",
+            "",
+        ] {
+            assert!(
+                !grok_decodes_image_mime(mime),
+                "{mime} must keep the resource carriage"
+            );
+        }
     }
 
     #[test]
@@ -11082,6 +12275,54 @@ mod tests {
         // Never fires for a non-grok agent.
         assert!(!grok_ext_notification_is_turn_output(
             &notif("auto_compact_completed"),
+            AgentType::Codex
+        ));
+    }
+
+    /// The `session/load` replay drains a PAST session, so anything that would
+    /// raise an alert (status-bar entry + OS notification) has to be recognised
+    /// and skipped there — otherwise opening an old conversation reports its
+    /// historical failures as if they were happening now.
+    #[test]
+    fn grok_ext_notification_is_alert_matches_only_the_error_outcomes() {
+        let notif = |variant: &str| {
+            Dispatch::Notification(
+                UntypedMessage::new(
+                    "_x.ai/session_notification",
+                    serde_json::json!({
+                        "sessionId": "s",
+                        "update": {
+                            "sessionUpdate": variant,
+                            "tokens_before": 9, "tokens_after": 8, "reason": "x",
+                            "notes": ["Image 1 was dropped before send: too small."]
+                        }
+                    }),
+                )
+                .unwrap(),
+            )
+        };
+        // Both map to a non-terminal Error, so both alert.
+        assert!(grok_ext_notification_is_alert(
+            &notif("image_dropped"),
+            AgentType::Grok
+        ));
+        assert!(grok_ext_notification_is_alert(
+            &notif("auto_compact_failed"),
+            AgentType::Grok
+        ));
+        // A successful compaction renders a CARD, not an alert — it stays
+        // replayable, so the loaded transcript still shows what happened.
+        assert!(!grok_ext_notification_is_alert(
+            &notif("auto_compact_completed"),
+            AgentType::Grok
+        ));
+        // Unmapped variants and non-grok agents never alert.
+        assert!(!grok_ext_notification_is_alert(
+            &notif("turn_completed"),
+            AgentType::Grok
+        ));
+        assert!(!grok_ext_notification_is_alert(
+            &notif("image_dropped"),
             AgentType::Codex
         ));
     }
@@ -11930,6 +13171,132 @@ mod tests {
         assert_eq!(p["_meta"]["reasoningEffort"], "high");
     }
 
+    // ── config-option verdicts ──────────────────────────────────────────────
+    //
+    // `session/set_config_option` is advisory: the agent answers with the option
+    // list it adopted, and codeg renders that verbatim — so a refused pick reads
+    // in the composer as the selector springing back for no reason. Only this
+    // side can tell a request's answer from an unsolicited update, so the
+    // comparison has to be exactly right here.
+
+    fn rejection_fixture(current: &str) -> Vec<SessionConfigOptionInfo> {
+        vec![SessionConfigOptionInfo {
+            id: "thought_level".to_string(),
+            name: "Thinking".to_string(),
+            description: None,
+            category: Some("thought_level".to_string()),
+            kind: SessionConfigKindInfo::Select(SessionConfigSelectInfo {
+                current_value: current.to_string(),
+                options: vec![
+                    SessionConfigSelectOptionInfo {
+                        value: "off".to_string(),
+                        name: "Thinking: off".to_string(),
+                        description: None,
+                    },
+                    SessionConfigSelectOptionInfo {
+                        value: "high".to_string(),
+                        name: "Thinking: high".to_string(),
+                        description: None,
+                    },
+                ],
+                groups: vec![],
+            }),
+        }]
+    }
+
+    #[test]
+    fn config_option_rejection_reports_a_clamped_pick_with_labels() {
+        // pi clamps every level to `off` for a model that never declared
+        // `reasoning` — the bug that made the picker look broken.
+        let event = config_option_rejection(&rejection_fixture("off"), "thought_level", "high")
+            .expect("a clamped pick is a rejection");
+        match event {
+            AcpEvent::ConfigOptionRejected {
+                config_id,
+                option_name,
+                requested,
+                actual,
+            } => {
+                assert_eq!(config_id, "thought_level");
+                assert_eq!(option_name, "Thinking");
+                // Labels, not ids: the dropdown showed these strings.
+                assert_eq!(requested, "Thinking: high");
+                assert_eq!(actual, "Thinking: off");
+            }
+            other => panic!("expected ConfigOptionRejected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn config_option_rejection_is_silent_when_the_pick_landed() {
+        assert!(config_option_rejection(&rejection_fixture("high"), "thought_level", "high").is_none());
+    }
+
+    #[test]
+    fn config_option_rejection_falls_back_to_the_raw_id_without_a_label() {
+        // An agent may settle on a value it never advertised; naming the raw id
+        // beats naming nothing.
+        let event = config_option_rejection(&rejection_fixture("medium"), "thought_level", "high")
+            .expect("still a rejection");
+        match event {
+            AcpEvent::ConfigOptionRejected { actual, .. } => assert_eq!(actual, "medium"),
+            other => panic!("expected ConfigOptionRejected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn config_option_rejection_stays_silent_when_there_is_nothing_to_compare() {
+        let options = rejection_fixture("off");
+        // Option absent from the answer → nothing to compare against.
+        assert!(config_option_rejection(&options, "model", "grok-4.5").is_none());
+        // A kind with no comparable id → leave it to the agent. A false "your
+        // pick was changed" notice is worse than none.
+        let toggle = vec![SessionConfigOptionInfo {
+            id: "auto_approve".to_string(),
+            name: "Auto-approve tools".to_string(),
+            description: None,
+            category: None,
+            kind: SessionConfigKindInfo::Boolean(SessionConfigBooleanInfo {
+                current_value: false,
+            }),
+        }];
+        assert!(config_option_rejection(&toggle, "auto_approve", "true").is_none());
+    }
+
+    #[test]
+    fn config_option_rejection_reads_a_grouped_select() {
+        // Grouped options are flattened by `map_session_config_options` before the
+        // comparison, so a grouped model picker resolves its labels too.
+        let raw = serde_json::json!([{
+            "id": "model",
+            "name": "Model",
+            "type": "select",
+            "currentValue": "openai/gpt-5",
+            "options": [{
+                "group": "openai",
+                "name": "OpenAI",
+                "options": [
+                    {"value": "openai/gpt-5", "name": "GPT-5"},
+                    {"value": "openai/gpt-5-mini", "name": "GPT-5 Mini"}
+                ]
+            }]
+        }]);
+        let parsed: Vec<SessionConfigOption> = serde_json::from_value(raw).expect("parses");
+        let mapped = map_session_config_options(&parsed);
+
+        let event = config_option_rejection(&mapped, "model", "openai/gpt-5-mini")
+            .expect("the agent kept a different model");
+        match event {
+            AcpEvent::ConfigOptionRejected {
+                requested, actual, ..
+            } => {
+                assert_eq!(requested, "GPT-5 Mini");
+                assert_eq!(actual, "GPT-5");
+            }
+            other => panic!("expected ConfigOptionRejected, got {other:?}"),
+        }
+    }
+
     #[test]
     fn synthesize_grok_config_options_none_without_sessionconfig() {
         let empty: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
@@ -12353,7 +13720,7 @@ mod tests {
         );
     }
 
-    /// Grok 1.0.4 persists a native prompt image under its session `assets/`
+    /// Grok persists a native prompt image under its session `assets/`
     /// directory, then may redundantly call the TEXT-only `read_file` tool on
     /// that PNG even though the model already has the visual description. The
     /// call predictably fails UTF-8 decoding but Grok continues from its image
@@ -13640,6 +15007,7 @@ mod tests {
             "parent-conn",
             std::path::Path::new("/tmp"),
             false,
+            HostToolsPolicy::Default,
         )
         .await;
 
@@ -13716,6 +15084,43 @@ mod tests {
         assert!(disabled_builtins.is_empty());
 
         hydrate(&[]);
+    }
+
+    #[test]
+    fn host_tools_agent_also_withholds_the_delegation_group() {
+        // `delegate_to_agent` is the third door into the room `fs/*` and
+        // `terminal/*` open: it has codeg spawn a SECOND agent, in codeg's
+        // process tree under that agent's own policy, and relays its output
+        // back. Without this gate a sandboxed agent that cannot read `.env`
+        // itself just asks a sibling to read it, and the switch's promise is
+        // false. This pins the exact boolean `inject_codeg_mcp` computes.
+        let delegation_for = |broker_enabled: bool, host_tools: HostToolsPolicy| {
+            broker_enabled && host_tools.hosts_channels()
+        };
+        assert!(delegation_for(true, HostToolsPolicy::Default));
+        assert!(!delegation_for(true, HostToolsPolicy::Agent));
+        // The settings toggle still wins when it is the one saying no.
+        assert!(!delegation_for(false, HostToolsPolicy::Default));
+
+        // With delegation the only enabled group, withholding it must skip the
+        // companion entirely rather than launch it with an empty `--features`
+        // (which `CompanionFeatures::parse` would see as absent and default
+        // back to delegation-only — re-opening the hole).
+        let mut flags = CompanionFeatureFlags {
+            delegation: delegation_for(true, HostToolsPolicy::Agent),
+            ..CompanionFeatureFlags::default()
+        };
+        assert_eq!(companion_features_arg(flags), None);
+
+        // But the groups that only surface codeg's OWN state keep working —
+        // they execute nothing on the user's machine, so withholding them
+        // would cost function for no boundary.
+        flags.ask = true;
+        flags.feedback = true;
+        assert_eq!(
+            companion_features_arg(flags),
+            Some("feedback,ask".to_string())
+        );
     }
 
     // ─── companion_features_arg: inject/skip decision + --features value ──

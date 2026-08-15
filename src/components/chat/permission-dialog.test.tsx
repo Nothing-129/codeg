@@ -53,6 +53,35 @@ describe("PermissionDialog", () => {
     ).toBeInTheDocument()
   })
 
+  it("shows how many approvals are queued behind this card, and hides the badge at zero", () => {
+    // Approvals are surfaced one at a time (backend FIFO, #442). Without this
+    // count the remaining ones read as the agent having stopped responding.
+    const permission: PendingPermission = {
+      request_id: "req-1",
+      tool_call: { title: "Run unit tests", kind: "shell" },
+      options: baseOptions,
+      queued: 3,
+    }
+    const { unmount } = renderWithIntl(
+      <PermissionDialog permission={permission} onRespond={() => {}} />
+    )
+    expect(screen.getByText("+3 waiting")).toBeInTheDocument()
+    unmount()
+
+    // A lone approval must not be decorated with a "+0 waiting" badge; neither
+    // must an older event/snapshot that carries no count at all.
+    for (const queued of [0, undefined]) {
+      const { unmount: cleanup } = renderWithIntl(
+        <PermissionDialog
+          permission={{ ...permission, queued }}
+          onRespond={() => {}}
+        />
+      )
+      expect(screen.queryByText(/waiting/)).not.toBeInTheDocument()
+      cleanup()
+    }
+  })
+
   it("prefers the _meta.claudeCode.title description over the command title (≥0.63)", () => {
     // claude-agent-acp ≥0.63 eager permission tool_call: ACP `title` is the
     // shell command, `_meta.claudeCode.title` the human description. The

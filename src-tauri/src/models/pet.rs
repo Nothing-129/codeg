@@ -280,6 +280,23 @@ impl From<&crate::acp::session_state::PendingPermissionState> for PetPermissionS
     }
 }
 
+/// Where a delegation sub-agent row belongs. Present ONLY on rows whose
+/// conversation has a `parent_id` — i.e. a sub-agent the panel is showing
+/// because it is blocked on the user (see `pet_list_active_sessions_core`).
+///
+/// The panel needs the parent's ids (not the child's) for its jump target: a
+/// delegation child is never openable as a tab, so clicking the row focuses the
+/// conversation that delegated it. `title` names that parent so the row reads
+/// as "sub-agent of «…»" rather than as a session the user doesn't recognize.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PetParentRef {
+    pub conversation_id: i32,
+    pub folder_id: i32,
+    pub agent_type: crate::models::agent::AgentType,
+    pub title: String,
+}
+
 /// One active agent session as shown in the pet panel's list. "Active" means
 /// the connection is currently prompting, awaiting a permission, or errored —
 /// see `ConnectionManager::list_active_sessions`. `title` is resolved from the
@@ -295,6 +312,10 @@ pub struct PetSessionEntry {
     pub status: crate::acp::types::ConnectionStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending: Option<PetPermissionSummary>,
+    /// Set iff this row is a delegation sub-agent (see [`PetParentRef`]).
+    /// Absent for ordinary sessions, which are their own jump target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<PetParentRef>,
 }
 
 /// Aggregate payload for the `pet://sessions` event and the
@@ -402,6 +423,7 @@ mod tests {
                 tool_call: serde_json::json!({}),
                 options: vec![],
             }),
+            parent: None,
         }
     }
 
