@@ -502,6 +502,7 @@ describe("SidebarConversationList — folder drag gesture", () => {
   let rectSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
+    localStorage.clear()
     vi.useFakeTimers({ now: FIXED })
     stableWorkspaceFns.reorderFolders.mockClear()
     const folders = [folder(1, "F1"), folder(2, "F2"), folder(3, "F3")]
@@ -540,15 +541,22 @@ describe("SidebarConversationList — folder drag gesture", () => {
   })
 
   function grip(folderId: number): HTMLElement {
+    const el = document.querySelector(`[data-folder-grip="${folderId}"]`)
+    if (!el) throw new Error(`grip for folder ${folderId} not found`)
+    return el as HTMLElement
+  }
+
+  function headerRow(folderId: number): HTMLElement {
     const button = document.querySelector(`[data-folder-id="${folderId}"]`)
     const el = button?.parentElement
-    if (!el) throw new Error(`grip for folder ${folderId} not found`)
+    if (!el) throw new Error(`header row for folder ${folderId} not found`)
     return el
   }
 
-  // Press folder 1, cross the 6px threshold (mounts the collapsed surface), then
-  // move to y=40 → slot floor(40/32)=1 (a MIDDLE slot, distinct from the
-  // bottom-clamp value the old bug produced), i.e. order [1,2,3] → [2,1,3].
+  // Press folder 1's grip, cross the 16px threshold (mounts the collapsed
+  // surface), then move to y=40 → slot floor(40/32)=1 (a MIDDLE slot, distinct
+  // from the bottom-clamp value the old bug produced), i.e. order [1,2,3] →
+  // [2,1,3].
   function dragFolderOneToSlotOne() {
     act(() => firePointer(grip(1), "pointerdown", { clientY: 100 }))
     // Threshold crossing flips into drag mode. The surface is not mounted yet,
@@ -601,19 +609,80 @@ describe("SidebarConversationList — folder drag gesture", () => {
     expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
   })
 
-  it("does nothing when the press never crosses the drag threshold", async () => {
+  it("toggles only the clicked folder: expanded collapses, collapsed expands", () => {
+    render(tree())
+    const folderOne = document.querySelector(
+      '[data-folder-id="1"]'
+    ) as HTMLElement
+    const folderTwo = document.querySelector(
+      '[data-folder-id="2"]'
+    ) as HTMLElement
+    expect(document.body.textContent).toContain("conv-11")
+    expect(document.body.textContent).toContain("conv-21")
+    act(() => {
+      fireEvent.click(folderOne)
+    })
+    expect(document.body.textContent).not.toContain("conv-11")
+    expect(document.body.textContent).toContain("conv-21")
+    act(() => {
+      fireEvent.click(folderOne)
+    })
+    expect(document.body.textContent).toContain("conv-11")
+    expect(document.body.textContent).toContain("conv-21")
+    act(() => {
+      fireEvent.click(folderTwo)
+    })
+    expect(document.body.textContent).toContain("conv-11")
+    expect(document.body.textContent).not.toContain("conv-21")
+  })
+
+  it("does not lose a rapid second toggle while the first render is pending", () => {
+    localStorage.setItem(
+      "workspace:sidebar-folder-expanded",
+      JSON.stringify({ 1: false })
+    )
+    render(tree())
+    const folderOne = document.querySelector(
+      '[data-folder-id="1"]'
+    ) as HTMLElement
+
+    act(() => {
+      fireEvent.click(folderOne)
+      fireEvent.click(folderOne)
+    })
+
+    expect(document.body.textContent).not.toContain("conv-11")
+  })
+
+  it("does nothing when the grip press never crosses the drag threshold", async () => {
     render(tree())
     act(() => firePointer(grip(1), "pointerdown", { clientY: 100 }))
-    act(() => firePointer(window, "pointermove", { clientY: 103 })) // 3px < 6px
+    act(() => firePointer(window, "pointermove", { clientY: 108 })) // 8px < 16px
     await act(async () => {
-      firePointer(window, "pointerup", { clientY: 103 })
+      firePointer(window, "pointerup", { clientY: 108 })
     })
     expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
+    // A grip press is not a toggle — the folder stays expanded.
+    expect(document.body.textContent).toContain("conv-11")
+  })
+
+  it("does not start a folder drag from the folder name", () => {
+    render(tree())
+    const name = document.querySelector('[data-folder-id="1"]') as HTMLElement
+    act(() => firePointer(name, "pointerdown", { clientY: 100 }))
+    act(() => firePointer(window, "pointermove", { clientY: 140 }))
+    act(() => firePointer(window, "pointerup", { clientY: 140 }))
+    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
+    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+    fireEvent.click(name)
+    expect(document.body.textContent).not.toContain("conv-11")
+    expect(document.body.textContent).toContain("conv-21")
   })
 
   it("does not treat pointer movement on the new-conversation button as a folder drag", () => {
     render(tree())
-    const header = grip(1)
+    const header = headerRow(1)
     const newConversation = header.querySelector(
       'button[aria-label="New Conversation"]'
     )
@@ -627,6 +696,41 @@ describe("SidebarConversationList — folder drag gesture", () => {
     fireEvent.click(newConversation)
 
     expect(stableTabFns.openNewConversationTab).toHaveBeenCalledWith(1, "/p/1")
+    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+  })
+
+  it("captures the pointer on the list surface once the drag threshold is crossed", () => {
+    const captureSpy = vi.spyOn(Element.prototype, "setPointerCapture")
+    try {
+      render(tree())
+      dragFolderOneToSlotOne()
+      expect(captureSpy).toHaveBeenCalled()
+      const target = captureSpy.mock.contexts.at(-1) as Element | undefined
+      expect(target?.isConnected).toBe(true)
+    } finally {
+      captureSpy.mockRestore()
+    }
+  })
+
+  it("releases the collapsed drag surface if pointer capture is lost", () => {
+    render(tree())
+    dragFolderOneToSlotOne()
+    expect(document.querySelector("[data-folder-drag-surface]")).not.toBeNull()
+    act(() => {
+      firePointer(window, "lostpointercapture", { clientY: 40 })
+    })
+    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
+    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+  })
+
+  it("releases the collapsed drag surface when the window blurs", () => {
+    render(tree())
+    dragFolderOneToSlotOne()
+    expect(document.querySelector("[data-folder-drag-surface]")).not.toBeNull()
+    act(() => {
+      window.dispatchEvent(new Event("blur"))
+    })
+    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
     expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
   })
 })
@@ -692,32 +796,26 @@ describe("SidebarConversationList — sticky folder header overlay", () => {
     expect(headerCount(2)).toBe(2)
   })
 
-  it("collapses from the overlay and scrolls the folder header to the top", () => {
-    // rAF runs synchronously so the deferred scrollToIndex is observable.
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      cb(0)
-      return 0
+  it("collapses from the overlay and pins the header BEFORE the shrink", () => {
+    virtuaCtl.scrollOffset = 130 // overlay shows folder 2
+    render(tree())
+    const headers = document.querySelectorAll('[data-folder-id="2"]')
+    expect(headers.length).toBe(2)
+    // headers[1] is the overlay copy (rendered after ScrollArea in DOM order).
+    act(() => {
+      fireEvent.click(headers[1] as HTMLElement)
     })
-    try {
-      virtuaCtl.scrollOffset = 130 // overlay shows folder 2
-      render(tree())
-      const headers = document.querySelectorAll('[data-folder-id="2"]')
-      expect(headers.length).toBe(2)
-      // headers[1] is the overlay copy (rendered after ScrollArea in DOM order).
-      act(() => {
-        fireEvent.click(headers[1] as HTMLElement)
-      })
-      // The folder collapsed (its conversation rows are gone).
-      expect(document.body.textContent).not.toContain("conv-21")
-      // The "Folders" section header occupies flat index 0, so folder 2's header
-      // is flat index 4 → scrolled to the top, instant.
-      expect(virtuaCtl.scrollToIndex).toHaveBeenCalledWith(
-        4,
-        expect.objectContaining({ align: "start" })
-      )
-    } finally {
-      vi.unstubAllGlobals()
-    }
+    // The folder collapsed (its conversation rows are gone).
+    expect(document.body.textContent).not.toContain("conv-21")
+    // The pin scroll runs synchronously BEFORE the row shrink — scrolling
+    // shrunken content desynced virtua's layout from the viewport and left
+    // the list click-dead until the next real scroll (the "expand needs two
+    // clicks" bug). The header's flat index is the same pre/post collapse:
+    // section(0), F1(1), c11(2), c12(3), F2(4) → instant, aligned to start.
+    expect(virtuaCtl.scrollToIndex).toHaveBeenCalledWith(4, {
+      align: "start",
+      smooth: false,
+    })
   })
 
   it("hides the overlay while a folder drag is in progress", () => {
@@ -738,16 +836,19 @@ describe("SidebarConversationList — sticky folder header overlay", () => {
       virtuaCtl.scrollOffset = 40 // overlay shows folder 1
       render(tree())
       expect(headerCount(1)).toBe(2) // suppressed in-list + overlay
-      // Drag a NON-sticky folder (folder 2) from its in-list header — folder 1's
+      // Drag a NON-sticky folder (folder 2) from its reorder grip — folder 1's
       // in-list header is inert while its overlay is showing, and the overlay
       // itself has no drag grip.
-      const grip = (
-        document.querySelector('[data-folder-id="2"]') as HTMLElement
-      ).parentElement as HTMLElement
-      act(() => firePointer(grip, "pointerdown", { clientY: 100 }))
+      const folderGrip = document.querySelector(
+        '[data-folder-grip="2"]'
+      ) as HTMLElement
+      act(() => firePointer(folderGrip, "pointerdown", { clientY: 100 }))
       act(() => firePointer(window, "pointermove", { clientY: 120 })) // cross 6px
-      // Virtualizer unmounted → drag surface shows each folder once, overlay gone.
-      expect(headerCount(1)).toBe(1)
+      // Overlay gone; the live list stays mounted (hidden) plus the drag surface.
+      expect(
+        document.querySelector("[data-folder-drag-surface]")
+      ).not.toBeNull()
+      expect(headerCount(1)).toBe(2)
       act(() => firePointer(window, "pointercancel", { clientY: 120 }))
     } finally {
       rectSpy.mockRestore()

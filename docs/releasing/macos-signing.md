@@ -78,8 +78,17 @@ export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID1234)"
 export APPLE_ID="you@example.com"
 export APPLE_PASSWORD="xxxx-xxxx-xxxx-xxxx"
 export APPLE_TEAM_ID="TEAMID1234"
-pnpm tauri build --bundles dmg
+pnpm tauri:build:dmg
 ```
+
+On Apple Silicon, do **not** add `--target aarch64-apple-darwin`. The host
+triple is already that target; passing it explicitly writes to
+`src-tauri/target/aarch64-apple-darwin/` instead of reusing
+`src-tauri/target/release`, and Cargo rebuilds the full crate graph. Use
+`--target` only when cross-compiling (for example arm64 → x86_64).
+
+Unsigned local rebuilds use the same command without the Apple env vars.
+Output: `src-tauri/target/release/bundle/dmg/codeg_*_aarch64.dmg`.
 
 Validate the output:
 

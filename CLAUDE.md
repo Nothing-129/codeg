@@ -50,6 +50,19 @@ cargo insta review
 INSTA_UPDATE=auto cargo test --features test-utils     # 自动写新 .snap
 ```
 
+### 本地桌面安装包（macOS Apple Silicon）
+
+本机 host 已是 `aarch64-apple-darwin` 时，打 arm64 DMG **不要**加 `--target`，沿用 `src-tauri/target/release` 缓存：
+
+```bash
+pnpm tauri:build:dmg
+# 等价于：pnpm tauri build --bundles dmg
+```
+
+产物：`src-tauri/target/release/bundle/dmg/codeg_*_aarch64.dmg`
+
+在本机再写 `--target aarch64-apple-darwin` 会改走另一套目录 `src-tauri/target/aarch64-apple-darwin/`，约 889 个 crate 全量重编（release 冷编译约 8 分钟）。只有交叉编译（例如在 arm64 上打 x86_64）才需要 `--target`。
+
 ## 架构
 
 ### 双模式运行
