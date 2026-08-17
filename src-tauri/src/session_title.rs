@@ -484,7 +484,8 @@ fn apple_languages_tag() -> Option<String> {
     first_apple_languages_tag(&String::from_utf8_lossy(&output.stdout))
 }
 
-pub fn first_apple_languages_tag(raw: &str) -> Option<String> {
+#[cfg(any(target_os = "macos", test))]
+fn first_apple_languages_tag(raw: &str) -> Option<String> {
     let bytes = raw.as_bytes();
     let mut i = 0;
     while i < bytes.len() {

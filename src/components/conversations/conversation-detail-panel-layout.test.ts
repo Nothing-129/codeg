@@ -219,7 +219,9 @@ describe("ConversationDetailPanel new conversation layout", () => {
     // 2) After the first send: ConversationShell docks the same ChatInput.
     // Both go through ChatInput → MessageInput; neither host paints its own
     // click-only focus ring.
-    expect(source).toContain("hideInput={isWelcomeMode || Boolean(acpLoadError)}")
+    expect(source).toContain(
+      "hideInput={isWelcomeMode || Boolean(acpLoadError)}"
+    )
     expect(source).toContain("<ChatInput")
     expect(conversationShellSource).toContain("<ChatInput")
     expect(chatInputSource).toContain("<MessageInput")
