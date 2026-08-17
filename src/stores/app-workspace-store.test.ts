@@ -3,6 +3,10 @@ import {
   resetAppWorkspaceStore,
   useAppWorkspaceStore,
 } from "./app-workspace-store"
+import {
+  resetConversationUnreadStore,
+  useConversationUnreadStore,
+} from "./conversation-unread-store"
 import type { DbConversationSummary, FolderDetail } from "@/lib/types"
 
 vi.mock("@/lib/api", () => ({
@@ -50,6 +54,7 @@ function makeSummary(
 
 beforeEach(() => {
   resetAppWorkspaceStore()
+  resetConversationUnreadStore()
 })
 
 describe("updateConversationLocal — stats reference stability", () => {
@@ -117,6 +122,89 @@ describe("updateConversationLocal — stats reference stability", () => {
       .applyConversationUpsert(makeSummary({ id: 1, message_count: 10 }))
 
     expect(useAppWorkspaceStore.getState().stats?.total_messages).toBe(14)
+  })
+})
+
+describe("conversation unread from workspace writes", () => {
+  it("does not mark a newly inserted conversation unread", () => {
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(makeSummary({ id: 1, message_count: 1 }))
+    expect(useConversationUnreadStore.getState().unreadIds.has(1)).toBe(false)
+  })
+
+  it("does not mark unread while the thread is still executing", () => {
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(makeSummary({ id: 1, message_count: 1 }))
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(makeSummary({ id: 1, message_count: 2 }))
+    expect(useConversationUnreadStore.getState().unreadIds.has(1)).toBe(false)
+
+    useAppWorkspaceStore
+      .getState()
+      .updateConversationLocal(1, { status: "pending" })
+    resetConversationUnreadStore()
+    useAppWorkspaceStore
+      .getState()
+      .updateConversationLocal(1, { status: "in_progress" })
+    expect(useConversationUnreadStore.getState().unreadIds.has(1)).toBe(false)
+  })
+
+  it("marks unread when a background thread settles or gains messages while idle", () => {
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(
+        makeSummary({ id: 1, message_count: 1, status: "completed" })
+      )
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(
+        makeSummary({ id: 1, message_count: 2, status: "completed" })
+      )
+    expect(useConversationUnreadStore.getState().unreadIds.has(1)).toBe(true)
+
+    resetConversationUnreadStore()
+    useAppWorkspaceStore
+      .getState()
+      .updateConversationLocal(1, { status: "pending_review" })
+    expect(useConversationUnreadStore.getState().unreadIds.has(1)).toBe(true)
+  })
+
+  it("does not mark unread for a pin or title-only patch", () => {
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(makeSummary({ id: 1 }))
+    useAppWorkspaceStore
+      .getState()
+      .updateConversationLocal(1, { pinned_at: "2026-01-02T00:00:00.000Z" })
+    useAppWorkspaceStore
+      .getState()
+      .updateConversationLocal(1, { title: "Renamed" })
+    expect(useConversationUnreadStore.getState().unreadIds.has(1)).toBe(false)
+  })
+
+  it("does not mark unread while the thread is being viewed", () => {
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(makeSummary({ id: 1, message_count: 1 }))
+    useConversationUnreadStore.getState().setViewed([1])
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(
+        makeSummary({ id: 1, message_count: 4, status: "completed" })
+      )
+    expect(useConversationUnreadStore.getState().unreadIds.has(1)).toBe(false)
+  })
+
+  it("clears unread when the conversation is removed", () => {
+    useAppWorkspaceStore
+      .getState()
+      .applyConversationUpsert(makeSummary({ id: 1 }))
+    useConversationUnreadStore.getState().noteActivity(1)
+    useAppWorkspaceStore.getState().applyConversationRemove(1)
+    expect(useConversationUnreadStore.getState().unreadIds.has(1)).toBe(false)
   })
 })
 

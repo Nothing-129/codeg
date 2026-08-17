@@ -51,6 +51,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ConversationStatusDot } from "./conversation-status-dot"
+import { ConversationUnreadDot } from "./conversation-unread-dot"
+import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
 import { SessionDetailsDialog } from "./session-details-dialog"
 import { AgentIcon } from "@/components/agent-icon"
 
@@ -224,6 +226,9 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   const status = conversation.status as ConversationStatus
   const isRunning = status === "in_progress"
   const isCancelled = status === "cancelled"
+  const hasUnread = useConversationUnreadStore((s) =>
+    s.unreadIds.has(conversation.id)
+  )
   const isPinned = conversation.pinned_at != null
   const isCompleted = status === "completed"
   // Delegation sub-sessions (a child of another conversation) don't get the
@@ -439,6 +444,8 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                         {tSidebar("statusRunningBadge")}
                       </span>
                     </span>
+                  ) : hasUnread ? (
+                    <ConversationUnreadDot label={tSidebar("unreadBadge")} />
                   ) : isCancelled ? (
                     <span
                       className="relative inline-flex shrink-0 items-center justify-center"

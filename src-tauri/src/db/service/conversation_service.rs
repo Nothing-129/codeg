@@ -70,7 +70,10 @@ pub async fn create_with_delegation(
     } else {
         ConversationKind::Regular
     };
-    create_inner(conn, folder_id, agent_type, title, git_branch, delegation, kind).await
+    create_inner(
+        conn, folder_id, agent_type, title, git_branch, delegation, kind,
+    )
+    .await
 }
 
 async fn create_inner(
@@ -210,6 +213,30 @@ pub async fn refresh_auto_title(
                 .add(conversation::Column::Title.is_null())
                 .add(conversation::Column::Title.ne(title)),
         )
+        .exec(conn)
+        .await?;
+    Ok(res.rows_affected > 0)
+}
+
+/// Locale-refined Grok title: write `title` and lock it so the parser
+/// auto-title backfill cannot revert it to the first-line heuristic (or to
+/// Grok's English `generated_title`). Does not bump `updated_at`. A locked
+/// row or a vanished id is a no-op.
+pub async fn commit_refined_title(
+    conn: &DatabaseConnection,
+    conversation_id: i32,
+    title: String,
+) -> Result<bool, DbError> {
+    use sea_orm::sea_query::Expr;
+    let title = title.trim();
+    if title.is_empty() {
+        return Ok(false);
+    }
+    let res = conversation::Entity::update_many()
+        .col_expr(conversation::Column::Title, Expr::value(title))
+        .col_expr(conversation::Column::TitleLocked, Expr::value(true))
+        .filter(conversation::Column::Id.eq(conversation_id))
+        .filter(conversation::Column::TitleLocked.eq(false))
         .exec(conn)
         .await?;
     Ok(res.rows_affected > 0)
@@ -717,9 +744,15 @@ mod tests {
     async fn list_children_orders_newest_first() {
         let db = fresh_in_memory_db().await;
         let folder = seed_folder(&db, "/tmp/codeg-list-children-order").await;
-        let parent = create(&db.conn, folder, AgentType::ClaudeCode, Some("P".into()), None)
-            .await
-            .expect("parent");
+        let parent = create(
+            &db.conn,
+            folder,
+            AgentType::ClaudeCode,
+            Some("P".into()),
+            None,
+        )
+        .await
+        .expect("parent");
         // Two children created oldest → newest under the same parent.
         let first = create_with_delegation(
             &db.conn,
@@ -818,7 +851,9 @@ mod tests {
         let folder = seed_folder(&db, "/tmp/codeg-child-count-deleted").await;
         let (parent, child) = seed_parent_with_child(&db.conn, folder).await;
 
-        soft_delete(&db.conn, child).await.expect("soft delete child");
+        soft_delete(&db.conn, child)
+            .await
+            .expect("soft delete child");
 
         // A removed sub-session must not keep the parent's chevron alive: the
         // aggregate filters deleted_at IS NULL, matching list_children.
@@ -836,9 +871,15 @@ mod tests {
     async fn update_pin_sets_and_clears_without_bumping_updated_at() {
         let db = fresh_in_memory_db().await;
         let folder = seed_folder(&db, "/tmp/codeg-update-pin").await;
-        let conv = create(&db.conn, folder, AgentType::ClaudeCode, Some("c".into()), None)
-            .await
-            .expect("create");
+        let conv = create(
+            &db.conn,
+            folder,
+            AgentType::ClaudeCode,
+            Some("c".into()),
+            None,
+        )
+        .await
+        .expect("create");
 
         // Freshly created rows are unpinned, and the summary projection carries
         // the field through (conv_to_summary mapping).
@@ -853,7 +894,10 @@ mod tests {
         // preference, not activity).
         update_pin(&db.conn, conv.id, true).await.expect("pin");
         let pinned = get_by_id(&db.conn, conv.id).await.expect("get pinned");
-        assert!(pinned.pinned_at.is_some(), "pinned_at must be set after pin");
+        assert!(
+            pinned.pinned_at.is_some(),
+            "pinned_at must be set after pin"
+        );
         assert_eq!(
             pinned.updated_at, updated_at_before,
             "pinning must not bump updated_at"
@@ -891,11 +935,20 @@ mod tests {
     async fn create_leaves_title_unlocked() {
         let db = fresh_in_memory_db().await;
         let folder = seed_folder(&db, "/tmp/codeg-title-unlocked").await;
-        let row = create(&db.conn, folder, AgentType::ClaudeCode, Some("hi".into()), None)
-            .await
-            .expect("create");
+        let row = create(
+            &db.conn,
+            folder,
+            AgentType::ClaudeCode,
+            Some("hi".into()),
+            None,
+        )
+        .await
+        .expect("create");
         let summary = get_by_id(&db.conn, row.id).await.expect("get");
-        assert!(!summary.title_locked, "new conversation must start unlocked");
+        assert!(
+            !summary.title_locked,
+            "new conversation must start unlocked"
+        );
     }
 
     #[tokio::test]
@@ -1080,6 +1133,60 @@ mod tests {
             summary.updated_at, before,
             "auto-title backfill is metadata, not activity — it must not bump updated_at"
         );
+    }
+
+    #[tokio::test]
+    async fn commit_refined_title_locks_without_bumping_updated_at() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-title-refine").await;
+        let row = create(
+            &db.conn,
+            folder,
+            AgentType::Grok,
+            Some("帮我改一下登录页样式".into()),
+            None,
+        )
+        .await
+        .expect("create");
+        let before = row.updated_at;
+
+        let wrote = commit_refined_title(&db.conn, row.id, "登录页样式".into())
+            .await
+            .expect("refine");
+        assert!(wrote);
+
+        let summary = get_by_id(&db.conn, row.id).await.expect("get");
+        assert_eq!(summary.title.as_deref(), Some("登录页样式"));
+        assert!(
+            summary.title_locked,
+            "refine must lock against parser backfill"
+        );
+        assert_eq!(summary.updated_at, before);
+
+        assert!(
+            !refresh_auto_title(&db.conn, row.id, "parser heuristic".into())
+                .await
+                .expect("auto"),
+            "a refined lock must survive the parser backfill"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_refined_title_does_not_clobber_a_user_rename() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-title-refine-locked").await;
+        let row = create(&db.conn, folder, AgentType::Grok, None, None)
+            .await
+            .expect("create");
+        update_title(&db.conn, row.id, "我起的名".into())
+            .await
+            .expect("rename");
+
+        assert!(!commit_refined_title(&db.conn, row.id, "登录页样式".into())
+            .await
+            .expect("refine"),);
+        let summary = get_by_id(&db.conn, row.id).await.expect("get");
+        assert_eq!(summary.title.as_deref(), Some("我起的名"));
     }
 
     #[tokio::test]

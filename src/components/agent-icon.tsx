@@ -347,24 +347,26 @@ const PiColorIcon = memo(function PiColorIcon({ size = "1em" }: IconProps) {
 })
 
 const GrokMonoIcon = memo(function GrokMonoIcon({ size = "1em" }: IconProps) {
-  // xAI's Grok mark — the two-stroke glyph from the official favicon
-  // (grok.com/images/favicon.svg). Rendered frameless (no squircle) and in
-  // currentColor so it sits inline like the other boxless marks; the viewBox is
-  // cropped to the glyph's ~400px bounds so it fills the box at the same visual
-  // size as those icons instead of sitting inset within the original squircle.
+  // Use the supplied xAI favicon so Grok keeps its recognizable black disc and
+  // white slash at small sizes instead of inheriting the surrounding text color.
   return (
-    <svg
-      fill="currentColor"
-      height={size}
-      style={baseSvgStyle}
-      viewBox="48 48 416 416"
-      width={size}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <title>Grok</title>
-      <path d="M210.484 312.759L343.465 210.383C349.984 205.364 359.302 207.322 362.408 215.117C378.758 256.231 371.454 305.64 338.925 339.563C306.397 373.487 261.137 380.927 219.768 363.983L174.577 385.803C239.394 432.008 318.104 420.581 367.289 369.251C406.303 328.564 418.386 273.104 407.088 223.091L407.19 223.198C390.807 149.726 411.218 120.359 453.03 60.3072C454.02 58.8833 455.01 57.4595 456 56L400.978 113.382V113.204L210.45 312.794" />
-      <path d="M183.042 337.641C136.519 291.294 144.54 219.567 184.236 178.203C213.59 147.59 261.683 135.096 303.666 153.464L348.755 131.75C340.632 125.627 330.221 119.042 318.275 114.414C264.277 91.2407 199.63 102.774 155.735 148.516C113.513 192.549 100.236 260.254 123.036 318.027C140.069 361.206 112.148 391.748 84.0229 422.575C74.0561 433.503 64.0553 444.431 56 456L183.007 337.677" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/grok-icon.ico"
+      alt=""
+      aria-hidden
+      draggable={false}
+      className="inline-block shrink-0 object-contain"
+      // The old cropped Grok mark occupied about 96% of its viewBox. Keep the
+      // favicon's visible footprint aligned with that standard while leaving
+      // the layout box unchanged.
+      style={{
+        ...baseSvgStyle,
+        height: size,
+        transform: "scale(0.96)",
+        width: size,
+      }}
+    />
   )
 })
 

@@ -38,6 +38,14 @@ describe("tab strip draft gating", () => {
   })
 })
 
+describe("tab leading glyph", () => {
+  it("shows the agent icon instead of a conversation status dot", () => {
+    expect(tabItem).toContain("AgentIcon")
+    expect(tabItem).toContain("tab.agentType")
+    expect(tabItem).not.toContain("ConversationStatusDot")
+  })
+})
+
 describe("tab drag selection guard wiring", () => {
   it("suppresses text selection for EVERY tab drag, composed with the long-press handlers", () => {
     // Held on drag start / released on drag end + unmount, so within-group

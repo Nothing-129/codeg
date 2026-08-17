@@ -15,6 +15,11 @@ import {
   useComposerInvocations,
 } from "@/components/automations/composer-invocations"
 import { useAgentOptions } from "@/components/automations/use-agent-options"
+import {
+  COMPOSER_CHROME_BOX_CLASS,
+  COMPOSER_CHROME_SHADOW_CLASS,
+  COMPOSER_CHROME_SURFACE_CLASS,
+} from "@/components/chat/composer/composer-chrome"
 import { ComposerAddMenu } from "@/components/chat/composer/composer-add-menu"
 import { ComposerImageThumbnails } from "@/components/chat/composer/composer-image-thumbnails"
 import {
@@ -294,7 +299,7 @@ export function TaskMessageComposer({
       {...attach.containerDragProps}
       // Same shell the drawer's Textarea had (and the same rounding as every
       // other box in it); the editor brings the matching px-3 padding.
-      className="codeg-composer-chrome relative rounded-xl border border-input bg-background transition-colors focus-within:border-ring focus-within:ring-[3px] focus-within:ring-inset focus-within:ring-ring/50"
+      className={`${COMPOSER_CHROME_BOX_CLASS} ${COMPOSER_CHROME_SURFACE_CLASS} ${COMPOSER_CHROME_SHADOW_CLASS}`}
     >
       <ComposerInvocationsPopup inv={invocations} />
       {attach.imageAttachments.length > 0 ? (

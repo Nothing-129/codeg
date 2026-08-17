@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   SidebarConversationList,
+  resetFolderPointerToggleGuardForTests,
   type SidebarConversationListHandle,
 } from "./sidebar-conversation-list"
 import type { DbConversationSummary, FolderDetail } from "@/lib/types"
@@ -52,7 +53,6 @@ const stableWorkspaceFns = vi.hoisted(() => ({
   refreshConversations: async () => {},
   updateConversationLocal: () => {},
   removeFolderFromWorkspace: async () => {},
-  reorderFolders: vi.fn(() => Promise.resolve()),
   openFolder: async () => ({}) as FolderDetail,
   refreshFolder: async () => {},
 }))
@@ -315,7 +315,7 @@ function tree() {
 
 // Reset the virtua geometry and the workspace store before every test (runs
 // before each describe's own beforeEach) so a scrolled overlay test never
-// bleeds into the memo-scope or drag suites, which all assume scrollOffset 0 →
+// bleeds into the memo-scope suites, which all assume scrollOffset 0 →
 // overlay hidden. The store reset restores pristine state; the setState then
 // flips the loading flags off and installs the stable action spies, and each
 // describe's own beforeEach seeds its folders/conversations fixture on top.
@@ -472,39 +472,11 @@ describe("SidebarConversationList — Pinned section (migration semantics)", () 
   })
 })
 
-// jsdom has no PointerEvent and no layout, so the gesture is driven with plain
-// bubbling events plus a mocked getBoundingClientRect. This exercises the
-// component wiring (threshold → surface gating → commit/abort) that the pure
-// index-math unit tests can't reach; real virtua scrolling/autoscroll still
-// needs manual QA.
-function firePointer(
-  target: EventTarget,
-  type: string,
-  props: {
-    clientX?: number
-    clientY?: number
-    pointerId?: number
-    button?: number
-  } = {}
-) {
-  const ev = new Event(type, { bubbles: true, cancelable: true })
-  Object.assign(ev, {
-    pointerId: 1,
-    button: 0,
-    clientX: 0,
-    clientY: 0,
-    ...props,
-  })
-  target.dispatchEvent(ev)
-}
-
-describe("SidebarConversationList — folder drag gesture", () => {
-  let rectSpy: ReturnType<typeof vi.spyOn>
-
+describe("SidebarConversationList — folder expand/collapse", () => {
   beforeEach(() => {
+    resetFolderPointerToggleGuardForTests()
     localStorage.clear()
     vi.useFakeTimers({ now: FIXED })
-    stableWorkspaceFns.reorderFolders.mockClear()
     const folders = [folder(1, "F1"), folder(2, "F2"), folder(3, "F3")]
     useAppWorkspaceStore.setState({
       folders,
@@ -513,100 +485,10 @@ describe("SidebarConversationList — folder drag gesture", () => {
     })
     store.activeTabId = null
     store.tabSpec = []
-    // Fixed geometry: viewport / drag surface anchored at top=0 and tall enough
-    // that the test pointer Ys stay clear of the autoscroll edges.
-    rectSpy = vi
-      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-      .mockReturnValue({
-        top: 0,
-        bottom: 600,
-        left: 0,
-        right: 200,
-        width: 200,
-        height: 600,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      } as DOMRect)
   })
 
   afterEach(() => {
-    // A committed drag leaves a one-shot capture-phase "click" suppressor on
-    // window whose rAF-based removal does not fire under fake timers. Drain it
-    // with a throwaway window click (target=window never reaches the React root)
-    // so it cannot swallow a later test's click.
-    window.dispatchEvent(new MouseEvent("click", { bubbles: true }))
-    rectSpy.mockRestore()
     vi.useRealTimers()
-  })
-
-  function grip(folderId: number): HTMLElement {
-    const el = document.querySelector(`[data-folder-grip="${folderId}"]`)
-    if (!el) throw new Error(`grip for folder ${folderId} not found`)
-    return el as HTMLElement
-  }
-
-  function headerRow(folderId: number): HTMLElement {
-    const button = document.querySelector(`[data-folder-id="${folderId}"]`)
-    const el = button?.parentElement
-    if (!el) throw new Error(`header row for folder ${folderId} not found`)
-    return el
-  }
-
-  // Press folder 1's grip, cross the 16px threshold (mounts the collapsed
-  // surface), then move to y=40 → slot floor(40/32)=1 (a MIDDLE slot, distinct
-  // from the bottom-clamp value the old bug produced), i.e. order [1,2,3] →
-  // [2,1,3].
-  function dragFolderOneToSlotOne() {
-    act(() => firePointer(grip(1), "pointerdown", { clientY: 100 }))
-    // Threshold crossing flips into drag mode. The surface is not mounted yet,
-    // so this move must NOT retarget (the regression Codex flagged).
-    act(() => firePointer(window, "pointermove", { clientY: 120 }))
-    // Surface mounted now → retarget to slot 1.
-    act(() => firePointer(window, "pointermove", { clientY: 40 }))
-  }
-
-  it("commits the reorder to the targeted slot on pointerup", async () => {
-    render(tree())
-    dragFolderOneToSlotOne()
-    await act(async () => {
-      firePointer(window, "pointerup", { clientY: 40 })
-    })
-    expect(stableWorkspaceFns.reorderFolders).toHaveBeenCalledTimes(1)
-    // A middle slot — not the last — so this can only pass with correct
-    // surface-relative targeting, not the old bottom-clamp behavior.
-    expect(stableWorkspaceFns.reorderFolders).toHaveBeenCalledWith([2, 1, 3])
-  })
-
-  it("does not reorder when released right after crossing the threshold (before the surface can retarget)", async () => {
-    render(tree())
-    act(() => firePointer(grip(1), "pointerdown", { clientY: 100 }))
-    // Cross the threshold from a 'scrolled' position, then release immediately.
-    // The collapsed surface mounts only after this move, so there is no valid
-    // target yet — the old viewport-fallback would have bottom-clamped here.
-    act(() => firePointer(window, "pointermove", { clientY: 200 }))
-    await act(async () => {
-      firePointer(window, "pointerup", { clientY: 200 })
-    })
-    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
-  })
-
-  it("aborts without persisting on pointercancel", () => {
-    render(tree())
-    dragFolderOneToSlotOne()
-    act(() => firePointer(window, "pointercancel", { clientY: 40 }))
-    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
-  })
-
-  it("aborts without persisting on Escape", () => {
-    render(tree())
-    dragFolderOneToSlotOne()
-    act(() => {
-      window.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
-      )
-    })
-    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
   })
 
   it("toggles only the clicked folder: expanded collapses, collapsed expands", () => {
@@ -636,6 +518,34 @@ describe("SidebarConversationList — folder drag gesture", () => {
     expect(document.body.textContent).not.toContain("conv-21")
   })
 
+  it("does not let a leftover trackpad click undo the pointerdown toggle", () => {
+    render(tree())
+    const folderOne = document.querySelector(
+      '[data-folder-id="1"]'
+    ) as HTMLElement
+    expect(document.body.textContent).toContain("conv-11")
+    act(() => {
+      const ev = new Event("pointerdown", { bubbles: true, cancelable: true })
+      Object.assign(ev, {
+        button: 0,
+        buttons: 1,
+        pointerId: 1,
+        pointerType: "mouse",
+      })
+      folderOne.dispatchEvent(ev)
+    })
+    expect(document.body.textContent).not.toContain("conv-11")
+    // WebKit remounts the header, then synthesizes click. Must not expand again.
+    const remounted = document.querySelector(
+      '[data-folder-id="1"]'
+    ) as HTMLElement
+    act(() => {
+      fireEvent.click(remounted)
+    })
+    expect(document.body.textContent).not.toContain("conv-11")
+    expect(document.body.textContent).toContain("conv-21")
+  })
+
   it("does not lose a rapid second toggle while the first render is pending", () => {
     localStorage.setItem(
       "workspace:sidebar-folder-expanded",
@@ -654,84 +564,20 @@ describe("SidebarConversationList — folder drag gesture", () => {
     expect(document.body.textContent).not.toContain("conv-11")
   })
 
-  it("does nothing when the grip press never crosses the drag threshold", async () => {
+  it("opens a new conversation from the folder header button", () => {
     render(tree())
-    act(() => firePointer(grip(1), "pointerdown", { clientY: 100 }))
-    act(() => firePointer(window, "pointermove", { clientY: 108 })) // 8px < 16px
-    await act(async () => {
-      firePointer(window, "pointerup", { clientY: 108 })
-    })
-    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
-    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
-    // A grip press is not a toggle — the folder stays expanded.
-    expect(document.body.textContent).toContain("conv-11")
-  })
-
-  it("does not start a folder drag from the folder name", () => {
-    render(tree())
-    const name = document.querySelector('[data-folder-id="1"]') as HTMLElement
-    act(() => firePointer(name, "pointerdown", { clientY: 100 }))
-    act(() => firePointer(window, "pointermove", { clientY: 140 }))
-    act(() => firePointer(window, "pointerup", { clientY: 140 }))
-    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
-    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
-    fireEvent.click(name)
-    expect(document.body.textContent).not.toContain("conv-11")
-    expect(document.body.textContent).toContain("conv-21")
-  })
-
-  it("does not treat pointer movement on the new-conversation button as a folder drag", () => {
-    render(tree())
-    const header = headerRow(1)
-    const newConversation = header.querySelector(
+    const toggle = document.querySelector('[data-folder-id="1"]')
+    const newConversation = toggle?.parentElement?.querySelector(
       'button[aria-label="New Conversation"]'
     )
     if (!newConversation) throw new Error("new-conversation button not found")
-
-    act(() =>
-      firePointer(newConversation, "pointerdown", { clientX: 0, clientY: 100 })
-    )
-    act(() => firePointer(window, "pointermove", { clientX: 8, clientY: 100 }))
-    act(() => firePointer(window, "pointerup", { clientX: 8, clientY: 100 }))
     fireEvent.click(newConversation)
-
     expect(stableTabFns.openNewConversationTab).toHaveBeenCalledWith(1, "/p/1")
-    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
   })
 
-  it("captures the pointer on the list surface once the drag threshold is crossed", () => {
-    const captureSpy = vi.spyOn(Element.prototype, "setPointerCapture")
-    try {
-      render(tree())
-      dragFolderOneToSlotOne()
-      expect(captureSpy).toHaveBeenCalled()
-      const target = captureSpy.mock.contexts.at(-1) as Element | undefined
-      expect(target?.isConnected).toBe(true)
-    } finally {
-      captureSpy.mockRestore()
-    }
-  })
-
-  it("releases the collapsed drag surface if pointer capture is lost", () => {
+  it("does not render a folder reorder grip", () => {
     render(tree())
-    dragFolderOneToSlotOne()
-    expect(document.querySelector("[data-folder-drag-surface]")).not.toBeNull()
-    act(() => {
-      firePointer(window, "lostpointercapture", { clientY: 40 })
-    })
-    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
-    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
-  })
-
-  it("releases the collapsed drag surface when the window blurs", () => {
-    render(tree())
-    dragFolderOneToSlotOne()
-    expect(document.querySelector("[data-folder-drag-surface]")).not.toBeNull()
-    act(() => {
-      window.dispatchEvent(new Event("blur"))
-    })
-    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
-    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-folder-grip]")).toBeNull()
   })
 })
 
@@ -741,6 +587,7 @@ describe("SidebarConversationList — folder drag gesture", () => {
 // virtua scrolling / handoff smoothness still needs manual QA.
 describe("SidebarConversationList — sticky folder header overlay", () => {
   beforeEach(() => {
+    resetFolderPointerToggleGuardForTests()
     localStorage.clear() // folderExpanded persists across tests otherwise
     const folders = [folder(1, "Folder 1"), folder(2, "Folder 2")]
     // rows: F1(0) c11(1) c12(2) F2(3) c21(4) c22(5) c23(6)
@@ -816,43 +663,6 @@ describe("SidebarConversationList — sticky folder header overlay", () => {
       align: "start",
       smooth: false,
     })
-  })
-
-  it("hides the overlay while a folder drag is in progress", () => {
-    const rectSpy = vi
-      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-      .mockReturnValue({
-        top: 0,
-        bottom: 600,
-        left: 0,
-        right: 200,
-        width: 200,
-        height: 600,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      } as DOMRect)
-    try {
-      virtuaCtl.scrollOffset = 40 // overlay shows folder 1
-      render(tree())
-      expect(headerCount(1)).toBe(2) // suppressed in-list + overlay
-      // Drag a NON-sticky folder (folder 2) from its reorder grip — folder 1's
-      // in-list header is inert while its overlay is showing, and the overlay
-      // itself has no drag grip.
-      const folderGrip = document.querySelector(
-        '[data-folder-grip="2"]'
-      ) as HTMLElement
-      act(() => firePointer(folderGrip, "pointerdown", { clientY: 100 }))
-      act(() => firePointer(window, "pointermove", { clientY: 120 })) // cross 6px
-      // Overlay gone; the live list stays mounted (hidden) plus the drag surface.
-      expect(
-        document.querySelector("[data-folder-drag-surface]")
-      ).not.toBeNull()
-      expect(headerCount(1)).toBe(2)
-      act(() => firePointer(window, "pointercancel", { clientY: 120 }))
-    } finally {
-      rectSpy.mockRestore()
-    }
   })
 })
 
@@ -1227,5 +1037,54 @@ describe("SidebarConversationList — Recent section", () => {
     expect(
       Array.from(document.querySelectorAll("[data-conversation-id]"))
     ).toHaveLength(2)
+  })
+})
+
+describe("SidebarConversationList — folder paging", () => {
+  const SHOW_MORE = enMessages.Folder.sidebar.showMoreFolder
+
+  beforeEach(() => {
+    probes.card = 0
+    const folders = [folder(1, "Repo")]
+    store.activeTabId = null
+    store.tabSpec = []
+    useAppWorkspaceStore.setState({
+      folders,
+      allFolders: folders,
+      conversations: Array.from({ length: 22 }, (_, i) => conv(i + 1, 1)),
+    })
+  })
+
+  it("shows 10 conversations then another page on each Show more click", () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={enMessages}>
+        <SidebarConversationList showCompleted sortMode="created" />
+      </NextIntlClientProvider>
+    )
+
+    expect(document.querySelectorAll("[data-conversation-id]")).toHaveLength(10)
+    const first = Array.from(document.querySelectorAll("button")).find(
+      (b) => b.textContent === SHOW_MORE
+    )
+    expect(first).toBeTruthy()
+
+    act(() => {
+      fireEvent.click(first!)
+    })
+    expect(document.querySelectorAll("[data-conversation-id]")).toHaveLength(20)
+    const second = Array.from(document.querySelectorAll("button")).find(
+      (b) => b.textContent === SHOW_MORE
+    )
+    expect(second).toBeTruthy()
+
+    act(() => {
+      fireEvent.click(second!)
+    })
+    expect(document.querySelectorAll("[data-conversation-id]")).toHaveLength(22)
+    expect(
+      Array.from(document.querySelectorAll("button")).some(
+        (b) => b.textContent === SHOW_MORE
+      )
+    ).toBe(false)
   })
 })

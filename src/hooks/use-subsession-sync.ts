@@ -8,6 +8,11 @@ import {
 } from "react"
 import { onTransportReconnect, subscribe } from "@/lib/platform"
 import {
+  isConversationActivity,
+  isRunningConversationStatus,
+} from "@/lib/conversation-unread"
+import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
+import {
   CONVERSATION_CHANGED_EVENT,
   type ConversationChange,
   type DbConversationSummary,
@@ -83,6 +88,9 @@ export function useSubsessionSync(params: {
         let nextArr: DbConversationSummary[]
         if (idx >= 0) {
           if (existing[idx] === summary) return prev
+          if (isConversationActivity(existing[idx], summary)) {
+            useConversationUnreadStore.getState().noteActivity(summary.id)
+          }
           nextArr = existing.slice()
           nextArr[idx] = summary
         } else {
@@ -105,6 +113,9 @@ export function useSubsessionSync(params: {
           const idx = kids.findIndex((c) => c.id === id)
           if (idx < 0) continue
           if (kids[idx].status === status) return prev
+          if (!isRunningConversationStatus(status)) {
+            useConversationUnreadStore.getState().noteActivity(id)
+          }
           const nextArr = kids.slice()
           nextArr[idx] = {
             ...kids[idx],
@@ -124,6 +135,7 @@ export function useSubsessionSync(params: {
       // late upsert can't bring it back. Descendants need no tombstone: their
       // parent's cache entry is dropped below, so a late descendant upsert finds
       // no parent entry and is ignored.
+      useConversationUnreadStore.getState().clear(id)
       const tomb = deletedChildIdsRef.current
       tomb.add(id)
       if (tomb.size > DELETED_TOMBSTONE_CAP) {

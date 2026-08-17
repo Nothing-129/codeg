@@ -785,10 +785,7 @@ mod tests {
     #[test]
     fn resolve_sessions_dir_defaults_to_home_dot_pi() {
         let resolved = resolve_pi_sessions_dir_from(None, None, Some(PathBuf::from("/home/demo")));
-        assert_eq!(
-            resolved,
-            PathBuf::from("/home/demo/.pi/agent/sessions")
-        );
+        assert_eq!(resolved, PathBuf::from("/home/demo/.pi/agent/sessions"));
     }
 
     #[test]
@@ -798,10 +795,7 @@ mod tests {
             Some(OsString::new()),
             Some(PathBuf::from("/home/demo")),
         );
-        assert_eq!(
-            resolved,
-            PathBuf::from("/home/demo/.pi/agent/sessions")
-        );
+        assert_eq!(resolved, PathBuf::from("/home/demo/.pi/agent/sessions"));
     }
 
     #[test]
@@ -820,8 +814,12 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("create session dir");
         let mut file = std::fs::File::create(dir.join(filename)).expect("create jsonl");
         for record in records {
-            writeln!(file, "{}", serde_json::to_string(record).expect("serialize"))
-                .expect("write line");
+            writeln!(
+                file,
+                "{}",
+                serde_json::to_string(record).expect("serialize")
+            )
+            .expect("write line");
         }
     }
 
@@ -834,13 +832,13 @@ mod tests {
             json!({"type":"model_change","id":"mc1","parentId":null,"timestamp":"2026-06-27T10:00:01.500Z",
                    "provider":"anthropic","modelId":"claude-sonnet-4-6"}),
             json!({"type":"message","id":"m2","parentId":"m1","timestamp":"2026-06-27T10:00:02.000Z",
-                   "message":{"role":"assistant","provider":"anthropic","model":"claude-sonnet-4-6","stopReason":"tool_use",
-                     "usage":{"input":1200,"output":80,"cacheRead":4000,"cacheWrite":0,"totalTokens":5280,"cost":0.01},
-                     "content":[
-                       {"type":"thinking","text":"check the build first"},
-                       {"type":"text","text":"Running the build now."},
-                       {"type":"toolCall","id":"call_1","name":"bash","arguments":{"command":"pnpm build"}}
-                     ]}}),
+            "message":{"role":"assistant","provider":"anthropic","model":"claude-sonnet-4-6","stopReason":"tool_use",
+              "usage":{"input":1200,"output":80,"cacheRead":4000,"cacheWrite":0,"totalTokens":5280,"cost":0.01},
+              "content":[
+                {"type":"thinking","text":"check the build first"},
+                {"type":"text","text":"Running the build now."},
+                {"type":"toolCall","id":"call_1","name":"bash","arguments":{"command":"pnpm build"}}
+              ]}}),
             json!({"type":"message","id":"m3","parentId":"m2","timestamp":"2026-06-27T10:00:09.000Z",
                    "message":{"role":"toolResult","toolCallId":"call_1","toolName":"bash",
                      "content":"Compiled successfully","isError":false}}),
@@ -898,9 +896,9 @@ mod tests {
 
         let has_user = detail.turns.iter().any(|t| {
             matches!(t.role, TurnRole::User)
-                && t.blocks
-                    .iter()
-                    .any(|b| matches!(b, ContentBlock::Text { text } if text.contains("pnpm build")))
+                && t.blocks.iter().any(
+                    |b| matches!(b, ContentBlock::Text { text } if text.contains("pnpm build")),
+                )
         });
         assert!(has_user, "user message becomes a User turn");
 
@@ -957,7 +955,11 @@ mod tests {
             })
             .expect("a matching ToolResult");
         assert!(
-            result.0.as_deref().unwrap_or_default().contains("Compiled successfully"),
+            result
+                .0
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Compiled successfully"),
             "tool result output is surfaced"
         );
         assert!(!result.1, "a successful tool result is not an error");
@@ -993,10 +995,10 @@ mod tests {
             &[
                 json!({"type":"session","version":3,"id":id,"timestamp":"2026-06-27T10:00:00.000Z","cwd":"/Users/demo/app"}),
                 json!({"type":"message","id":"m1","timestamp":"2026-06-27T10:00:01.000Z",
-                       "message":{"role":"user","content":[
-                         {"type":"text","text":"part one "},
-                         {"type":"text","text":"part two"}
-                       ]}}),
+                "message":{"role":"user","content":[
+                  {"type":"text","text":"part one "},
+                  {"type":"text","text":"part two"}
+                ]}}),
                 json!({"type":"message","id":"m2","timestamp":"2026-06-27T10:00:02.000Z",
                        "message":{"role":"assistant","model":"claude-sonnet-4-6",
                          "content":[{"type":"text","text":"ok"}]}}),
@@ -1053,7 +1055,10 @@ mod tests {
             matches!(b, ContentBlock::ToolResult { is_error, output_preview, .. }
                 if *is_error && output_preview.as_deref() == Some("boom"))
         });
-        assert!(errored, "a non-zero exitCode marks the bash result an error");
+        assert!(
+            errored,
+            "a non-zero exitCode marks the bash result an error"
+        );
     }
 
     #[test]
@@ -1089,11 +1094,18 @@ mod tests {
         .unwrap();
 
         let parser = PiParser::with_base_dir(base.to_path_buf());
-        let summaries = parser.list_conversations().expect("list survives malformed lines");
+        let summaries = parser
+            .list_conversations()
+            .expect("list survives malformed lines");
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].id, id);
-        let detail = parser.get_conversation(id).expect("detail survives malformed lines");
-        assert!(detail.turns.iter().any(|t| matches!(t.role, TurnRole::User)));
+        let detail = parser
+            .get_conversation(id)
+            .expect("detail survives malformed lines");
+        assert!(detail
+            .turns
+            .iter()
+            .any(|t| matches!(t.role, TurnRole::User)));
     }
 
     #[test]

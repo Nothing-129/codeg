@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { DbConversationSummary } from "@/lib/types"
 import {
-  applyReorder,
   buildOwnerHeaderIndex,
   buildRows,
   computeStickyState,
@@ -12,7 +11,6 @@ import {
   headerIndexForFolder,
   mergeChildrenById,
   nextHeaderAfter,
-  pointerYToTargetIndex,
   reuseSelected,
   reuseSet,
   selectChatConversationsWithReuse,
@@ -408,6 +406,116 @@ describe("buildRows", () => {
     const rows = folderRows([10], new Map(), { 10: true }, new Map([[10, 5]]))
     const empty = rows.find((r) => r.kind === "empty")
     expect(empty).toMatchObject({ totalConversationCount: 5 })
+  })
+
+  describe("folder paging", () => {
+    const many = Array.from({ length: 12 }, (_, i) => conv(i + 1, 10))
+
+    it("stops at folderPageSize and appends a show-more row with the remainder", () => {
+      const rows = folderRows(
+        [10],
+        new Map([[10, many]]),
+        { 10: true },
+        new Map([[10, many.length]])
+      )
+      // folderRows does not pass a page size → historical "show all".
+      expect(rows.filter((r) => r.kind === "conversation")).toHaveLength(12)
+      expect(rows.some((r) => r.kind === "folder-more")).toBe(false)
+
+      const paged = buildRows({
+        pinned: [],
+        pinnedExpanded: true,
+        orderedFolderIds: [10],
+        byFolder: new Map([[10, many]]),
+        folderExpanded: { 10: true },
+        folderTotalCounts: new Map([[10, many.length]]),
+        foldersExpanded: true,
+        chatConversations: [],
+        chatsExpanded: true,
+        folderPageSize: 10,
+      })
+      expect(paged.filter((r) => r.kind === "conversation")).toHaveLength(10)
+      expect(paged).toContainEqual({
+        kind: "folder-more",
+        folderId: 10,
+        remaining: 2,
+        depth: 1,
+      })
+    })
+
+    it("omits the show-more row once the per-folder limit covers everything", () => {
+      const rows = buildRows({
+        pinned: [],
+        pinnedExpanded: true,
+        orderedFolderIds: [10],
+        byFolder: new Map([[10, many]]),
+        folderExpanded: { 10: true },
+        folderTotalCounts: new Map([[10, many.length]]),
+        foldersExpanded: true,
+        chatConversations: [],
+        chatsExpanded: true,
+        folderPageSize: 10,
+        folderLimitById: { 10: 12 },
+      })
+      expect(rows.filter((r) => r.kind === "conversation")).toHaveLength(12)
+      expect(rows.some((r) => r.kind === "folder-more")).toBe(false)
+    })
+
+    it("pages each folder independently", () => {
+      const folderA = Array.from({ length: 12 }, (_, i) => conv(i + 1, 10))
+      const folderB = Array.from({ length: 12 }, (_, i) => conv(i + 100, 20))
+      const rows = buildRows({
+        pinned: [],
+        pinnedExpanded: true,
+        orderedFolderIds: [10, 20],
+        byFolder: new Map([
+          [10, folderA],
+          [20, folderB],
+        ]),
+        folderExpanded: { 10: true, 20: true },
+        folderTotalCounts: new Map([
+          [10, 12],
+          [20, 12],
+        ]),
+        foldersExpanded: true,
+        chatConversations: [],
+        chatsExpanded: true,
+        folderPageSize: 10,
+        folderLimitById: { 10: 20 },
+      })
+      const convsIn = (folderId: number) =>
+        rows.filter(
+          (r) =>
+            r.kind === "conversation" && r.conversation.folder_id === folderId
+        )
+      expect(convsIn(10)).toHaveLength(12)
+      expect(convsIn(20)).toHaveLength(10)
+      expect(
+        rows
+          .filter((r) => r.kind === "folder-more")
+          .map((r) => {
+            if (r.kind !== "folder-more") return null
+            return r.folderId
+          })
+      ).toEqual([20])
+    })
+
+    it("does not page a collapsed folder", () => {
+      const rows = buildRows({
+        pinned: [],
+        pinnedExpanded: true,
+        orderedFolderIds: [10],
+        byFolder: new Map([[10, many]]),
+        folderExpanded: { 10: false },
+        folderTotalCounts: new Map([[10, many.length]]),
+        foldersExpanded: true,
+        chatConversations: [],
+        chatsExpanded: true,
+        folderPageSize: 10,
+      })
+      expect(rows.some((r) => r.kind === "folder-more")).toBe(false)
+      expect(rows.filter((r) => r.kind === "conversation")).toHaveLength(0)
+    })
   })
 
   it("emits header + each conversation row, passing summary references through", () => {
@@ -1468,29 +1576,6 @@ describe("flatIndexOfConversation", () => {
   })
 })
 
-describe("pointerYToTargetIndex", () => {
-  it("maps a pointer offset to the row under it", () => {
-    // surfaceTop=100, scrollTop=0, rowHeight=32 → y=148 lands in row 1 (132..164)
-    expect(pointerYToTargetIndex(148, 100, 0, 32, 5)).toBe(1)
-    expect(pointerYToTargetIndex(100, 100, 0, 32, 5)).toBe(0)
-  })
-
-  it("accounts for scroll offset", () => {
-    // Scrolled down 64px → the same screen Y points two rows lower.
-    expect(pointerYToTargetIndex(100, 100, 64, 32, 5)).toBe(2)
-  })
-
-  it("clamps above and below the surface", () => {
-    expect(pointerYToTargetIndex(0, 100, 0, 32, 5)).toBe(0)
-    expect(pointerYToTargetIndex(9999, 100, 0, 32, 5)).toBe(4)
-  })
-
-  it("is safe for degenerate inputs", () => {
-    expect(pointerYToTargetIndex(150, 100, 0, 32, 0)).toBe(0)
-    expect(pointerYToTargetIndex(150, 100, 0, 0, 5)).toBe(0)
-  })
-})
-
 describe("sticky overlay helpers", () => {
   // F10 expanded (2 convs), F20 collapsed, F30 expanded (empty hint).
   const rows: SidebarRow[] = [
@@ -1650,27 +1735,5 @@ describe("sticky overlay helpers", () => {
         }).translateY
       ).toBe(-17)
     })
-  })
-})
-
-describe("applyReorder", () => {
-  it("moves an item forward", () => {
-    expect(applyReorder([1, 2, 3, 4], 0, 2)).toEqual([2, 3, 1, 4])
-  })
-
-  it("moves an item backward", () => {
-    expect(applyReorder([1, 2, 3, 4], 3, 1)).toEqual([1, 4, 2, 3])
-  })
-
-  it("returns a fresh copy on a no-op move", () => {
-    const order = [1, 2, 3]
-    const result = applyReorder(order, 1, 1)
-    expect(result).toEqual([1, 2, 3])
-    expect(result).not.toBe(order)
-  })
-
-  it("clamps the destination and ignores an out-of-range source", () => {
-    expect(applyReorder([1, 2, 3], 0, 99)).toEqual([2, 3, 1])
-    expect(applyReorder([1, 2, 3], 5, 0)).toEqual([1, 2, 3])
   })
 })

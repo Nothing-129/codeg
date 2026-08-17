@@ -1539,6 +1539,7 @@
     },
     "sidebar": {
       "title": "Conversas",
+      "brand": "Codeg",
       "locateActiveConversation": "Localizar conversa ativa",
       "expandAllGroups": "Expandir todos os grupos",
       "collapseAllGroups": "Recolher todos os grupos",
@@ -1566,13 +1567,11 @@
         "folderRemoved": "Pasta {name} removida",
         "openFolderFailed": "Falha ao abrir pasta",
         "removeFolderFailed": "Falha ao remover pasta: {message}",
-        "reorderFoldersFailed": "Falha ao reordenar pastas: {message}",
         "changeFolderColorFailed": "Falha ao alterar a cor: {message}",
         "setFolderAliasFailed": "Falha ao definir o alias: {message}",
         "changeFolderDefaultAgentFailed": "Falha ao definir agente padrão: {message}"
       },
       "statsLabel": "{folders} pastas · {convos} conversas",
-      "reorderHandle": "Arraste para reordenar",
       "openFolder": "Abrir pasta",
       "searchPlaceholder": "Buscar conversas...",
       "viewOptions": "Opções de exibição",
@@ -1590,6 +1589,7 @@
       "statusRunningBadge": "Executando",
       "runningCountBadge": "{count, plural, one {# sessão em execução} other {# sessões em execução}}",
       "statusCancelledBadge": "Cancelado",
+      "unreadBadge": "Não lido",
       "worktreeRemovedBadge": "Worktree de origem removida",
       "conversationCountUnit": "{count, plural, one {# conversa} other {# conversas}}",
       "emptyFolderHint": "Sem conversas",
@@ -1646,6 +1646,7 @@
       "noChats": "Sem chats",
       "noRecent": "Sem conversas recentes",
       "showMoreRecent": "Mostrar mais ({count})",
+      "showMoreFolder": "Mostrar mais",
       "noFolders": "Nenhuma pasta aberta",
       "newChatAction": "Novo chat",
       "automations": "Automações",
@@ -1847,7 +1848,8 @@
       "unsplitAll": "Desfazer todas as divisões",
       "closeAll": "Fechar tudo",
       "tileDisplay": "Exibição em mosaico",
-      "untileDisplay": "Sair do mosaico"
+      "untileDisplay": "Sair do mosaico",
+      "unreadConversation": "Não lido"
     },
     "fileWorkspace": {
       "files": "Arquivos",

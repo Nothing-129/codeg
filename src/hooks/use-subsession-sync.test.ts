@@ -21,6 +21,10 @@ vi.mock("@/lib/platform", () => ({
 }))
 
 import { useSubsessionSync } from "./use-subsession-sync"
+import {
+  resetConversationUnreadStore,
+  useConversationUnreadStore,
+} from "@/stores/conversation-unread-store"
 
 type ChildrenMap = Map<number, DbConversationSummary[]>
 
@@ -69,6 +73,7 @@ describe("useSubsessionSync", () => {
   beforeEach(() => {
     capturedHandler = null
     reconnectCb = null
+    resetConversationUnreadStore()
   })
 
   it("routes a child status event into its parent's array", async () => {
@@ -81,6 +86,7 @@ describe("useSubsessionSync", () => {
     const arr = result.current.get(1)!
     expect(arr[0].status).toBe("completed")
     expect(arr[1].status).toBe("pending") // sibling untouched
+    expect(useConversationUnreadStore.getState().unreadIds.has(100)).toBe(true)
   })
 
   it("keeps sibling parent arrays referentially stable on a status event", async () => {

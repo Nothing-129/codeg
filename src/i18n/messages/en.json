@@ -1539,6 +1539,7 @@
     },
     "sidebar": {
       "title": "Conversations",
+      "brand": "Codeg",
       "locateActiveConversation": "Locate Active Conversation",
       "expandAllGroups": "Expand All Groups",
       "collapseAllGroups": "Collapse All Groups",
@@ -1566,13 +1567,11 @@
         "folderRemoved": "Removed folder {name}",
         "openFolderFailed": "Failed to open folder",
         "removeFolderFailed": "Failed to remove folder: {message}",
-        "reorderFoldersFailed": "Failed to reorder folders: {message}",
         "changeFolderColorFailed": "Failed to change folder color: {message}",
         "setFolderAliasFailed": "Failed to set alias: {message}",
         "changeFolderDefaultAgentFailed": "Failed to set default agent: {message}"
       },
       "statsLabel": "{folders} folders · {convos} conversations",
-      "reorderHandle": "Drag to reorder",
       "openFolder": "Open Folder",
       "searchPlaceholder": "Search conversations...",
       "viewOptions": "View options",
@@ -1590,6 +1589,7 @@
       "statusRunningBadge": "Running",
       "runningCountBadge": "{count, plural, one {# session running} other {# sessions running}}",
       "statusCancelledBadge": "Cancelled",
+      "unreadBadge": "Unread",
       "worktreeRemovedBadge": "Source worktree removed",
       "conversationCountUnit": "{count, plural, one {# conversation} other {# conversations}}",
       "emptyFolderHint": "No conversations",
@@ -1646,6 +1646,7 @@
       "noChats": "No chats",
       "noRecent": "No recent conversations",
       "showMoreRecent": "Show more ({count})",
+      "showMoreFolder": "Show more",
       "noFolders": "No folders open",
       "newChatAction": "New chat",
       "automations": "Automations",
@@ -1847,7 +1848,8 @@
       "unsplitAll": "Unsplit All",
       "closeAll": "Close All",
       "tileDisplay": "Tile Display",
-      "untileDisplay": "Exit Tile"
+      "untileDisplay": "Exit Tile",
+      "unreadConversation": "Unread"
     },
     "fileWorkspace": {
       "files": "Files",

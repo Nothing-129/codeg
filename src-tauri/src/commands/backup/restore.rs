@@ -148,7 +148,13 @@ pub(crate) async fn stage_restore_core(
     let manifest_c = manifest.clone();
     let cancel_c = cancel.clone();
     tokio::task::spawn_blocking(move || -> Result<(), AppCommandError> {
-        archive::extract_all(&zip_c, &staging_c, &manifest_c, &cancel_c, &mut archive::null_progress())?;
+        archive::extract_all(
+            &zip_c,
+            &staging_c,
+            &manifest_c,
+            &cancel_c,
+            &mut archive::null_progress(),
+        )?;
         archive::verify_checksums(&staging_c, &manifest_c, &cancel_c)
     })
     .await
@@ -218,9 +224,7 @@ pub fn cleanup_transient_dirs(data_dir: &Path) {
 /// `paths::*` resolvers (production), then delegates to
 /// [`apply_pending_restore_with_paths`]. Tests call the inner fn with temp
 /// paths so they never touch the real `~/.codeg`.
-pub fn apply_pending_restore_on_startup(
-    data_dir: &Path,
-) -> Result<RestoreApplied, std::io::Error> {
+pub fn apply_pending_restore_on_startup(data_dir: &Path) -> Result<RestoreApplied, std::io::Error> {
     apply_pending_restore_with_paths(
         data_dir,
         &crate::paths::codeg_uploads_root(),
@@ -256,7 +260,8 @@ pub(crate) fn apply_pending_restore_with_paths(
 
     tracing::info!(
         "[RESTORE] applying staged restore (backup app_version={}, migration={})",
-        pending.app_version, pending.latest_migration
+        pending.app_version,
+        pending.latest_migration
     );
 
     // Safety snapshot of the current live data, then swap staged files in.
@@ -294,7 +299,11 @@ pub(crate) fn apply_pending_restore_with_paths(
 
     let staged_prefs = staging.join("preferences.json");
     if staged_prefs.is_file() {
-        swap_in(&staged_prefs, preferences_path, &backup_dir.join("preferences.json"))?;
+        swap_in(
+            &staged_prefs,
+            preferences_path,
+            &backup_dir.join("preferences.json"),
+        )?;
     }
 
     // Commit only after a fully successful swap. On a mid-swap crash we return
@@ -425,15 +434,21 @@ fn write_pending_marker(
         app_version: manifest.app_version.clone(),
         latest_migration: manifest.latest_migration.clone(),
     };
-    let json = serde_json::to_vec_pretty(&pending)
-        .map_err(|e| AppCommandError::task_execution_failed("Serialize restore marker").with_detail(e.to_string()))?;
+    let json = serde_json::to_vec_pretty(&pending).map_err(|e| {
+        AppCommandError::task_execution_failed("Serialize restore marker")
+            .with_detail(e.to_string())
+    })?;
     let marker = data_dir.join(PENDING_MARKER);
     // Atomic, no-clobber claim: `create_new` lets exactly one concurrent stage
     // commit. A second one fails with AlreadyExists rather than racing a rename
     // and silently committing a different staging dir. A crash mid-write leaves
     // a partial marker, which `apply_pending_restore_*` treats as malformed and
     // discards (its staging is then reaped by `cleanup_transient_dirs`).
-    let mut f = match OpenOptions::new().write(true).create_new(true).open(&marker) {
+    let mut f = match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&marker)
+    {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
             return Err(already_pending_error())
@@ -477,7 +492,11 @@ fn sanitize_stamp(rfc3339: &str) -> String {
 }
 
 fn emit(emitter: &EventEmitter, op_id: &str, phase: BackupPhase) {
-    emit_event(emitter, BACKUP_PROGRESS_EVENT, BackupProgress::phase(op_id, phase));
+    emit_event(
+        emitter,
+        BACKUP_PROGRESS_EVENT,
+        BackupProgress::phase(op_id, phase),
+    );
 }
 
 fn spawn_err(e: tokio::task::JoinError) -> AppCommandError {

@@ -13,6 +13,11 @@ import {
 import { useReferenceSearch } from "@/components/chat/composer/use-reference-search"
 import { useComposerMentionLabels } from "@/components/chat/composer/use-composer-mention-labels"
 import { docToPromptBlocks } from "@/components/chat/composer/to-prompt-blocks"
+import {
+  COMPOSER_CHROME_BOX_CLASS,
+  COMPOSER_CHROME_SHADOW_CLASS,
+  COMPOSER_CHROME_SURFACE_CLASS,
+} from "@/components/chat/composer/composer-chrome"
 import { isComposerChromeClick } from "@/components/chat/composer/composer-commands"
 import {
   AgentConfigSection,
@@ -364,7 +369,11 @@ export function AutomationEditor({
           e.preventDefault()
           editorRef.current?.focusAtCoords(e.clientX, e.clientY)
         }}
-        className="codeg-composer-chrome relative rounded-xl border border-input bg-background transition-colors focus-within:border-ring focus-within:ring-[3px] focus-within:ring-inset focus-within:ring-ring/50"
+        className={cn(
+          COMPOSER_CHROME_BOX_CLASS,
+          COMPOSER_CHROME_SURFACE_CLASS,
+          COMPOSER_CHROME_SHADOW_CLASS
+        )}
       >
         <ComposerInvocationsPopup inv={invocations} />
         <RichComposer

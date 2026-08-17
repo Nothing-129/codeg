@@ -14,6 +14,7 @@ const LOGS_DIR_NAME: &str = "logs";
 const TURN_TIMINGS_DIR_NAME: &str = "turn-timings";
 const ACP_TRANSCRIPTS_DIR_NAME: &str = "acp-transcripts";
 const BACKGROUNDS_DIR_NAME: &str = "backgrounds";
+const GROK_TITLE_SCRATCH_DIR_NAME: &str = "grok-title-scratch";
 
 /// `$CODEG_HOME` if set (and non-empty), else `~/.codeg/`.
 ///
@@ -145,6 +146,20 @@ pub fn codeg_turn_timings_root() -> PathBuf {
     dirs::home_dir()
         .map(|h| h.join(CODEG_DIR_NAME).join(TURN_TIMINGS_DIR_NAME))
         .unwrap_or_else(|| PathBuf::from(CODEG_DIR_NAME).join(TURN_TIMINGS_DIR_NAME))
+}
+
+/// Isolated cwd for headless `grok -p` title jobs. Sessions written here
+/// must not appear in the sidebar (see `session_title::is_grok_title_scratch_cwd`).
+pub fn codeg_grok_title_scratch_dir() -> PathBuf {
+    if let Some(custom) = std::env::var_os("CODEG_HOME").filter(|s| !s.is_empty()) {
+        return PathBuf::from(custom).join(GROK_TITLE_SCRATCH_DIR_NAME);
+    }
+    if let Some(data) = std::env::var_os("CODEG_DATA_DIR").filter(|s| !s.is_empty()) {
+        return PathBuf::from(data).join(GROK_TITLE_SCRATCH_DIR_NAME);
+    }
+    dirs::home_dir()
+        .map(|h| h.join(CODEG_DIR_NAME).join(GROK_TITLE_SCRATCH_DIR_NAME))
+        .unwrap_or_else(|| PathBuf::from(CODEG_DIR_NAME).join(GROK_TITLE_SCRATCH_DIR_NAME))
 }
 
 /// Root directory for codeg's own ACP transcripts (see

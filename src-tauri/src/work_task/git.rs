@@ -22,7 +22,10 @@ async fn run_git(path: &str, args: &[&str]) -> Result<std::process::Output, AppC
 pub async fn git_dir(path: &str) -> Result<std::path::PathBuf, AppCommandError> {
     let out = run_git(path, &["rev-parse", "--absolute-git-dir"]).await?;
     if !out.status.success() {
-        return Err(git_command_error("rev-parse --absolute-git-dir", &out.stderr));
+        return Err(git_command_error(
+            "rev-parse --absolute-git-dir",
+            &out.stderr,
+        ));
     }
     let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if dir.is_empty() {
@@ -36,7 +39,11 @@ pub async fn git_dir(path: &str) -> Result<std::path::PathBuf, AppCommandError> 
 
 /// Resolve a revision to a full sha.
 pub async fn rev_parse(path: &str, rev: &str) -> Result<String, AppCommandError> {
-    let out = run_git(path, &["rev-parse", "--verify", &format!("{rev}^{{commit}}")]).await?;
+    let out = run_git(
+        path,
+        &["rev-parse", "--verify", &format!("{rev}^{{commit}}")],
+    )
+    .await?;
     if !out.status.success() {
         return Err(git_command_error("rev-parse", &out.stderr));
     }
@@ -248,7 +255,11 @@ pub async fn local_branch_tip(
     let refname = format!("refs/heads/{branch}");
     let out = run_git(
         repo_path,
-        &["for-each-ref", "--format=%(refname)\t%(objectname)", &refname],
+        &[
+            "for-each-ref",
+            "--format=%(refname)\t%(objectname)",
+            &refname,
+        ],
     )
     .await?;
     if !out.status.success() {
@@ -495,7 +506,10 @@ mod tests {
         git_run(dir.path(), &["commit", "-qm", "more work"]);
         git_run(dir.path(), &["checkout", "-q", "main"]);
         assert!(branch_holds_unlanded_work(path, "task/1", Some("main"), Some(&base_sha)).await);
-        git_run(dir.path(), &["merge", "-q", "--no-ff", "-m", "land", "task/1"]);
+        git_run(
+            dir.path(),
+            &["merge", "-q", "--no-ff", "-m", "land", "task/1"],
+        );
         assert!(!branch_holds_unlanded_work(path, "task/1", Some("main"), Some(&base_sha)).await);
     }
 

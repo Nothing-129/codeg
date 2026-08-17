@@ -11,6 +11,7 @@ import {
 import type { ImperativePanelGroupHandle } from "react-resizable-panels"
 import { FolderTitleBar } from "@/components/layout/folder-title-bar"
 import { Sidebar } from "@/components/layout/sidebar"
+import { ConversationUnreadSync } from "@/components/conversations/conversation-unread-sync"
 import { StatusBar } from "@/components/layout/status-bar"
 import {
   AppWorkspaceProvider,
@@ -1251,6 +1252,7 @@ function WorkspaceLayoutInner({ children }: { children: React.ReactNode }) {
                                 <TasksViewProvider>
                                   <WorkbenchRouteProvider>
                                     <WorkbenchRouteConversationSync />
+                                    <ConversationUnreadSync />
                                     {/* Inside WorkbenchRouteProvider: the
                                           listener calls openConversations() to
                                           surface a launcher-opened folder. */}

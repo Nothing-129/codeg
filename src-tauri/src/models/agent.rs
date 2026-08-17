@@ -226,7 +226,10 @@ mod tests {
             assert_eq!(agent.as_wire(), wire);
             assert_eq!(AgentType::from_wire(wire), Some(agent));
             // The JSON form is what `serde_json::to_string` writes to the DB.
-            assert_eq!(serde_json::to_string(&agent).unwrap(), format!("\"{wire}\""));
+            assert_eq!(
+                serde_json::to_string(&agent).unwrap(),
+                format!("\"{wire}\"")
+            );
             assert_eq!(
                 serde_json::from_str::<AgentType>(&format!("\"{wire}\"")).unwrap(),
                 agent

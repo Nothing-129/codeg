@@ -12,6 +12,11 @@ import {
   reorderFolders as apiReorderFolders,
 } from "@/lib/api"
 import { toErrorMessage } from "@/lib/app-error"
+import {
+  isConversationActivity,
+  isRunningConversationStatus,
+} from "@/lib/conversation-unread"
+import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
 import type {
   AgentStats,
   AgentType,
@@ -262,14 +267,22 @@ export const useAppWorkspaceStore = create<AppWorkspaceStoreState>()(
       // don't re-render on a logical no-op.
       if (idx < 0) return
       const next = prev.slice()
+      const before = prev[idx]
       // A pin toggle is a view preference, not activity — mirror the backend
       // (`update_pin`) and leave `updated_at` untouched so an updated-sorted
       // folder doesn't briefly float the row. Status/title patches still bump.
       const bumpUpdatedAt = !("pinned_at" in patch)
       next[idx] = {
-        ...next[idx],
+        ...before,
         ...patch,
         ...(bumpUpdatedAt ? { updated_at: new Date().toISOString() } : {}),
+      }
+      if (
+        typeof patch.status === "string" &&
+        before.status !== patch.status &&
+        !isRunningConversationStatus(patch.status)
+      ) {
+        useConversationUnreadStore.getState().noteActivity(id)
       }
       // `stats` (computeStats) depends ONLY on the conversation count and each
       // row's agent_type/message_count. This path replaces a row IN PLACE (count
@@ -303,7 +316,11 @@ export const useAppWorkspaceStore = create<AppWorkspaceStoreState>()(
         return
       }
       const next = prev.slice()
+      const before = prev[idx]
       next[idx] = summary
+      if (isConversationActivity(before, summary)) {
+        useConversationUnreadStore.getState().noteActivity(summary.id)
+      }
       set(withConversations(next))
     },
 
@@ -321,6 +338,7 @@ export const useAppWorkspaceStore = create<AppWorkspaceStoreState>()(
       if (idx < 0) return
       const next = prev.slice()
       next.splice(idx, 1)
+      useConversationUnreadStore.getState().clear(id)
       set(withConversations(next))
     },
 

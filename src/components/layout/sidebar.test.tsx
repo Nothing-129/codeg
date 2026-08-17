@@ -106,6 +106,15 @@ describe("Sidebar — fixed New chat / Search region", () => {
     mockState.activeFolder = { id: 7, path: "/x" }
   })
 
+  it("renders the app name above New chat", () => {
+    const { getByText } = renderSidebar()
+    const brand = getByText("Codeg")
+    const newChat = getByText("New chat")
+    expect(brand.compareDocumentPosition(newChat)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+  })
+
   it("Automations navigates to the automations route", () => {
     const { getByText } = renderSidebar()
     fireEvent.click(getByText("Automations"))

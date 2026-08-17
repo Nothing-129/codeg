@@ -1539,6 +1539,7 @@
     },
     "sidebar": {
       "title": "Conversaciones",
+      "brand": "Codeg",
       "locateActiveConversation": "Ubicar conversación activa",
       "expandAllGroups": "Expandir todos los grupos",
       "collapseAllGroups": "Colapsar todos los grupos",
@@ -1566,13 +1567,11 @@
         "folderRemoved": "Carpeta {name} eliminada",
         "openFolderFailed": "Error al abrir carpeta",
         "removeFolderFailed": "Error al eliminar carpeta: {message}",
-        "reorderFoldersFailed": "Error al reordenar carpetas: {message}",
         "changeFolderColorFailed": "Error al cambiar el color: {message}",
         "setFolderAliasFailed": "Error al establecer el alias: {message}",
         "changeFolderDefaultAgentFailed": "Error al establecer agente predeterminado: {message}"
       },
       "statsLabel": "{folders} carpetas · {convos} conversaciones",
-      "reorderHandle": "Arrastrar para reordenar",
       "openFolder": "Abrir carpeta",
       "searchPlaceholder": "Buscar conversaciones...",
       "viewOptions": "Opciones de visualización",
@@ -1590,6 +1589,7 @@
       "statusRunningBadge": "Ejecutando",
       "runningCountBadge": "{count, plural, one {# sesión en ejecución} other {# sesiones en ejecución}}",
       "statusCancelledBadge": "Cancelado",
+      "unreadBadge": "Sin leer",
       "worktreeRemovedBadge": "Worktree de origen eliminado",
       "conversationCountUnit": "{count, plural, one {# conversación} other {# conversaciones}}",
       "emptyFolderHint": "Sin conversaciones",
@@ -1646,6 +1646,7 @@
       "noChats": "Sin chats",
       "noRecent": "Sin conversaciones recientes",
       "showMoreRecent": "Mostrar más ({count})",
+      "showMoreFolder": "Mostrar más",
       "noFolders": "No hay carpetas abiertas",
       "newChatAction": "Nuevo chat",
       "automations": "Automatizaciones",
@@ -1847,7 +1848,8 @@
       "unsplitAll": "Deshacer todas las divisiones",
       "closeAll": "Cerrar todo",
       "tileDisplay": "Vista en mosaico",
-      "untileDisplay": "Salir de mosaico"
+      "untileDisplay": "Salir de mosaico",
+      "unreadConversation": "Sin leer"
     },
     "fileWorkspace": {
       "files": "Archivos",

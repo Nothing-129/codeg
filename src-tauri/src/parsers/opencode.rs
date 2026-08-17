@@ -792,7 +792,8 @@ fn pick_str<'a>(value: Option<&'a serde_json::Value>, keys: &[&str]) -> Option<&
 /// as-is (an empty `oldString` is OpenCode's create-file form of `edit`).
 fn pick_str_verbatim<'a>(value: Option<&'a serde_json::Value>, keys: &[&str]) -> Option<&'a str> {
     let obj = value?;
-    keys.iter().find_map(|key| obj.get(*key).and_then(|v| v.as_str()))
+    keys.iter()
+        .find_map(|key| obj.get(*key).and_then(|v| v.as_str()))
 }
 
 /// Copy `value[from]` into `out[to]` verbatim when present and not null.
@@ -810,7 +811,10 @@ fn copy_field(
 }
 
 fn insert_str(out: &mut serde_json::Map<String, serde_json::Value>, key: &str, value: &str) {
-    out.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+    out.insert(
+        key.to_string(),
+        serde_json::Value::String(value.to_string()),
+    );
 }
 
 /// Start line of the first hunk in a unified diff (`@@ -12,7 +12,8 @@` → 12).
@@ -1056,10 +1060,7 @@ fn structure_read_output(metadata: Option<&serde_json::Value>) -> Option<String>
                 .and_then(|v| v.as_u64())
                 .filter(|n| *n > 0)
                 .unwrap_or(1);
-            Some(
-                serde_json::json!({ "start_line": start_line, "content": text })
-                    .to_string(),
-            )
+            Some(serde_json::json!({ "start_line": start_line, "content": text }).to_string())
         }
         "directory" => {
             let entries: Vec<&str> = display

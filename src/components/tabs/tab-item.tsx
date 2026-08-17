@@ -10,8 +10,7 @@ import {
   acquireDragSelectionGuard,
   releaseDragSelectionGuard,
 } from "@/lib/drag-selection-guard"
-import type { ConversationStatus } from "@/lib/types"
-import { ConversationStatusDot } from "@/components/conversations/conversation-status-dot"
+import { AgentIcon } from "@/components/agent-icon"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -25,6 +24,8 @@ import {
 import { useLongPressDrag } from "@/hooks/use-long-press-drag"
 import type { TabItem as TabItemData } from "@/contexts/tab-context"
 import type { SplitDirection } from "@/lib/tab-group-layout"
+import { ConversationUnreadDot } from "@/components/conversations/conversation-unread-dot"
+import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
 
 /** A group this tab could move to (every group EXCEPT the tab's own), labeled
  *  by its traversal-order number and its selected tab's title. */
@@ -121,6 +122,11 @@ export const TabItem = memo(function TabItem({
 }: TabItemProps) {
   const t = useTranslations("Folder.tabs")
   const itemRef = useRef<HTMLDivElement>(null)
+  const hasUnread = useConversationUnreadStore((s) =>
+    tab.conversationId != null && tab.status !== "in_progress"
+      ? s.unreadIds.has(tab.conversationId)
+      : false
+  )
 
   const resolvedFolderName = folderName ?? String(tab.folderId)
   const tooltip = folderBranch
@@ -307,7 +313,7 @@ export const TabItem = memo(function TabItem({
                     // `overflow-hidden` clips the shrunken
                     // row so a tight tab can't paint/click over its neighbor.
                     // `pb-1.5` balances the group's `pt-1.5` gap so the content
-                    // (dot/title/close) centers on the h-10 strip's midline, not
+                    // (icon/title/close) centers on the h-10 strip's midline, not
                     // 3px low in the shorter tab box (the fill still reaches the
                     // strip bottom — padding only insets the content).
                     // `browser-tab-content` is the hover anchor for the label's
@@ -326,9 +332,9 @@ export const TabItem = memo(function TabItem({
                   ]
             )}
           >
-            <ConversationStatusDot
-              status={tab.status as ConversationStatus | undefined}
-            />
+            <span aria-hidden="true" className="inline-flex shrink-0">
+              <AgentIcon agentType={tab.agentType} className="h-3.5 w-3.5" />
+            </span>
             <span
               className={cn(
                 // Embedded: grow + shrink as the tab tightens, but instead of an
@@ -344,6 +350,16 @@ export const TabItem = memo(function TabItem({
             >
               {tab.title}
             </span>
+            {hasUnread && !isActive && (
+              <ConversationUnreadDot
+                label={t("unreadConversation")}
+                className={cn(
+                  embedded
+                    ? "absolute right-3.5 top-0 bottom-1.5 my-auto group-hover/tab:opacity-0"
+                    : "group-hover/tab:hidden"
+                )}
+              />
+            )}
             <button
               type="button"
               className={cn(

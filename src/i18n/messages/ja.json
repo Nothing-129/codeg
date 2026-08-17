@@ -1539,6 +1539,7 @@
     },
     "sidebar": {
       "title": "会話",
+      "brand": "Codeg",
       "locateActiveConversation": "アクティブな会話を表示",
       "expandAllGroups": "すべてのグループを展開",
       "collapseAllGroups": "すべてのグループを折りたたむ",
@@ -1566,13 +1567,11 @@
         "folderRemoved": "フォルダ {name} を削除しました",
         "openFolderFailed": "フォルダを開けませんでした",
         "removeFolderFailed": "フォルダの削除に失敗しました: {message}",
-        "reorderFoldersFailed": "フォルダの並べ替えに失敗しました: {message}",
         "changeFolderColorFailed": "色の変更に失敗しました: {message}",
         "setFolderAliasFailed": "エイリアスの設定に失敗しました: {message}",
         "changeFolderDefaultAgentFailed": "デフォルトエージェントの設定に失敗しました: {message}"
       },
       "statsLabel": "{folders} フォルダ · {convos} 会話",
-      "reorderHandle": "ドラッグして並べ替え",
       "openFolder": "フォルダを開く",
       "searchPlaceholder": "会話を検索...",
       "viewOptions": "表示オプション",
@@ -1590,6 +1589,7 @@
       "statusRunningBadge": "実行中",
       "runningCountBadge": "{count} 件の会話が実行中",
       "statusCancelledBadge": "キャンセル済み",
+      "unreadBadge": "未読",
       "worktreeRemovedBadge": "元の worktree は削除済み",
       "conversationCountUnit": "{count} 件",
       "emptyFolderHint": "会話がありません",
@@ -1646,6 +1646,7 @@
       "noChats": "チャットがありません",
       "noRecent": "最近の会話はありません",
       "showMoreRecent": "さらに表示（{count}）",
+      "showMoreFolder": "展開して表示",
       "noFolders": "開いているフォルダがありません",
       "newChatAction": "新しいチャット",
       "automations": "オートメーション",
@@ -1847,7 +1848,8 @@
       "unsplitAll": "すべての分割を解除",
       "closeAll": "すべて閉じる",
       "tileDisplay": "タイル表示",
-      "untileDisplay": "タイル解除"
+      "untileDisplay": "タイル解除",
+      "unreadConversation": "未読"
     },
     "fileWorkspace": {
       "files": "ファイル",

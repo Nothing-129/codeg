@@ -273,8 +273,7 @@ impl HermesParser {
                     msg_model = session_model.map(str::to_string);
 
                     // 1) reasoning → Thinking (prefer reasoning_content).
-                    let reasoning_content: Option<String> =
-                        row.try_get("", "reasoning_content")?;
+                    let reasoning_content: Option<String> = row.try_get("", "reasoning_content")?;
                     let reasoning: Option<String> = row.try_get("", "reasoning")?;
                     if let Some(text) = reasoning_content
                         .as_deref()
@@ -293,8 +292,7 @@ impl HermesParser {
                     // 3) tool calls → ToolUse (results arrive as separate rows).
                     let tool_calls: Option<String> = row.try_get("", "tool_calls")?;
                     if let Some(raw) = tool_calls.as_deref() {
-                        for (tool_use_id, tool_name, input_preview) in
-                            parse_hermes_tool_calls(raw)
+                        for (tool_use_id, tool_name, input_preview) in parse_hermes_tool_calls(raw)
                         {
                             blocks.push(ContentBlock::ToolUse {
                                 tool_use_id,
@@ -560,8 +558,7 @@ fn decode_hermes_content(raw: Option<&str>) -> Vec<ContentBlock> {
     };
 
     if let Some(rest) = s.strip_prefix(CONTENT_JSON_PREFIX) {
-        if let Ok(serde_json::Value::Array(parts)) =
-            serde_json::from_str::<serde_json::Value>(rest)
+        if let Ok(serde_json::Value::Array(parts)) = serde_json::from_str::<serde_json::Value>(rest)
         {
             return parts.iter().filter_map(content_part_to_block).collect();
         }
@@ -595,7 +592,11 @@ fn content_part_to_block(part: &serde_json::Value) -> Option<ContentBlock> {
 
     match part.get("type").and_then(|v| v.as_str()).unwrap_or("") {
         "text" => {
-            let text = part.get("text").and_then(|v| v.as_str()).unwrap_or("").trim();
+            let text = part
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
             (!text.is_empty()).then(|| ContentBlock::Text {
                 text: text.to_string(),
             })
@@ -686,10 +687,7 @@ fn parse_hermes_tool_calls(raw: &str) -> Vec<(Option<String>, String, Option<Str
 
     arr.iter()
         .map(|tc| {
-            let id = tc
-                .get("id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+            let id = tc.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
             let function = tc.get("function");
             let name = function
                 .and_then(|f| f.get("name"))
@@ -874,7 +872,9 @@ mod tests {
         );
         let blocks = decode_hermes_content(Some(&raw));
         assert_eq!(blocks.len(), 1);
-        assert!(matches!(&blocks[0], ContentBlock::Text { text } if text == "[image] https://example.com/a.png"));
+        assert!(
+            matches!(&blocks[0], ContentBlock::Text { text } if text == "[image] https://example.com/a.png")
+        );
     }
 
     #[test]

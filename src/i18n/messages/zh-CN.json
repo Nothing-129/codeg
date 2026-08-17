@@ -1539,6 +1539,7 @@
     },
     "sidebar": {
       "title": "会话",
+      "brand": "Codeg",
       "locateActiveConversation": "定位当前会话",
       "expandAllGroups": "展开全部分组",
       "collapseAllGroups": "折叠全部分组",
@@ -1566,13 +1567,11 @@
         "folderRemoved": "已移除文件夹 {name}",
         "openFolderFailed": "打开文件夹失败",
         "removeFolderFailed": "移除文件夹失败：{message}",
-        "reorderFoldersFailed": "重新排序文件夹失败：{message}",
         "changeFolderColorFailed": "修改颜色失败：{message}",
         "setFolderAliasFailed": "设置别名失败：{message}",
         "changeFolderDefaultAgentFailed": "设置默认智能体失败：{message}"
       },
       "statsLabel": "{folders} 个文件夹 · {convos} 个会话",
-      "reorderHandle": "拖拽排序",
       "openFolder": "打开文件夹",
       "searchPlaceholder": "搜索会话...",
       "viewOptions": "显示选项",
@@ -1590,6 +1589,7 @@
       "statusRunningBadge": "运行中",
       "runningCountBadge": "{count} 个会话进行中",
       "statusCancelledBadge": "已取消",
+      "unreadBadge": "未读",
       "worktreeRemovedBadge": "源 worktree 已删除",
       "conversationCountUnit": "{count} 条",
       "emptyFolderHint": "暂无会话",
@@ -1646,6 +1646,7 @@
       "noChats": "没有聊天",
       "noRecent": "暂无最近会话",
       "showMoreRecent": "显示更多（{count}）",
+      "showMoreFolder": "展开显示",
       "noFolders": "没有打开的文件夹",
       "newChatAction": "新建聊天",
       "automations": "自动化",
@@ -1847,7 +1848,8 @@
       "unsplitAll": "全部取消拆分",
       "closeAll": "关闭所有",
       "tileDisplay": "平铺显示",
-      "untileDisplay": "取消平铺"
+      "untileDisplay": "取消平铺",
+      "unreadConversation": "未读"
     },
     "fileWorkspace": {
       "files": "文件",

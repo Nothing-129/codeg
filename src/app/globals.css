@@ -1997,8 +1997,8 @@ div.monaco-diff-editor.side-by-side .editor.modified {
   animation: codeg-composer-flow 2.5s linear infinite;
 }
 /* The flow is the "active session, input not focused" cue: the moment the
-   composer itself gains focus, hide it so the input reverts to its plain default
-   style (the standard focus ring applied in the composer className).
+   composer itself gains focus, hide it so the input reverts to its always-on
+   selected chrome (soft border + shadow; no click-only focus ring).
    `display:none` also stops the animation while the input is focused. */
 .codeg-composer-flow:focus-within::before {
   display: none;

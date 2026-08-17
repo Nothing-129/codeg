@@ -254,9 +254,7 @@ pub async fn work_task_delete(
     Ok(Json(()))
 }
 
-pub async fn work_task_start(
-    Json(params): Json<IdParams>,
-) -> Result<Json<()>, AppCommandError> {
+pub async fn work_task_start(Json(params): Json<IdParams>) -> Result<Json<()>, AppCommandError> {
     core::work_task_start_core(params.id)
         .await
         .map_err(AppCommandError::from)?;
@@ -293,7 +291,7 @@ pub async fn work_task_requeue(
         params.blocks,
     )
     .await
-        .map_err(AppCommandError::from)?;
+    .map_err(AppCommandError::from)?;
     Ok(Json(()))
 }
 
@@ -365,9 +363,7 @@ pub async fn work_task_archive(
     Ok(Json(()))
 }
 
-pub async fn work_task_cleanup(
-    Json(params): Json<IdParams>,
-) -> Result<Json<()>, AppCommandError> {
+pub async fn work_task_cleanup(Json(params): Json<IdParams>) -> Result<Json<()>, AppCommandError> {
     core::work_task_cleanup_core(params.id)
         .await
         .map_err(AppCommandError::from)?;
@@ -424,14 +420,9 @@ pub async fn work_task_settings_set(
     Extension(state): Extension<Arc<AppState>>,
     Json(params): Json<SettingsSetParams>,
 ) -> Result<Json<()>, AppCommandError> {
-    core::work_task_settings_set_core(
-        &state.emitter,
-        &state.db,
-        params.folder_id,
-        params.settings,
-    )
-    .await
-    .map_err(AppCommandError::from)?;
+    core::work_task_settings_set_core(&state.emitter, &state.db, params.folder_id, params.settings)
+        .await
+        .map_err(AppCommandError::from)?;
     Ok(Json(()))
 }
 

@@ -494,7 +494,6 @@ pub(crate) fn find_session_file_in(base_dir: &Path, session_id: &str) -> Option<
 }
 
 impl ClaudeParser {
-
     fn parse_jsonl_summary(
         &self,
         path: &PathBuf,
@@ -985,26 +984,15 @@ impl ClaudeRecordAccumulator {
                     .and_then(|c| c.as_str())
                 {
                     if raw.trim_start().starts_with("<task-notification>") {
-                        if let Some(task_id) =
-                            capture_tag(task_notification_task_id_regex(), raw)
-                        {
+                        if let Some(task_id) = capture_tag(task_notification_task_id_regex(), raw) {
                             background_notifications.insert(
                                 task_id,
                                 BackgroundNotification {
-                                    status: capture_tag(
-                                        task_notification_status_regex(),
-                                        raw,
-                                    )
-                                    .unwrap_or_else(|| "completed".to_string()),
-                                    summary: capture_tag(
-                                        task_notification_summary_regex(),
-                                        raw,
-                                    ),
-                                    result: capture_tag(
-                                        task_notification_result_regex(),
-                                        raw,
-                                    )
-                                    .map(|r| truncate_str(&r, BACKGROUND_RESULT_MAX_CHARS)),
+                                    status: capture_tag(task_notification_status_regex(), raw)
+                                        .unwrap_or_else(|| "completed".to_string()),
+                                    summary: capture_tag(task_notification_summary_regex(), raw),
+                                    result: capture_tag(task_notification_result_regex(), raw)
+                                        .map(|r| truncate_str(&r, BACKGROUND_RESULT_MAX_CHARS)),
                                 },
                             );
                         }
@@ -1074,17 +1062,14 @@ impl ClaudeRecordAccumulator {
                             .and_then(|v| v.as_str())
                             .filter(|s| !s.is_empty())
                         {
-                            if let Some(ack_tool_use_id) =
-                                content.iter().find_map(|b| match b {
-                                    ContentBlock::ToolResult {
-                                        tool_use_id: Some(id),
-                                        ..
-                                    } => Some(id.clone()),
-                                    _ => None,
-                                })
-                            {
-                                background_acks
-                                    .insert(ack_tool_use_id, task_id.to_string());
+                            if let Some(ack_tool_use_id) = content.iter().find_map(|b| match b {
+                                ContentBlock::ToolResult {
+                                    tool_use_id: Some(id),
+                                    ..
+                                } => Some(id.clone()),
+                                _ => None,
+                            }) {
+                                background_acks.insert(ack_tool_use_id, task_id.to_string());
                             }
                         }
                     }
@@ -1103,8 +1088,7 @@ impl ClaudeRecordAccumulator {
                                 let subagent_path =
                                     subagent_dir.join(format!("agent-{}.jsonl", agent_id));
                                 if subagent_path.exists() {
-                                    stats.tool_calls =
-                                        parse_subagent_tool_calls(&subagent_path).0;
+                                    stats.tool_calls = parse_subagent_tool_calls(&subagent_path).0;
                                 }
                             }
                         }
@@ -2364,10 +2348,8 @@ mod tests {
         let settled = &previews.iter().find(|(id, _)| id == "toolu_01").unwrap().1;
         assert!(settled.starts_with(BACKGROUND_TASK_MARKER));
         assert!(!settled.contains("never quote"));
-        let payload: serde_json::Value = serde_json::from_str(
-            settled.strip_prefix(BACKGROUND_TASK_MARKER).unwrap(),
-        )
-        .unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_str(settled.strip_prefix(BACKGROUND_TASK_MARKER).unwrap()).unwrap();
         assert_eq!(payload["task_id"], "abc123");
         assert_eq!(payload["status"], "completed");
         assert_eq!(payload["summary"], "Agent \"Run pnpm build\" finished");
@@ -2376,10 +2358,8 @@ mod tests {
         // Unsettled: marker present, status null (frontend must NOT claim
         // "running" from the transcript alone — CC's zombie trap).
         let unsettled = &previews.iter().find(|(id, _)| id == "toolu_02").unwrap().1;
-        let payload: serde_json::Value = serde_json::from_str(
-            unsettled.strip_prefix(BACKGROUND_TASK_MARKER).unwrap(),
-        )
-        .unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_str(unsettled.strip_prefix(BACKGROUND_TASK_MARKER).unwrap()).unwrap();
         assert_eq!(payload["task_id"], "nores99");
         assert!(payload["status"].is_null());
     }
@@ -3009,10 +2989,8 @@ mod tests {
     }
 
     fn parse_lines_into_detail(lines: &[String]) -> crate::models::ConversationDetail {
-        let path = std::env::temp_dir().join(format!(
-            "codeg-claude-usage-{}.jsonl",
-            uuid::Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("codeg-claude-usage-{}.jsonl", uuid::Uuid::new_v4()));
         let mut file = fs::File::create(&path).expect("create temp jsonl");
         for line in lines {
             writeln!(file, "{line}").unwrap();
@@ -3034,7 +3012,9 @@ mod tests {
             .iter()
             .filter_map(|t| t.usage.as_ref())
             .map(|u| {
-                u.input_tokens + u.output_tokens + u.cache_creation_input_tokens
+                u.input_tokens
+                    + u.output_tokens
+                    + u.cache_creation_input_tokens
                     + u.cache_read_input_tokens
             })
             .sum()
@@ -3186,8 +3166,10 @@ mod tests {
             })
             .to_string()
         };
-        let detail =
-            parse_lines_into_detail(&[line("a1", "2026-03-01T10:00:00Z"), line("a2", "2026-03-01T10:00:01Z")]);
+        let detail = parse_lines_into_detail(&[
+            line("a1", "2026-03-01T10:00:00Z"),
+            line("a2", "2026-03-01T10:00:01Z"),
+        ]);
         assert_eq!(total_usage_tokens(&detail), 30);
     }
 
@@ -3289,7 +3271,12 @@ mod tests {
             &session_launching("abc", 1),
             &[(
                 "abc",
-                vec![subagent_line("s1", "msg_sub", "2026-03-01T10:02:00Z", 7_000)],
+                vec![subagent_line(
+                    "s1",
+                    "msg_sub",
+                    "2026-03-01T10:02:00Z",
+                    7_000,
+                )],
             )],
         );
         assert_eq!(total_usage_tokens(&detail), 8_000);
@@ -3303,7 +3290,12 @@ mod tests {
             &session_launching("abc", 3),
             &[(
                 "abc",
-                vec![subagent_line("s1", "msg_sub", "2026-03-01T10:02:00Z", 7_000)],
+                vec![subagent_line(
+                    "s1",
+                    "msg_sub",
+                    "2026-03-01T10:02:00Z",
+                    7_000,
+                )],
             )],
         );
         assert_eq!(total_usage_tokens(&detail), 8_000);
@@ -3318,7 +3310,12 @@ mod tests {
             &session_launching("abc", 0),
             &[(
                 "orphan",
-                vec![subagent_line("s1", "msg_sub", "2026-03-01T10:02:00Z", 7_000)],
+                vec![subagent_line(
+                    "s1",
+                    "msg_sub",
+                    "2026-03-01T10:02:00Z",
+                    7_000,
+                )],
             )],
         );
         assert_eq!(total_usage_tokens(&detail), 8_000);
@@ -3345,7 +3342,12 @@ mod tests {
             )],
             &[(
                 "abc",
-                vec![subagent_line("s1", "msg_sub", "2026-03-01T10:02:00Z", 900_000)],
+                vec![subagent_line(
+                    "s1",
+                    "msg_sub",
+                    "2026-03-01T10:02:00Z",
+                    900_000,
+                )],
             )],
         );
         let stats = detail.session_stats.expect("session stats");
@@ -3358,15 +3360,13 @@ mod tests {
     fn sub_agent_spend_lands_on_the_turn_that_was_running_when_it_started() {
         // A session working across midnight must not report a sub-agent's
         // tokens on whichever day the session happened to end.
-        let mut lines = vec![
-            assistant_block_line(
-                "a1",
-                "msg_before",
-                "2026-03-01T23:00:00Z",
-                json!({"type": "tool_use", "id": "tu1", "name": "Task", "input": {}}),
-                json!({"input_tokens": 10, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}),
-            ),
-        ];
+        let mut lines = vec![assistant_block_line(
+            "a1",
+            "msg_before",
+            "2026-03-01T23:00:00Z",
+            json!({"type": "tool_use", "id": "tu1", "name": "Task", "input": {}}),
+            json!({"input_tokens": 10, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}),
+        )];
         lines.push(assistant_block_line(
             "a2",
             "msg_after",
@@ -3379,7 +3379,12 @@ mod tests {
             &lines,
             &[(
                 "abc",
-                vec![subagent_line("s1", "msg_sub", "2026-03-01T23:10:00Z", 5_000)],
+                vec![subagent_line(
+                    "s1",
+                    "msg_sub",
+                    "2026-03-01T23:10:00Z",
+                    5_000,
+                )],
             )],
         );
         let carrying: Vec<_> = detail
@@ -3395,7 +3400,9 @@ mod tests {
             .collect();
         assert_eq!(total_usage_tokens(&detail), 5_030);
         assert!(
-            carrying.iter().any(|(ts, n)| ts.starts_with("2026-03-01") && *n == 5_010),
+            carrying
+                .iter()
+                .any(|(ts, n)| ts.starts_with("2026-03-01") && *n == 5_010),
             "sub-agent spend belongs to the turn that launched it, got {carrying:?}"
         );
     }

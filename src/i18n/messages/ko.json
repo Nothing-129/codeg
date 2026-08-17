@@ -1539,6 +1539,7 @@
     },
     "sidebar": {
       "title": "대화",
+      "brand": "Codeg",
       "locateActiveConversation": "활성 대화 찾기",
       "expandAllGroups": "모든 그룹 펼치기",
       "collapseAllGroups": "모든 그룹 접기",
@@ -1566,13 +1567,11 @@
         "folderRemoved": "폴더 {name}을(를) 제거했습니다",
         "openFolderFailed": "폴더를 열 수 없습니다",
         "removeFolderFailed": "폴더 제거 실패: {message}",
-        "reorderFoldersFailed": "폴더 순서 변경 실패: {message}",
         "changeFolderColorFailed": "색상 변경 실패: {message}",
         "setFolderAliasFailed": "별칭 설정 실패: {message}",
         "changeFolderDefaultAgentFailed": "기본 에이전트 설정 실패: {message}"
       },
       "statsLabel": "{folders}개 폴더 · {convos}개 대화",
-      "reorderHandle": "드래그하여 순서 변경",
       "openFolder": "폴더 열기",
       "searchPlaceholder": "대화 검색...",
       "viewOptions": "보기 옵션",
@@ -1590,6 +1589,7 @@
       "statusRunningBadge": "실행 중",
       "runningCountBadge": "{count}개 세션 실행 중",
       "statusCancelledBadge": "취소됨",
+      "unreadBadge": "읽지 않음",
       "worktreeRemovedBadge": "원본 worktree가 삭제됨",
       "conversationCountUnit": "{count}개",
       "emptyFolderHint": "대화 없음",
@@ -1646,6 +1646,7 @@
       "noChats": "채팅 없음",
       "noRecent": "최근 대화 없음",
       "showMoreRecent": "더 보기 ({count})",
+      "showMoreFolder": "펼쳐 보기",
       "noFolders": "열린 폴더 없음",
       "newChatAction": "새 채팅",
       "automations": "자동화",
@@ -1847,7 +1848,8 @@
       "unsplitAll": "모든 분할 해제",
       "closeAll": "모두 닫기",
       "tileDisplay": "타일 표시",
-      "untileDisplay": "타일 해제"
+      "untileDisplay": "타일 해제",
+      "unreadConversation": "읽지 않음"
     },
     "fileWorkspace": {
       "files": "파일",

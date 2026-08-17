@@ -433,6 +433,13 @@ export function Sidebar() {
           the list below. Each row is a `group` so its shortcut hint reveals on
           hover / keyboard focus. */}
       <div className="flex shrink-0 flex-col gap-0.5 px-1.5 pt-1.5">
+        {/* Product wordmark sits above the New-chat row so the sidebar names
+            the app even though the desktop header is given over to chrome
+            (traffic lights + overlay buttons). Same left inset as the nav
+            rows so the name lines up with the icon rail below. */}
+        <p className="truncate px-[0.4375rem] pb-1 pt-0.5 text-[0.9375rem] font-semibold tracking-tight text-sidebar-foreground">
+          {t("brand")}
+        </p>
         <SidebarNavButton
           icon={SquarePen}
           label={t("newChat")}

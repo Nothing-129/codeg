@@ -1539,6 +1539,7 @@
     },
     "sidebar": {
       "title": "المحادثات",
+      "brand": "Codeg",
       "locateActiveConversation": "تحديد المحادثة النشطة",
       "expandAllGroups": "توسيع كل المجموعات",
       "collapseAllGroups": "طي كل المجموعات",
@@ -1566,13 +1567,11 @@
         "folderRemoved": "تمت إزالة المجلد {name}",
         "openFolderFailed": "فشل فتح المجلد",
         "removeFolderFailed": "فشل إزالة المجلد: {message}",
-        "reorderFoldersFailed": "فشل إعادة ترتيب المجلدات: {message}",
         "changeFolderColorFailed": "فشل تغيير اللون: {message}",
         "setFolderAliasFailed": "فشل تعيين الاسم المستعار: {message}",
         "changeFolderDefaultAgentFailed": "فشل تعيين الوكيل الافتراضي: {message}"
       },
       "statsLabel": "{folders} مجلدات · {convos} محادثة",
-      "reorderHandle": "اسحب لإعادة الترتيب",
       "openFolder": "فتح مجلد",
       "searchPlaceholder": "بحث عن محادثات...",
       "viewOptions": "خيارات العرض",
@@ -1590,6 +1589,7 @@
       "statusRunningBadge": "قيد التشغيل",
       "runningCountBadge": "{count} جلسة قيد التشغيل",
       "statusCancelledBadge": "ملغى",
+      "unreadBadge": "غير مقروء",
       "worktreeRemovedBadge": "تمت إزالة شجرة العمل الأصلية",
       "conversationCountUnit": "{count} محادثة",
       "emptyFolderHint": "لا توجد محادثات",
@@ -1646,6 +1646,7 @@
       "noChats": "لا توجد محادثات",
       "noRecent": "لا توجد محادثات حديثة",
       "showMoreRecent": "عرض المزيد ({count})",
+      "showMoreFolder": "عرض المزيد",
       "noFolders": "لا توجد مجلدات مفتوحة",
       "newChatAction": "محادثة جديدة",
       "automations": "الأتمتة",
@@ -1847,7 +1848,8 @@
       "unsplitAll": "إلغاء كل التقسيمات",
       "closeAll": "إغلاق الكل",
       "tileDisplay": "عرض متجانب",
-      "untileDisplay": "إلغاء التجانب"
+      "untileDisplay": "إلغاء التجانب",
+      "unreadConversation": "غير مقروء"
     },
     "fileWorkspace": {
       "files": "الملفات",

@@ -280,7 +280,10 @@ fn is_markdown_whitespace(c: char) -> bool {
 /// lets a backslash escape whitespace, so `\` + whitespace ENDS (not extends) a
 /// label/destination scan — only `\` + a non-whitespace char is a real escape.
 fn reference_escapes_next(chars: &[char], k: usize) -> bool {
-    chars.get(k) == Some(&'\\') && chars.get(k + 1).is_some_and(|c| !is_markdown_whitespace(*c))
+    chars.get(k) == Some(&'\\')
+        && chars
+            .get(k + 1)
+            .is_some_and(|c| !is_markdown_whitespace(*c))
 }
 
 /// If a well-formed `(destination)` begins at `start`, return the index just

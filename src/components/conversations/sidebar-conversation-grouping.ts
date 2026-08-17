@@ -496,6 +496,21 @@ export interface RecentMoreRow {
 }
 
 /**
+ * The "show more" footer of a truncated folder body. Folders with many
+ * conversations would otherwise dominate the sidebar; the list shows a page
+ * and this row reveals the next one. Per-folder (a click on one folder does
+ * not page its siblings). Carries `remaining` so tests can assert the slice
+ * without reading the label, and `depth` so the row aligns with the
+ * conversation cards above it (plain folder / worktree / root-group).
+ */
+export interface FolderMoreRow {
+  kind: "folder-more"
+  folderId: number
+  remaining: number
+  depth: number
+}
+
+/**
  * A collapsible section heading. Four exist: "pinned" (always on top, shown only
  * when there are pinned conversations) plus the three user-reorderable ones —
  * "folders" (wraps the whole folder list), "chats" (a flat list of folderless
@@ -539,6 +554,7 @@ export type SidebarRow =
   | FoldersEmptyRow
   | RecentEmptyRow
   | RecentMoreRow
+  | FolderMoreRow
   | SubsessionLoadingRow
 
 const MAX_RENDER_DEPTH = 32
@@ -664,11 +680,14 @@ function pushConversationRow(
  *   hint row; otherwise its folder rows follow `orderedFolderIds`: a collapsed
  *   folder contributes only its header; an expanded empty folder contributes
  *   header + one (per-folder) empty-hint row; an expanded non-empty folder
- *   contributes header + its (already sorted) bucket. `byFolder` /
- *   `folderTotalCounts` exclude pinned conversations (they live in the Pinned
- *   section), so a folder whose only conversations are pinned reads as empty. The
- *   fully-empty initial workspace (no folders AND no conversations) never reaches
- *   buildRows — the list renders its dedicated open-folder call-to-action there.
+ *   contributes header + its (already sorted) bucket, paged when
+ *   `folderPageSize` is set: only the first N conversations land and a
+ *   `folder-more` row offers the rest (per-folder override via
+ *   `folderLimitById`). `byFolder` / `folderTotalCounts` exclude pinned
+ *   conversations (they live in the Pinned section), so a folder whose only
+ *   conversations are pinned reads as empty. The fully-empty initial workspace
+ *   (no folders AND no conversations) never reaches buildRows — the list
+ *   renders its dedicated open-folder call-to-action there.
  * - The "Chat" section header ALWAYS appears (even with zero chat
  *   conversations), so the section is a permanent entry point — its New-chat
  *   affordance and an empty hint stay reachable. When expanded and empty it
@@ -709,6 +728,13 @@ export function buildRows(args: {
    *  {@link RecentMoreRow}. Optional — omitted means no limit (the historical
    *  behavior, kept for tests). The app raises it a page at a time. */
   recentLimit?: number
+  /** Default page size for each folder body. Optional — omitted means no
+   *  limit (historical, kept for tests). The app passes 10 and raises a
+   *  folder's own limit a page at a time via {@link folderLimitById}. */
+  folderPageSize?: number
+  /** Per-folder override of {@link folderPageSize} after the user clicked
+   *  "show more" on that folder. Absent key = use `folderPageSize`. */
+  folderLimitById?: Readonly<Record<number, number>>
   /** Vertical order of the Folders / Chat / Recent sections. The Pinned section
    *  (when present) always stays on top regardless. Normalized defensively, so
    *  a partial or repeated list still renders each section exactly once.
@@ -754,6 +780,8 @@ export function buildRows(args: {
     recentExpanded = true,
     showRecent = false,
     recentLimit,
+    folderPageSize,
+    folderLimitById,
     sectionOrder = DEFAULT_SECTION_ORDER,
     conversationExpanded = EMPTY_EXPANDED,
     childrenByParent = EMPTY_CHILDREN,
@@ -804,7 +832,13 @@ export function buildRows(args: {
       })
       return
     }
-    for (const conv of convs) {
+    // Folders are paged the same way Recent is: only the first N land, and a
+    // "show more" row offers the rest. No page size (tests, and the original
+    // behavior) = the whole bucket. Per-folder overrides let one folder grow
+    // without paging its siblings.
+    const limit = folderLimitById?.[folderId] ?? folderPageSize
+    const shown = limit == null ? convs : convs.slice(0, Math.max(0, limit))
+    for (const conv of shown) {
       pushConversationRow(
         rows,
         conv,
@@ -813,6 +847,15 @@ export function buildRows(args: {
         childrenByParent,
         childrenLoading
       )
+    }
+    const remaining = convs.length - shown.length
+    if (remaining > 0) {
+      rows.push({
+        kind: "folder-more",
+        folderId,
+        remaining,
+        depth: baseDepth,
+      })
     }
   }
 
@@ -961,49 +1004,6 @@ export function flatIndexOfConversation(
     }
   }
   return recentMatch
-}
-
-// ── Folder drag index math (Phase 2 custom pointer reorder) ──────────────────
-
-/**
- * Map a pointer's Y position over the (fixed row height) collapsed drag surface
- * to a target folder slot, clamped to `[0, count - 1]`.
- *
- * @param pointerY   `clientY` of the pointer
- * @param surfaceTop `getBoundingClientRect().top` of the scroll viewport
- * @param scrollTop  current scroll offset of the viewport
- * @param rowHeight  height of one folder header row in px (fixed, 32)
- * @param count      number of folder rows on the surface
- */
-export function pointerYToTargetIndex(
-  pointerY: number,
-  surfaceTop: number,
-  scrollTop: number,
-  rowHeight: number,
-  count: number
-): number {
-  if (count <= 0) return 0
-  if (rowHeight <= 0) return 0
-  const raw = Math.floor((pointerY - surfaceTop + scrollTop) / rowHeight)
-  return Math.max(0, Math.min(count - 1, raw))
-}
-
-/**
- * Move the item at `from` to `to`, returning a new array. Out-of-range indices
- * are clamped; a no-op move still returns a fresh array copy.
- */
-export function applyReorder<T>(
-  order: readonly T[],
-  from: number,
-  to: number
-): T[] {
-  const next = order.slice()
-  if (from < 0 || from >= next.length) return next
-  const clampedTo = Math.max(0, Math.min(next.length - 1, to))
-  if (from === clampedTo) return next
-  const [moved] = next.splice(from, 1)
-  next.splice(clampedTo, 0, moved)
-  return next
 }
 
 // ── Sticky folder header (floating overlay) ─────────────────────────────────

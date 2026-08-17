@@ -27,7 +27,6 @@ import {
   FolderOpen,
   FolderOpenDot,
   FolderRoot,
-  GripVertical,
   Link2,
   ListChecks,
   Loader2,
@@ -93,7 +92,6 @@ import {
   CONV_RAIL_DEPTH_STEP,
 } from "./sidebar-conversation-card"
 import {
-  applyReorder,
   buildOwnerHeaderIndex,
   buildRows,
   computeStickyState,
@@ -104,7 +102,6 @@ import {
   headerIndexForFolder,
   mergeChildrenById,
   nextHeaderAfter,
-  pointerYToTargetIndex,
   reuseSelected,
   reuseSet,
   selectChatConversationsWithReuse,
@@ -177,6 +174,40 @@ const EMPTY_CONTAINER_CHILDREN: ReadonlyMap<number, readonly number[]> =
 // off the screen — a page keeps it a glance-able "where was I" list.
 const RECENT_PAGE_SIZE = 15
 
+// How many conversations a folder body shows before its "show more" row, and
+// how many each click adds. Codex-style paging so a busy folder does not
+// bury every sibling below it; per-folder so expanding one does not page
+// the others.
+const FOLDER_PAGE_SIZE = 10
+
+// Trackpad taps on WebKit report as pointerType "mouse", fire pointerdown,
+// then synthesize a delayed `click` after this header remounts (virtua
+// recycle / overlay flip). A per-instance ref dies with that remount, so the
+// leftover click would toggle the folder a second time. Module-level so it
+// outlives the node.
+let lastPointerToggleFolderId = Number.NaN
+let lastPointerToggleAt = 0
+const POINTER_TOGGLE_GUARD_MS = 400
+
+function rememberPointerToggle(folderId: number) {
+  lastPointerToggleFolderId = folderId
+  lastPointerToggleAt = Date.now()
+}
+
+function wasRecentPointerToggle(folderId: number) {
+  return (
+    folderId === lastPointerToggleFolderId &&
+    Date.now() - lastPointerToggleAt < POINTER_TOGGLE_GUARD_MS
+  )
+}
+
+/** Test-only: fake timers reuse one `Date.now()`, so a leftover guard would
+ *  swallow the next test's `click`. */
+export function resetFolderPointerToggleGuardForTests() {
+  lastPointerToggleFolderId = Number.NaN
+  lastPointerToggleAt = 0
+}
+
 const FolderHeader = memo(function FolderHeader({
   folderId,
   folderName,
@@ -200,8 +231,6 @@ const FolderHeader = memo(function FolderHeader({
   onSetDefaultAgent,
   onOpenInSystemExplorer,
   onOpenInTerminal,
-  isDragging,
-  onGripPointerDown,
   suppressed = false,
   depth = 0,
   variant = "repo",
@@ -244,19 +273,15 @@ const FolderHeader = memo(function FolderHeader({
   onSetDefaultAgent: (folderId: number, agentType: AgentType | null) => void
   onOpenInSystemExplorer: (folderId: number) => void
   onOpenInTerminal: (folderId: number) => void
-  isDragging?: boolean
-  /**
-   * Starts a folder reorder from the dedicated grip. Omitted on the drag
-   * surface and on nested headers. The folder name never starts a drag —
-   * click-to-toggle and drag-to-reorder are separate controls.
-   */
-  onGripPointerDown?: (folderId: number, event: React.PointerEvent) => void
   /**
    * True for the in-list copy of the folder whose floating sticky overlay is
-   * currently showing: the overlay is the accessible control for that folder,
-   * so the (scrolled-past, occluded) in-list copy is made `inert` + aria-hidden
-   * to avoid a duplicate tab stop / double announcement during the window where
-   * virtua still keeps it mounted in the buffer.
+   * currently showing. The overlay is the accessible control (`aria-hidden` +
+   * `tabIndex={-1}` on this copy) so AT does not announce the folder twice
+   * while virtua still keeps the in-list row mounted in its buffer.
+   *
+   * Do NOT use `inert` here: a header that is only a few pixels into the
+   * viewport is still visible and clickable, and `inert` makes that press a
+   * no-op — the "first click does nothing, second click works" gesture.
    */
   suppressed?: boolean
   /**
@@ -325,40 +350,53 @@ const FolderHeader = memo(function FolderHeader({
     setAliasDialogOpen(false)
   }, [aliasValue, folderId, onSetAlias])
 
+  const handleTogglePointerDown = (event: React.PointerEvent) => {
+    if (event.button) return
+    // Toggle on press — a trackpad tap on WebKit often remounts this button
+    // (virtua / sticky overlay) before `click`, so waiting for `click` drops
+    // the first tap. Mouse `click` is sync and would be fine either way.
+    rememberPointerToggle(folderId)
+    event.preventDefault()
+    event.stopPropagation()
+    onToggle(folderId)
+  }
+  const handleToggleClick = () => {
+    // Trackpad still synthesizes a delayed `click` after pointerdown, and
+    // preventDefault does not cancel it in WebKit. The guard is module-level
+    // so it survives the remount that wipes a per-instance ref — without it
+    // the leftover click flips the folder back (first tap looks like a no-op).
+    if (wasRecentPointerToggle(folderId)) return
+    onToggle(folderId)
+  }
+
   return (
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            inert={suppressed || undefined}
             aria-hidden={suppressed || undefined}
-            className={cn("relative h-[2rem]", isDragging && "opacity-60")}
+            className="relative h-[2rem]"
           >
             <div
               className={cn(
                 "group flex h-[1.9375rem] w-full items-center",
                 "rounded-full",
                 "transition-colors duration-150",
-                isDragging
-                  ? "cursor-grabbing"
-                  : "hover:bg-[color-mix(in_oklab,var(--sidebar-accent),var(--sidebar-foreground)_2%)]"
+                "hover:bg-[color-mix(in_oklab,var(--sidebar-accent),var(--sidebar-foreground)_2%)]"
               )}
             >
               <button
+                type="button"
                 data-folder-id={folderId}
-                onPointerDown={(e) => {
-                  // The name is click-to-toggle only. Never let a press here
-                  // enter the reorder gesture.
-                  e.stopPropagation()
-                }}
-                onClick={() => onToggle(folderId)}
+                tabIndex={suppressed ? -1 : undefined}
+                onPointerDown={handleTogglePointerDown}
+                onClick={handleToggleClick}
                 title={folderPath}
                 aria-expanded={expanded}
                 className={cn(
                   "relative flex h-full min-w-0 flex-1 items-center pr-[0.5rem] outline-none",
                   "rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                  "text-sidebar-foreground",
-                  isDragging ? "cursor-grabbing" : "cursor-pointer"
+                  "text-sidebar-foreground cursor-pointer"
                 )}
                 style={{
                   paddingLeft: `calc(var(--conv-rail-axis) + 0.875rem + ${depth} * ${CONV_RAIL_DEPTH_STEP})`,
@@ -470,28 +508,6 @@ const FolderHeader = memo(function FolderHeader({
                   />
                 </div>
               </button>
-              {onGripPointerDown ? (
-                <button
-                  type="button"
-                  data-folder-grip={folderId}
-                  onPointerDown={(e) => {
-                    e.stopPropagation()
-                    onGripPointerDown(folderId, e)
-                  }}
-                  title={t("reorderHandle")}
-                  aria-label={t("reorderHandle")}
-                  className={cn(
-                    "flex h-6 w-6 shrink-0 items-center justify-end",
-                    "rounded-[0.375rem] outline-none text-muted-foreground/90",
-                    "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-                    "[@media(hover:none)]:opacity-100",
-                    "transition-[opacity,color] duration-150 hover:text-sidebar-foreground",
-                    isDragging ? "cursor-grabbing" : "cursor-grab"
-                  )}
-                >
-                  <GripVertical className="h-[0.875rem] w-[0.875rem]" />
-                </button>
-              ) : null}
               <button
                 type="button"
                 onClick={(e) => {
@@ -515,6 +531,7 @@ const FolderHeader = memo(function FolderHeader({
                 title={t("moreOptions")}
                 aria-label={t("moreOptions")}
                 aria-haspopup="menu"
+                tabIndex={suppressed ? -1 : undefined}
                 className={cn(
                   "flex h-6 w-6 shrink-0 items-center justify-end",
                   // Shares the card action-icon palette: default /90 is the lightest
@@ -529,15 +546,13 @@ const FolderHeader = memo(function FolderHeader({
               </button>
               <button
                 type="button"
-                onPointerDown={(e) => {
-                  e.stopPropagation()
-                }}
                 onClick={(e) => {
                   e.stopPropagation()
                   onNewConversation(folderId)
                 }}
                 title={t("newConversation")}
                 aria-label={t("newConversation")}
+                tabIndex={suppressed ? -1 : undefined}
                 className={cn(
                   // Mirrors the ⋯ button's action-icon palette and hover-reveal so
                   // the two read as one trailing control cluster. As the rightmost
@@ -799,7 +814,6 @@ export function SidebarConversationList({
   const removeFolderFromWorkspace = useAppWorkspaceStore(
     (s) => s.removeFolderFromWorkspace
   )
-  const reorderFolders = useAppWorkspaceStore((s) => s.reorderFolders)
   const refreshFolder = useAppWorkspaceStore((s) => s.refreshFolder)
   const refreshing = loading
   const { activeFolder } = useActiveFolder()
@@ -903,6 +917,18 @@ export function SidebarConversationList({
     () => setRecentLimit((n) => n + RECENT_PAGE_SIZE),
     []
   )
+  // Per-folder revealed count. Session-only, same reason as `recentLimit`:
+  // "show me more of this folder right now" is a reading gesture. Absent key
+  // = the default page size.
+  const [folderLimitById, setFolderLimitById] = useState<
+    Record<number, number>
+  >({})
+  const revealMoreFolder = useCallback((folderId: number) => {
+    setFolderLimitById((prev) => ({
+      ...prev,
+      [folderId]: (prev[folderId] ?? FOLDER_PAGE_SIZE) + FOLDER_PAGE_SIZE,
+    }))
+  }, [])
   // ── Per-conversation delegation sub-session expansion ───────────────────
   // Default COLLAPSED (unlike folders): only ids the user opened are tracked
   // and persisted. Hydrated from localStorage after mount. `childrenByParent`
@@ -946,10 +972,6 @@ export function SidebarConversationList({
   const [browserOpen, setBrowserOpen] = useState(false)
   // Folder whose links are being managed (context menu -> Linked folders).
   const [linksFolder, setLinksFolder] = useState<FolderDetail | null>(null)
-  const [dragging, setDragging] = useState<number | null>(null)
-  const [reordering, setReordering] = useState(false)
-  const [dragOrder, setDragOrder] = useState<number[] | null>(null)
-  const pendingOrderRef = useRef<number[] | null>(null)
 
   // Floating sticky folder header. `stickyFolderId` is the ONLY new render
   // state and changes solely when the scroll crosses into a different folder —
@@ -959,37 +981,6 @@ export function SidebarConversationList({
   const [stickyFolderId, setStickyFolderId] = useState<number | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const stickyRafRef = useRef<number | null>(null)
-  // Read by the imperative scroll path without re-subscribing virtua's listener.
-  const draggingRef = useRef<number | null>(dragging)
-  draggingRef.current = dragging
-
-  // Custom pointer-based folder reorder (replaces motion `Reorder`, which can't
-  // coexist with virtualization — see the perf plan). Refs are read by the
-  // window pointer listeners so the public callbacks stay referentially stable
-  // (the `FolderHeader` memo depends on a stable `onGripPointerDown`).
-  const dragSurfaceRef = useRef<HTMLDivElement>(null)
-  // Stable ancestor of both the virtualizer and the collapsed drag surface.
-  // Pointer capture is taken on this node (not the in-list header) so events
-  // keep flowing after the header unmounts — without it, WebKit (Tauri on
-  // macOS) drops pointerup and the collapsed surface stays up forever.
-  const listSurfaceRef = useRef<HTMLDivElement>(null)
-  const dragPointerRef = useRef<{
-    folderId: number
-    pointerId: number
-    startX: number
-    startY: number
-    lastY: number
-    started: boolean
-  } | null>(null)
-  const dragCleanupRef = useRef<(() => void) | null>(null)
-  const dragCaptureRef = useRef<{
-    target: Element
-    pointerId: number
-  } | null>(null)
-  const autoscrollRef = useRef<number | null>(null)
-  // Snapshots read by the imperative drag listeners without re-subscribing them.
-  const reorderableFolderIdsRef = useRef<number[]>([])
-  const reorderingRef = useRef(false)
 
   useEffect(() => {
     // Hydrate from localStorage after mount to keep SSR/CSR markup consistent.
@@ -1174,7 +1165,7 @@ export function SidebarConversationList({
   // worktrees" is on it is empty, so each worktree child keeps its own bucket /
   // count / theme and renders under its own header. The raw `childToParent`
   // above is still used to know which folders ARE worktree children (nesting
-  // order, indent, grip gating). Off → identical to the historical behavior.
+  // order, indent). Off → identical to the historical behavior.
   const displayChildToParent = useMemo(
     () => (showWorktrees ? EMPTY_CHILD_TO_PARENT : childToParent),
     [showWorktrees, childToParent]
@@ -1227,49 +1218,22 @@ export function SidebarConversationList({
     return map
   }, [conversations, displayChildToParent])
 
-  // The reorderable, top-level folder sequence: worktree child folders are
-  // excluded (they follow their parent, never reorder on their own), so this is
-  // the source of truth for the custom drag gesture and its `pointerYToTargetIndex`
-  // math. When "Show worktrees" is off this is ALSO the display order; when on,
-  // `orderedFolderIds` below splices each repo's worktree children back in.
+  // The top-level folder sequence: worktree child folders are excluded (they
+  // follow their parent). When "Show worktrees" is off this is ALSO the display
+  // order; when on, `buildRows` nests each repo's worktree children back in.
+  // Hidden chat folders never reach this list — the backend already excludes
+  // them from the open-folder set (`folder_service::list_open_folder_details`).
   const reorderableFolderIds = useMemo(() => {
-    const folderIdSet = new Set(folders.map((f) => f.id))
-    // Worktree child folders are excluded here (`childToParent.has` is always the
-    // raw map, independent of `showWorktrees`). Hidden chat folders never reach
-    // this list — the backend already excludes them from the open-folder set
-    // (`folder_service::list_open_folder_details`).
-    const isHidden = (id: number) => childToParent.has(id)
-    // During drag we honour the optimistic order so sibling folders shift live
-    // as the user hovers over slots. We still filter/append against the source
-    // of truth so newly-added or -removed folders don't disappear mid-drag.
-    if (dragOrder) {
-      const seen = new Set<number>()
-      const ids: number[] = []
-      for (const id of dragOrder) {
-        if (folderIdSet.has(id) && !seen.has(id) && !isHidden(id)) {
-          seen.add(id)
-          ids.push(id)
-        }
-      }
-      for (const f of folders) {
-        if (!seen.has(f.id) && !isHidden(f.id)) {
-          seen.add(f.id)
-          ids.push(f.id)
-        }
-      }
-      return ids
-    }
-
     const seen = new Set<number>()
     const ids: number[] = []
     for (const f of folders) {
-      if (!seen.has(f.id) && !isHidden(f.id)) {
+      if (!seen.has(f.id) && !childToParent.has(f.id)) {
         seen.add(f.id)
         ids.push(f.id)
       }
     }
     return ids
-  }, [folders, dragOrder, childToParent])
+  }, [folders, childToParent])
 
   // "Show worktrees" container map: repo id → its open worktree child folder ids
   // (sorted). A repo present here renders as a CONTAINER — buildRows nests its
@@ -1304,7 +1268,7 @@ export function SidebarConversationList({
       buildRows({
         pinned,
         pinnedExpanded,
-        // Top-level (reorderable) folders drive the outer order; buildRows nests
+        // Top-level folders drive the outer order; buildRows nests
         // each container's root sub-group + worktrees via `containerChildren`.
         orderedFolderIds: reorderableFolderIds,
         byFolder,
@@ -1317,6 +1281,8 @@ export function SidebarConversationList({
         recentExpanded,
         showRecent,
         recentLimit,
+        folderPageSize: FOLDER_PAGE_SIZE,
+        folderLimitById,
         sectionOrder,
         conversationExpanded,
         childrenByParent,
@@ -1338,6 +1304,7 @@ export function SidebarConversationList({
       recentExpanded,
       showRecent,
       recentLimit,
+      folderLimitById,
       sectionOrder,
       conversationExpanded,
       childrenByParent,
@@ -1347,13 +1314,10 @@ export function SidebarConversationList({
     ]
   )
 
-  // Latest snapshots for the imperative scroll/drag code paths, refreshed every
-  // render so the window listeners and scrollToActive read current values
-  // without being torn down and re-subscribed.
+  // Latest snapshots for the imperative scroll path, refreshed every render so
+  // scrollToActive reads current values without being torn down and re-subscribed.
   const rowsRef = useRef<SidebarRow[]>(rows)
   rowsRef.current = rows
-  reorderableFolderIdsRef.current = reorderableFolderIds
-  reorderingRef.current = reordering
 
   // Sticky-overlay lookup tables, rebuilt only when the flat rows change
   // (folder add/remove/expand, not status events). Consumed exclusively by the
@@ -1704,12 +1668,7 @@ export function SidebarConversationList({
     const handle = virtualizerRef.current
     const currentRows = rowsRef.current
     const headers = headerFlatIndicesRef.current
-    if (
-      !handle ||
-      draggingRef.current !== null ||
-      currentRows.length === 0 ||
-      headers.length === 0
-    ) {
+    if (!handle || currentRows.length === 0 || headers.length === 0) {
       setStickyFolderId((prev) => (prev === null ? prev : null))
       return
     }
@@ -1754,19 +1713,12 @@ export function SidebarConversationList({
   // the header when the list was scrolled through it; expand is a no-scroll.
 
   // Recompute on anything that shifts geometry without firing a scroll event:
-  // expand/collapse, reorder, data refresh, drag start/end, viewport ready, and
-  // the overlay flip itself (so the freshly-mounted overlay node gets its
-  // initial transform). `useLayoutEffect` avoids a one-frame stale overlay.
+  // expand/collapse, data refresh, viewport ready, and the overlay flip itself
+  // (so the freshly-mounted overlay node gets its initial transform).
+  // `useLayoutEffect` avoids a one-frame stale overlay.
   useIsomorphicLayoutEffect(() => {
     recomputeSticky()
-  }, [
-    rows,
-    folderExpanded,
-    viewportEl,
-    dragging,
-    stickyFolderId,
-    recomputeSticky,
-  ])
+  }, [rows, folderExpanded, viewportEl, stickyFolderId, recomputeSticky])
 
   useEffect(
     () => () => {
@@ -1923,320 +1875,6 @@ export function SidebarConversationList({
     void openImportSessionsWindow()
   }, [])
 
-  const persistReorder = useCallback(
-    async (order: number[]) => {
-      if (order.length === 0) return
-      setReordering(true)
-      try {
-        await reorderFolders(order)
-      } catch (e) {
-        const msg = toErrorMessage(e)
-        toast.error(t("toasts.reorderFoldersFailed", { message: msg }))
-      } finally {
-        setReordering(false)
-      }
-    },
-    [reorderFolders, t]
-  )
-
-  const handleReorder = useCallback((nextIds: number[]) => {
-    pendingOrderRef.current = nextIds
-    setDragOrder(nextIds)
-  }, [])
-
-  const handleDragEnd = useCallback(async () => {
-    setDragging(null)
-    const order = pendingOrderRef.current
-    pendingOrderRef.current = null
-    if (!order) {
-      setDragOrder(null)
-      return
-    }
-    try {
-      await persistReorder(order)
-    } finally {
-      // Clear the optimistic override once the workspace context's folders
-      // have absorbed the new order (or on failure, the rollback in the
-      // context restores the original order).
-      setDragOrder(null)
-    }
-  }, [persistReorder])
-
-  // ── Custom folder-drag gesture ────────────────────────────────────────────
-  // Fixed height of one folder header row (Tailwind `h-[2rem]`); the drag
-  // surface collapses every folder to just its header so the target slot is a
-  // simple `floor(pointerY / FOLDER_ROW_HEIGHT)`.
-  const FOLDER_ROW_HEIGHT = 32
-  // Large enough that a normal click / trackpad settle does not mount the
-  // collapsed drag surface (which previously ate the click and made toggle
-  // feel like it needed two presses).
-  const DRAG_THRESHOLD_PX = 16
-  const AUTOSCROLL_EDGE_PX = 28
-  const AUTOSCROLL_STEP_PX = 12
-
-  const stopAutoscroll = useCallback(() => {
-    if (autoscrollRef.current != null) {
-      cancelAnimationFrame(autoscrollRef.current)
-      autoscrollRef.current = null
-    }
-  }, [])
-
-  // Suppress exactly one trailing click after a real drag so the gesture never
-  // also toggles a folder. The grip element that received `pointerdown` unmounts
-  // when the drag surface takes over, so a per-element guard would be unreliable;
-  // a one-shot capture listener is robust and self-cleans (the rAF drops it if
-  // the browser synthesizes no click, leaving later legitimate clicks intact).
-  const suppressNextClick = useCallback(() => {
-    const onClick = (event: MouseEvent) => {
-      event.preventDefault()
-      event.stopPropagation()
-    }
-    window.addEventListener("click", onClick, { capture: true, once: true })
-    requestAnimationFrame(() => {
-      window.removeEventListener("click", onClick, true)
-    })
-  }, [])
-
-  // Reorder the grabbed folder to the slot under the pointer (optimistically,
-  // via the same `dragOrder` machinery the persisted reorder uses). Targeting is
-  // intentionally gated on the collapsed drag surface existing: until it mounts,
-  // the only available geometry is the *expanded* virtualized list, whose
-  // scrollTop/row mix would map the pointer to a bogus far index (and clamp it
-  // to the last folder). Skipping until the surface is up means a too-quick
-  // release simply leaves the order untouched.
-  const updateDragTarget = useCallback(
-    (clientY: number) => {
-      const state = dragPointerRef.current
-      const surface = dragSurfaceRef.current
-      if (!state || !surface) return
-      const order = reorderableFolderIdsRef.current
-      // The surface's live rect already reflects scroll, so no scrollTop term.
-      const targetIndex = pointerYToTargetIndex(
-        clientY,
-        surface.getBoundingClientRect().top,
-        0,
-        FOLDER_ROW_HEIGHT,
-        order.length
-      )
-      const fromIndex = order.indexOf(state.folderId)
-      if (fromIndex < 0 || fromIndex === targetIndex) return
-      handleReorder(applyReorder(order, fromIndex, targetIndex))
-    },
-    [handleReorder]
-  )
-
-  // While the pointer rests near a viewport edge, scroll and keep retargeting so
-  // off-screen folders remain reachable as drop targets.
-  const maybeAutoscroll = useCallback(
-    (clientY: number) => {
-      const viewport = viewportRef.current
-      if (!viewport) return
-      const rect = viewport.getBoundingClientRect()
-      const atTop = clientY < rect.top + AUTOSCROLL_EDGE_PX
-      const atBottom = clientY > rect.bottom - AUTOSCROLL_EDGE_PX
-      if (!atTop && !atBottom) {
-        stopAutoscroll()
-        return
-      }
-      if (autoscrollRef.current != null) return
-      const step = () => {
-        const v = viewportRef.current
-        const state = dragPointerRef.current
-        if (!v || !state) {
-          stopAutoscroll()
-          return
-        }
-        const r = v.getBoundingClientRect()
-        const dir = state.lastY < r.top + AUTOSCROLL_EDGE_PX ? -1 : 1
-        v.scrollTop += dir * AUTOSCROLL_STEP_PX
-        updateDragTarget(state.lastY)
-        autoscrollRef.current = requestAnimationFrame(step)
-      }
-      autoscrollRef.current = requestAnimationFrame(step)
-    },
-    [stopAutoscroll, updateDragTarget]
-  )
-
-  const releaseDragCapture = useCallback(() => {
-    const cap = dragCaptureRef.current
-    dragCaptureRef.current = null
-    if (!cap) return
-    try {
-      if (cap.target.hasPointerCapture(cap.pointerId)) {
-        cap.target.releasePointerCapture(cap.pointerId)
-      }
-    } catch {
-      // Already released, or the node left the document with the list.
-    }
-  }, [])
-
-  const teardownDragListeners = useCallback(() => {
-    // Drop the lostpointercapture listener BEFORE releasing capture: the
-    // release itself synthesizes lostpointercapture, and handling that would
-    // cancel a drag we are deliberately finishing.
-    dragCleanupRef.current?.()
-    dragCleanupRef.current = null
-    stopAutoscroll()
-    releaseDragCapture()
-  }, [stopAutoscroll, releaseDragCapture])
-
-  const cancelDrag = useCallback(() => {
-    teardownDragListeners()
-    dragPointerRef.current = null
-    pendingOrderRef.current = null
-    setDragging(null)
-    setDragOrder(null)
-  }, [teardownDragListeners])
-
-  const finishDrag = useCallback(() => {
-    teardownDragListeners()
-    const state = dragPointerRef.current
-    dragPointerRef.current = null
-    if (state?.started) {
-      // A real drag occurred → commit the optimistic order and swallow the
-      // trailing click so it cannot land on a folder name under the pointer.
-      suppressNextClick()
-      void handleDragEnd()
-    }
-  }, [teardownDragListeners, handleDragEnd, suppressNextClick])
-
-  const captureDragPointer = useCallback((pointerId: number) => {
-    if (dragCaptureRef.current) return
-    const target = listSurfaceRef.current
-    if (!target) return
-    try {
-      target.setPointerCapture(pointerId)
-      dragCaptureRef.current = { target, pointerId }
-    } catch {
-      // setPointerCapture throws if the pointer is not in an active button
-      // state or the node is detached. Window listeners remain the fallback.
-    }
-  }, [])
-
-  const onDragPointerMove = useCallback(
-    (event: PointerEvent) => {
-      const state = dragPointerRef.current
-      if (!state || event.pointerId !== state.pointerId) return
-      state.lastY = event.clientY
-      if (!state.started) {
-        const moved = Math.hypot(
-          event.clientX - state.startX,
-          event.clientY - state.startY
-        )
-        if (moved < DRAG_THRESHOLD_PX) return
-        state.started = true
-        // Capture on the stable list surface BEFORE flipping `dragging` (which
-        // unmounts the in-list header). Capture is delayed until the threshold
-        // so a still click still lands on the toggle button.
-        captureDragPointer(event.pointerId)
-        setDragging(state.folderId)
-        setDragOrder(reorderableFolderIdsRef.current.slice())
-      }
-      updateDragTarget(event.clientY)
-      maybeAutoscroll(event.clientY)
-    },
-    [captureDragPointer, updateDragTarget, maybeAutoscroll]
-  )
-
-  const onDragPointerUp = useCallback(
-    (event: PointerEvent) => {
-      const state = dragPointerRef.current
-      if (state && event.pointerId !== state.pointerId) return
-      finishDrag()
-    },
-    [finishDrag]
-  )
-
-  // Pointer cancellation (touch interruption, browser takeover) aborts the drag
-  // rather than committing a possibly-incomplete reorder.
-  const onDragPointerCancel = useCallback(
-    (event: PointerEvent) => {
-      const state = dragPointerRef.current
-      if (state && event.pointerId !== state.pointerId) return
-      cancelDrag()
-    },
-    [cancelDrag]
-  )
-
-  const onDragKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (event.key === "Escape") cancelDrag()
-    },
-    [cancelDrag]
-  )
-
-  // The in-list header unmounts the moment the collapsed surface mounts. If
-  // pointer capture is lost (or the window is backgrounded) before pointerup,
-  // nothing else will clear `dragging` and the list stays collapsed.
-  const onLostPointerCapture = useCallback(
-    (event: Event) => {
-      const state = dragPointerRef.current
-      if (!state) return
-      if (
-        "pointerId" in event &&
-        (event as PointerEvent).pointerId !== state.pointerId
-      ) {
-        return
-      }
-      cancelDrag()
-    },
-    [cancelDrag]
-  )
-
-  const onDragWindowBlur = useCallback(() => {
-    if (dragPointerRef.current) cancelDrag()
-  }, [cancelDrag])
-
-  const onDragVisibilityChange = useCallback(() => {
-    if (document.visibilityState !== "visible" && dragPointerRef.current) {
-      cancelDrag()
-    }
-  }, [cancelDrag])
-
-  const beginFolderDrag = useCallback(
-    (folderId: number, event: React.PointerEvent) => {
-      if (event.button !== 0) return
-      if (reorderingRef.current) return
-      if (dragPointerRef.current) return
-      dragPointerRef.current = {
-        folderId,
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        lastY: event.clientY,
-        started: false,
-      }
-      window.addEventListener("pointermove", onDragPointerMove)
-      window.addEventListener("pointerup", onDragPointerUp)
-      window.addEventListener("pointercancel", onDragPointerCancel)
-      window.addEventListener("keydown", onDragKeyDown)
-      window.addEventListener("lostpointercapture", onLostPointerCapture)
-      window.addEventListener("blur", onDragWindowBlur)
-      document.addEventListener("visibilitychange", onDragVisibilityChange)
-      dragCleanupRef.current = () => {
-        window.removeEventListener("pointermove", onDragPointerMove)
-        window.removeEventListener("pointerup", onDragPointerUp)
-        window.removeEventListener("pointercancel", onDragPointerCancel)
-        window.removeEventListener("keydown", onDragKeyDown)
-        window.removeEventListener("lostpointercapture", onLostPointerCapture)
-        window.removeEventListener("blur", onDragWindowBlur)
-        document.removeEventListener("visibilitychange", onDragVisibilityChange)
-      }
-    },
-    [
-      onDragPointerMove,
-      onDragPointerUp,
-      onDragPointerCancel,
-      onDragKeyDown,
-      onLostPointerCapture,
-      onDragWindowBlur,
-      onDragVisibilityChange,
-    ]
-  )
-
-  // Safety net: drop listeners / stop autoscroll if the list unmounts mid-drag.
-  useEffect(() => () => teardownDragListeners(), [teardownDragListeners])
-
   // One dialog everywhere: it owns directory selection *and* the follow-up
   // step that links other folders in, so the native picker can't be a separate
   // path that skips half the flow (it is still offered inside the dialog on
@@ -2317,9 +1955,6 @@ export function SidebarConversationList({
   const folderHeaderElement = (
     folderId: number,
     opts: {
-      dragging: boolean
-      collapsed?: boolean
-      grip: boolean
       onToggle?: (folderId: number) => void
       suppressed?: boolean
       /** Render as the container repo's own-sessions "root" sub-group (FolderRoot
@@ -2347,9 +1982,7 @@ export function SidebarConversationList({
       : (folderRunningCounts.get(folderId) ?? 0)
     const expanded = isRootGroup
       ? !rootGroupCollapsed.has(folderId)
-      : opts.collapsed
-        ? false
-        : (folderExpanded[folderId] ?? true)
+      : (folderExpanded[folderId] ?? true)
     return (
       <FolderHeader
         folderId={folderId}
@@ -2376,8 +2009,6 @@ export function SidebarConversationList({
         onSetDefaultAgent={handleChangeFolderDefaultAgent}
         onOpenInSystemExplorer={handleOpenFolderInSystemExplorer}
         onOpenInTerminal={handleOpenFolderInTerminal}
-        isDragging={opts.dragging}
-        onGripPointerDown={opts.grip ? beginFolderDrag : undefined}
         suppressed={opts.suppressed ?? false}
         depth={depth}
         variant={variant}
@@ -2435,11 +2066,6 @@ export function SidebarConversationList({
       return themeWrap(
         row.folderId,
         folderHeaderElement(row.folderId, {
-          dragging: dragging === row.folderId,
-          // Worktree child headers follow their parent and never reorder on
-          // their own, so they are not drag initiators (no grip). Only
-          // reorderable top-level repos keep the grip.
-          grip: !(showWorktrees && childToParent.has(row.folderId)),
           // While this folder's sticky overlay is showing, the overlay is the
           // accessible control; make the (occluded) in-list copy inert so it is
           // not a duplicate tab stop / announcement.
@@ -2449,13 +2075,10 @@ export function SidebarConversationList({
     }
     if (row.kind === "root-group") {
       // A container repo's own-sessions sub-group. Shares the repo id (for its
-      // bucket / count / theme) but is its own row kind with its own toggle, and
-      // is never draggable (it follows the container).
+      // bucket / count / theme) but is its own row kind with its own toggle.
       return themeWrap(
         row.folderId,
         folderHeaderElement(row.folderId, {
-          dragging: false,
-          grip: false,
           rootGroup: true,
         })
       )
@@ -2554,6 +2177,42 @@ export function SidebarConversationList({
         </div>
       )
     }
+    if (row.kind === "folder-more") {
+      // Same row as Recent's "show more", but indented with the folder's
+      // conversation cards and themed as that folder. Nested worktree /
+      // root-group bodies keep the container spine through this footer.
+      const nested =
+        showWorktrees &&
+        (childToParent.has(row.folderId) || containerRepoIds.has(row.folderId))
+      return themeWrap(
+        row.folderId,
+        <div className="relative h-[2rem]">
+          {nested ? <SubsessionAncestorRails depth={row.depth} /> : null}
+          <button
+            type="button"
+            onClick={() => revealMoreFolder(row.folderId)}
+            className="relative flex h-[1.9375rem] w-full items-center rounded-full pr-[0.25rem] text-left text-[0.75rem] text-muted-foreground/80 outline-none transition-colors duration-[120ms] hover:bg-[color-mix(in_oklab,var(--sidebar-accent),var(--sidebar-foreground)_2%)] hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+            style={{
+              paddingLeft: `calc(var(--conv-rail-axis, 0.875rem) + 0.875rem + ${row.depth} * ${CONV_RAIL_DEPTH_STEP})`,
+            }}
+          >
+            <span
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 flex items-center justify-center"
+              style={{
+                left: `calc(var(--conv-rail-axis, 0.875rem) + ${row.depth} * ${CONV_RAIL_DEPTH_STEP})`,
+                width: "0.875rem",
+                height: "0.875rem",
+                transform: "translate(-50%, -50%)",
+              }}
+            >
+              <ChevronDown className="h-[0.75rem] w-[0.75rem]" />
+            </span>
+            <span className="relative truncate">{t("showMoreFolder")}</span>
+          </button>
+        </div>
+      )
+    }
     if (row.kind === "subsession-loading") {
       // Transient spinner at the child indent while children are fetched. The
       // left inset matches a depth-`row.depth` card's text start: rail axis
@@ -2627,6 +2286,7 @@ export function SidebarConversationList({
     if (row.kind === "folders-empty") return "folders-empty"
     if (row.kind === "recent-empty") return "recent-empty"
     if (row.kind === "recent-more") return "recent-more"
+    if (row.kind === "folder-more") return `folder-more-${row.folderId}`
     const prefix = row.recent ? "recent-" : ""
     if (row.kind === "subsession-loading") {
       return `${prefix}subloading-${row.parentId}`
@@ -2698,7 +2358,7 @@ export function SidebarConversationList({
       ) : (
         <ContextMenu>
           <ContextMenuTrigger asChild>
-            <div ref={listSurfaceRef} className="flex-1 min-h-0 relative">
+            <div className="flex-1 min-h-0 relative">
               <ScrollArea
                 onViewportRef={handleViewportRef}
                 className={cn(
@@ -2708,59 +2368,18 @@ export function SidebarConversationList({
                 )}
               >
                 {viewportEl ? (
-                  <>
-                    {/* Keep the virtualizer mounted during a drag. Unmounting it
-                        removed the pointerdown target and WebKit dropped
-                        pointerup, leaving the collapsed surface stuck. Hidden
-                        (not display:none) so the original node stays connected. */}
-                    <div
-                      className={cn(
-                        dragging !== null &&
-                          "pointer-events-none invisible absolute inset-0 overflow-hidden"
-                      )}
-                      aria-hidden={dragging !== null || undefined}
-                    >
-                      <Virtualizer
-                        ref={virtualizerRef}
-                        scrollRef={viewportRef}
-                        data={rows}
-                        itemSize={32}
-                        bufferSize={400}
-                        onScroll={handleVirtuaScroll}
-                      >
-                        {(row: SidebarRow) => (
-                          <div key={rowKey(row)}>{renderRow(row)}</div>
-                        )}
-                      </Virtualizer>
-                    </div>
-                    {dragging !== null ? (
-                      // Drag surface: every reorderable (top-level) folder
-                      // collapsed to its header so any folder (even one
-                      // virtualized off-screen) is a valid drop target.
-                      // Worktree children are excluded — they aren't
-                      // independently reorderable, and their presence would
-                      // break the `pointerYToTargetIndex` fixed-height row
-                      // math. Non-virtualized — folder counts are small.
-                      <div
-                        ref={dragSurfaceRef}
-                        data-folder-drag-surface
-                        className="flex flex-col"
-                      >
-                        {reorderableFolderIds.map((folderId) => (
-                          <div key={folderId}>
-                            {themeWrap(
-                              folderId,
-                              folderHeaderElement(folderId, {
-                                dragging: dragging === folderId,
-                                collapsed: true,
-                                grip: false,
-                              })
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </>
+                  <Virtualizer
+                    ref={virtualizerRef}
+                    scrollRef={viewportRef}
+                    data={rows}
+                    itemSize={32}
+                    bufferSize={400}
+                    onScroll={handleVirtuaScroll}
+                  >
+                    {(row: SidebarRow) => (
+                      <div key={rowKey(row)}>{renderRow(row)}</div>
+                    )}
+                  </Virtualizer>
                 ) : (
                   <div className="flex flex-col gap-1.5 pt-1">
                     {Array.from({ length: 8 }).map((_, i) => (
@@ -2779,26 +2398,22 @@ export function SidebarConversationList({
                 this overlay also shows). It is a real, accessible control: once
                 scrolled past, the in-list header is unmounted by virtua, so the
                 overlay is the keyboard/AT path to toggle/act on that folder.
-                `grip:false` — reordering is driven from the in-list header,
-                whose geometry the custom drag gesture relies on. `bg-sidebar`
-                lives inside themeWrap so it picks up the folder's themed
-                background and occludes the rows scrolling beneath it.
+                `bg-sidebar` lives inside themeWrap so it picks up the folder's
+                themed background and occludes the rows scrolling beneath it.
               */}
               {stickyFolderId !== null && (
                 <div
                   ref={overlayRef}
                   className={cn(
-                    "pointer-events-none absolute left-0 right-0 top-0 z-10",
+                    "absolute left-0 right-0 top-0 z-10",
                     "px-1.5 [--conv-rail-axis:0.875rem]"
                   )}
                   style={{ willChange: "transform" }}
                 >
                   {themeWrap(
                     stickyFolderId,
-                    <div className="pointer-events-auto bg-sidebar">
+                    <div className="bg-sidebar">
                       {folderHeaderElement(stickyFolderId, {
-                        dragging: false,
-                        grip: false,
                         onToggle: toggleFolder,
                       })}
                     </div>

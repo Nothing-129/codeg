@@ -1655,7 +1655,9 @@ async fn run_ws_task(
         let mut socket = match connect_result {
             Ok(s) => s,
             Err(err) => {
-                tracing::error!("[RemoteProxy] WS connect failed for connection {connection_id}: {err}");
+                tracing::error!(
+                    "[RemoteProxy] WS connect failed for connection {connection_id}: {err}"
+                );
                 fail_count += 1;
                 if fail_count >= WS_RECONNECT_FAIL_THRESHOLD {
                     emit_internal(&app, &entry, &event_name, WS_UNAUTHORIZED_CHANNEL).await;

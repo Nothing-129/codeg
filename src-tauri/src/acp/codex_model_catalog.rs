@@ -65,7 +65,13 @@ const IMPORT_SKIP_KEYS: &[&str] = &[
 // nullable (JSON `null` = the enum's `None`), which is always allowed.
 const ENUM_REASONING_SUMMARY: &[&str] = &["auto", "concise", "detailed", "none"];
 const ENUM_VERBOSITY: &[&str] = &["low", "medium", "high"];
-const ENUM_SHELL_TYPE: &[&str] = &["default", "local", "unified_exec", "disabled", "shell_command"];
+const ENUM_SHELL_TYPE: &[&str] = &[
+    "default",
+    "local",
+    "unified_exec",
+    "disabled",
+    "shell_command",
+];
 // codex 0.144 accepts only `freeform` here (plus JSON null = the enum's `None`);
 // `function` is NOT a variant and would reject the whole catalog.
 const ENUM_APPLY_PATCH: &[&str] = &["freeform"];
@@ -93,7 +99,10 @@ fn sanitized_override(key: &str, value: &Value, base: Option<&Map<String, Value>
         return true;
     }
     if let Some(allowed) = strict_enum_for(key) {
-        return value.as_str().map(|s| allowed.contains(&s)).unwrap_or(false);
+        return value
+            .as_str()
+            .map(|s| allowed.contains(&s))
+            .unwrap_or(false);
     }
     if key == "default_reasoning_level" {
         let Some(s) = value.as_str() else {
@@ -174,7 +183,11 @@ pub fn bundled_snapshot_models() -> Vec<Value> {
 pub fn fallback_base_slug(snapshot: &[Value]) -> Option<String> {
     snapshot
         .iter()
-        .min_by_key(|m| m.get("priority").and_then(Value::as_i64).unwrap_or(i64::MAX))
+        .min_by_key(|m| {
+            m.get("priority")
+                .and_then(Value::as_i64)
+                .unwrap_or(i64::MAX)
+        })
         .and_then(|m| m.get("slug").and_then(Value::as_str))
         .map(str::to_owned)
 }
@@ -287,9 +300,7 @@ pub fn default_slug(config: &CodexModelConfig, snapshot: &[Value]) -> Option<Str
     }
     snapshot
         .iter()
-        .find(|m| {
-            slug_of(m).map(|s| !excluded.contains(s)).unwrap_or(false) && is_listable(m)
-        })
+        .find(|m| slug_of(m).map(|s| !excluded.contains(s)).unwrap_or(false) && is_listable(m))
         .and_then(|m| slug_of(m).map(str::to_owned))
 }
 
@@ -516,9 +527,10 @@ pub fn write_catalog_files(
     }
 
     std::fs::create_dir_all(codex_home).map_err(|e| io_err("create codex home", e))?;
-    let catalog = serde_json::to_string_pretty(&expand_to_catalog(&config, snapshot)).map_err(|e| {
-        AppCommandError::new(AppErrorCode::IoError, format!("serialize catalog: {e}"))
-    })?;
+    let catalog =
+        serde_json::to_string_pretty(&expand_to_catalog(&config, snapshot)).map_err(|e| {
+            AppCommandError::new(AppErrorCode::IoError, format!("serialize catalog: {e}"))
+        })?;
     std::fs::write(&catalog_path, catalog).map_err(|e| io_err("write catalog file", e))?;
     std::fs::write(&source_path, raw_compact).map_err(|e| io_err("write catalog source", e))?;
 
@@ -557,7 +569,11 @@ mod tests {
     #[test]
     fn bundled_snapshot_matches_launched_codex_shape() {
         let models = snap();
-        assert_eq!(models.len(), 8, "snapshot should carry codex 0.144's catalog");
+        assert_eq!(
+            models.len(),
+            8,
+            "snapshot should carry codex 0.144's catalog"
+        );
         assert!(models.iter().any(|m| slug_of(m) == Some("gpt-5.6-sol")));
         assert!(models.iter().any(|m| slug_of(m) == Some("gpt-5.5")));
         // codex-auto-review ships hidden.
@@ -643,12 +659,21 @@ mod tests {
                 overrides: Map::from_iter([
                     // Invalid → must be dropped (would reject the whole catalog).
                     ("shell_type".into(), Value::String("bogus".into())),
-                    ("default_verbosity".into(), Value::String("screaming".into())),
+                    (
+                        "default_verbosity".into(),
+                        Value::String("screaming".into()),
+                    ),
                     // `function` is NOT a valid apply_patch variant on codex 0.144.
-                    ("apply_patch_tool_type".into(), Value::String("function".into())),
+                    (
+                        "apply_patch_tool_type".into(),
+                        Value::String("function".into()),
+                    ),
                     // Valid → must be kept.
                     ("supports_search_tool".into(), Value::Bool(true)),
-                    ("default_reasoning_summary".into(), Value::String("concise".into())),
+                    (
+                        "default_reasoning_summary".into(),
+                        Value::String("concise".into()),
+                    ),
                 ]),
             }],
             excluded_officials: Vec::new(),
@@ -741,7 +766,10 @@ mod tests {
         gw.insert("slug".into(), Value::String("gw/opus".into()));
         // A field that genuinely differs from the clone base (its own description),
         // so import must capture it as an override.
-        gw.insert("description".into(), Value::String("My private gateway".into()));
+        gw.insert(
+            "description".into(),
+            Value::String("My private gateway".into()),
+        );
         let kept = s
             .iter()
             .find(|m| slug_of(m) == Some("gpt-5.5"))
@@ -762,7 +790,10 @@ mod tests {
         assert!(cfg.excluded_officials.iter().any(|x| x == "gpt-5.6-sol"));
         assert!(!cfg.excluded_officials.iter().any(|x| x == "gpt-5.5"));
         // Hidden official is never inferred-excluded.
-        assert!(!cfg.excluded_officials.iter().any(|x| x == "codex-auto-review"));
+        assert!(!cfg
+            .excluded_officials
+            .iter()
+            .any(|x| x == "codex-auto-review"));
         assert_eq!(cfg.default.as_deref(), Some("gpt-5.5"));
 
         // Round-trip: expanding reproduces gpt-5.5 + the custom, drops excluded.
@@ -789,7 +820,7 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(dir.join(CATALOG_REL)).unwrap()).unwrap();
         assert!(find(&cat, "gw/x").is_some());
         assert!(find(&cat, "gpt-5.6-sol").is_some()); // official auto-included
-        // Empty config clears files + signals key removal.
+                                                      // Empty config clears files + signals key removal.
         assert!(write_catalog_files(r#"{"customs":[]}"#, &dir, &s)
             .unwrap()
             .is_none());

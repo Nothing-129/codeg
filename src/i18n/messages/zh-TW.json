@@ -1539,6 +1539,7 @@
     },
     "sidebar": {
       "title": "會話",
+      "brand": "Codeg",
       "locateActiveConversation": "定位目前會話",
       "expandAllGroups": "展開全部分組",
       "collapseAllGroups": "折疊全部分組",
@@ -1566,13 +1567,11 @@
         "folderRemoved": "已移除資料夾 {name}",
         "openFolderFailed": "開啟資料夾失敗",
         "removeFolderFailed": "移除資料夾失敗：{message}",
-        "reorderFoldersFailed": "重新排序資料夾失敗：{message}",
         "changeFolderColorFailed": "修改顏色失敗：{message}",
         "setFolderAliasFailed": "設定別名失敗：{message}",
         "changeFolderDefaultAgentFailed": "設定預設智能體失敗：{message}"
       },
       "statsLabel": "{folders} 個資料夾 · {convos} 個對話",
-      "reorderHandle": "拖拽排序",
       "openFolder": "開啟資料夾",
       "searchPlaceholder": "搜尋對話...",
       "viewOptions": "顯示選項",
@@ -1590,6 +1589,7 @@
       "statusRunningBadge": "運行中",
       "runningCountBadge": "{count} 個會話進行中",
       "statusCancelledBadge": "已取消",
+      "unreadBadge": "未讀",
       "worktreeRemovedBadge": "來源 worktree 已刪除",
       "conversationCountUnit": "{count} 條",
       "emptyFolderHint": "暫無對話",
@@ -1646,6 +1646,7 @@
       "noChats": "沒有聊天",
       "noRecent": "暫無最近對話",
       "showMoreRecent": "顯示更多（{count}）",
+      "showMoreFolder": "展開顯示",
       "noFolders": "沒有開啟的資料夾",
       "newChatAction": "新增聊天",
       "automations": "自動化",
@@ -1847,7 +1848,8 @@
       "unsplitAll": "全部取消拆分",
       "closeAll": "關閉所有",
       "tileDisplay": "平鋪顯示",
-      "untileDisplay": "取消平鋪"
+      "untileDisplay": "取消平鋪",
+      "unreadConversation": "未讀"
     },
     "fileWorkspace": {
       "files": "檔案",

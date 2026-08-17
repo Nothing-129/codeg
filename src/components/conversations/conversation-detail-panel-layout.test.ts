@@ -158,28 +158,23 @@ describe("ConversationDetailPanel new conversation layout", () => {
 
     const pickerWrapper = messageInputSource.slice(pickerStart, pickerEnd)
     expect(messageInputSource).toContain(
-      '"overflow-hidden rounded-xl transition-colors"'
+      '"overflow-hidden rounded-2xl transition-colors"'
     )
+    expect(messageInputSource).toContain("COMPOSER_CHROME_SHADOW_CLASS")
     expect(messageInputSource).not.toContain("bg-muted/60")
     expect(messageInputSource).toContain(': "contents"')
-    // The rounded border lives in the always-on base (so the active-session flow
-    // gradient can overlay a real 1px border without a layout shift); the
-    // attached folder-branch-picker treatment still adds a solid surface
-    // (`bg-background`, which goes transparent to reveal a workspace-bg image via
-    // `ws-transparent-bg` instead of frosting) + the inset focus ring on top.
-    // The resting border is `border-foreground/20` (a touch darker than the
-    // near-invisible default `border-input`, and legible over a background image).
-    expect(messageInputSource).toContain(
-      "rounded-xl border border-foreground/20 bg-transparent transition-colors"
-    )
-    expect(messageInputSource).toContain(
-      '"bg-background ws-transparent-bg focus-within:border-ring focus-within:ring-[3px] focus-within:ring-inset focus-within:ring-ring/50"'
-    )
+    // Welcome + docked composers share this always-on selected chrome (soft
+    // border + shadow). No click-only focus ring. The attached folder-branch
+    // row still adds the solid surface (`bg-background` / `ws-transparent-bg`).
+    expect(messageInputSource).toContain("COMPOSER_CHROME_BOX_CLASS")
+    expect(messageInputSource).toContain("COMPOSER_CHROME_SURFACE_CLASS")
+    expect(messageInputSource).not.toContain("focus-within:border-ring")
+    expect(messageInputSource).not.toContain("focus-within:ring-[3px]")
     expect(pickerWrapper).not.toContain("border-t border-input")
     expect(pickerWrapper).not.toContain("bg-muted/30")
     expect(pickerWrapper).toContain("pt-1")
     expect(pickerWrapper).not.toContain("py-1")
-    expect(pickerWrapper).toContain("rounded-b-xl")
+    expect(pickerWrapper).toContain("rounded-b-2xl")
     // The row only renders while attached below the composer, so the detached
     // `mt-1.5` else-branch is gone; it always takes the rounded-bottom box.
     expect(pickerWrapper).not.toContain("mt-1.5")
@@ -217,6 +212,24 @@ describe("ConversationDetailPanel new conversation layout", () => {
     expect(source).not.toContain("containerClassName")
     expect(conversationShellSource).not.toContain("containerClassName")
     expect(source).toContain("mx-auto flex w-full max-w-3xl")
+  })
+
+  it("applies the same always-on composer chrome to welcome and docked inputs", () => {
+    // 1) New-conversation empty state: ChatInput inside the welcome column.
+    // 2) After the first send: ConversationShell docks the same ChatInput.
+    // Both go through ChatInput → MessageInput; neither host paints its own
+    // click-only focus ring.
+    expect(source).toContain("hideInput={isWelcomeMode || Boolean(acpLoadError)}")
+    expect(source).toContain("<ChatInput")
+    expect(conversationShellSource).toContain("<ChatInput")
+    expect(chatInputSource).toContain("<MessageInput")
+    expect(chatInputSource).not.toContain("focus-within:")
+    expect(conversationShellSource).not.toContain("focus-within:")
+    expect(messageInputSource).toContain(
+      'from "@/components/chat/composer/composer-chrome"'
+    )
+    expect(messageInputSource).toContain("COMPOSER_CHROME_BOX_CLASS")
+    expect(messageInputSource).not.toContain("focus-within:border-ring")
   })
 })
 

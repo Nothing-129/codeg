@@ -70,6 +70,11 @@ import {
   ConversationFolderBranchPicker,
   useConversationFolderBranchPickerVisible,
 } from "@/components/chat/conversation-context-bar"
+import {
+  COMPOSER_CHROME_BOX_CLASS,
+  COMPOSER_CHROME_SHADOW_CLASS,
+  COMPOSER_CHROME_SURFACE_CLASS,
+} from "@/components/chat/composer/composer-chrome"
 import { ComposerContextUsage } from "@/components/chat/composer-context-usage"
 import { ComposerConnectionStatus } from "@/components/chat/composer-connection-status"
 import { InlineModeSelector } from "@/components/chat/mode-selector"
@@ -1719,13 +1724,17 @@ export function MessageInput({
         </div>
       )}
       {/* When the folder/branch row is attached below the composer, this group
-          clips both into one rounded box (`overflow-hidden rounded-xl`); the
-          drag-active ring rides the wrapper so it isn't clipped. Standalone
-          (no row) it's layout-neutral (`display:contents`). */}
+          clips both into one rounded box (`overflow-hidden rounded-2xl`); the
+          drag-active ring and the always-on shadow ride the wrapper so they
+          aren't clipped. Standalone (no row) it's layout-neutral
+          (`display:contents`). */}
       <div
         className={cn(
           folderBranchPickerAttached
-            ? "overflow-hidden rounded-xl transition-colors"
+            ? cn(
+                "overflow-hidden rounded-2xl transition-colors",
+                COMPOSER_CHROME_SHADOW_CLASS
+              )
             : "contents",
           folderBranchPickerAttached &&
             showDragActive &&
@@ -1744,31 +1753,28 @@ export function MessageInput({
                 // blank areas (padding, the dead space below a short message, the
                 // action-bar gaps) so the whole input reads as clickable-to-type;
                 // interactive controls re-assert their own cursor (see globals.css).
-                // Resting border uses `border-foreground/20` (a touch darker than
-                // the default `border-input`, which is near-invisible at rest and
-                // vanishes over a workspace background image); it adapts per theme
-                // (dark ink in light mode, light ink in dark) and stays legible.
-                // Focus still swaps to `border-ring` below.
-                "codeg-composer-chrome @container relative flex flex-col rounded-xl border border-foreground/20 bg-transparent transition-colors",
-                // Standard focus ring — always shown when the composer is
-                // focused (the plain default input style). `bg-background
-                // ws-transparent-bg`: opaque surface normally, but with a
-                // workspace-bg image the composer goes transparent to reveal the
-                // real image like the rest of the canvas (no frosted treatment) —
-                // the border stays. Off (no image) it's the plain background,
-                // unchanged. When the folder/branch row is attached below, the
-                // solid surface + an INSET focus ring live here so the shared
-                // rounded box (clipped by the wrapper) reads as one control and
-                // the ring isn't clipped away.
-                folderBranchPickerAttached
-                  ? "bg-background ws-transparent-bg focus-within:border-ring focus-within:ring-[3px] focus-within:ring-inset focus-within:ring-ring/50"
-                  : "focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50",
+                // Always-on selected chrome (soft border + shadow) — the box
+                // already looks ready to type; clicking it must not swap in a
+                // thicker focus ring. Border uses `border-foreground/15` (a
+                // touch darker than the default `border-input`, which is
+                // near-invisible at rest and vanishes over a workspace
+                // background image). Shadow sits on this box when standalone;
+                // the attached folder-branch wrapper owns the shadow so
+                // `overflow-hidden` does not clip it.
+                COMPOSER_CHROME_BOX_CLASS,
+                "@container flex flex-col bg-transparent",
+                !folderBranchPickerAttached && COMPOSER_CHROME_SHADOW_CLASS,
+                // Opaque surface normally, but with a workspace-bg image the
+                // composer goes transparent to reveal the real image like the
+                // rest of the canvas (no frosted treatment) — the border stays.
+                folderBranchPickerAttached && COMPOSER_CHROME_SURFACE_CLASS,
                 // Active session, tiled across multiple sessions: a gradient
-                // flows around the border to mark which tile is active — but ONLY
-                // while the composer itself is not focused. Focusing it hides the
-                // flow (globals.css) so the default focus ring above takes over.
-                // A lone/non-tiled session (showActiveFlow=false) and inactive
-                // tiles show the plain default border.
+                // flows around the border to mark which tile is active — but
+                // ONLY while the composer itself is not focused. Focusing it
+                // hides the flow (globals.css) so the always-on selected
+                // chrome above takes over. A lone/non-tiled session
+                // (showActiveFlow=false) and inactive tiles keep the plain
+                // selected chrome.
                 showActiveFlow && "codeg-composer-flow",
                 !folderBranchPickerAttached &&
                   showDragActive &&
@@ -1975,7 +1981,7 @@ export function MessageInput({
           // it always takes the rounded-bottom box treatment. Pickers sit at the
           // left edge; the context-usage circle + agent connection status
           // right-align at the trailing edge.
-          <div className="flex items-center justify-between gap-2 rounded-b-xl px-2 pt-1 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 rounded-b-2xl px-2 pt-1 text-xs text-muted-foreground">
             <div className="flex min-w-0 items-center gap-1">
               <ConversationFolderBranchPicker tabId={attachmentTabId} />
             </div>

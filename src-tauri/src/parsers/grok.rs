@@ -15,7 +15,7 @@ use crate::parsers::{
     backfill_turn_durations, compute_session_stats, folder_name_from_path,
     infer_context_window_max_tokens, is_safe_subagent_id, latest_turn_total_usage_tokens,
     merge_context_window_stats, relocate_orphaned_tool_results, structurize_read_tool_output,
-    title_from_user_text, truncate_str, AgentParser, ParseError,
+    truncate_str, AgentParser, ParseError,
 };
 
 /// Cap for a single tool result / tool input preview stored on a turn. Grok's
@@ -229,6 +229,13 @@ impl GrokParser {
         if meta.session_kind.as_deref() == Some("subagent") {
             return None;
         }
+        if meta
+            .cwd
+            .as_deref()
+            .is_some_and(crate::session_title::is_grok_title_scratch_cwd)
+        {
+            return None;
+        }
         let parsed = parse_updates(&session_dir.join("updates.jsonl"));
         // A session that never produced any user/assistant/tool content (only
         // metadata) is treated as empty — matches the "metadata-only is not
@@ -247,10 +254,16 @@ impl GrokParser {
     ) -> ConversationSummary {
         let cwd = meta.cwd.clone();
         let folder_name = cwd.as_deref().map(folder_name_from_path);
-        let title = meta
-            .title
-            .clone()
-            .or_else(|| parsed.first_user_text.as_deref().map(title_from_user_text));
+        // Prefer the first user line over Grok's English-biased
+        // `generated_title`. Locale refine (and a user rename) live in the
+        // DB and lock the row so this backfill cannot clobber them.
+        let title = parsed
+            .first_user_text
+            .as_deref()
+            .filter(|text| !crate::session_title::is_title_refine_prompt(text))
+            .map(crate::session_title::heuristic_title)
+            .filter(|t| !t.is_empty())
+            .or_else(|| meta.title.clone());
         ConversationSummary {
             id: session_id.to_string(),
             agent_type: AgentType::Grok,
@@ -424,7 +437,9 @@ impl GrokParser {
         let child_id = lifecycle
             .child_session_id
             .as_deref()
-            .or(disk_meta.as_ref().and_then(|m| m.child_session_id.as_deref()))
+            .or(disk_meta
+                .as_ref()
+                .and_then(|m| m.child_session_id.as_deref()))
             .unwrap_or(&lifecycle.subagent_id);
         let tool_calls = if is_safe_subagent_id(child_id) {
             // The child usually sits in the SAME cwd group as the parent; a
@@ -453,7 +468,10 @@ impl GrokParser {
             .tool_calls
             .or(disk_meta.as_ref().and_then(|m| m.tool_calls))
             .or_else(|| u32::try_from(tool_calls.len()).ok().filter(|n| *n > 0));
-        if tool_calls.is_empty() && status.is_none() && duration_ms.is_none() && tool_count.is_none()
+        if tool_calls.is_empty()
+            && status.is_none()
+            && duration_ms.is_none()
+            && tool_count.is_none()
         {
             return None;
         }
@@ -755,9 +773,8 @@ fn parse_updates(path: &Path) -> ParsedUpdates {
                         turn.blocks.push(b);
                     }
                 } else {
-                    open_user_prompt_index = update
-                        .pointer("/_meta/promptIndex")
-                        .and_then(Value::as_i64);
+                    open_user_prompt_index =
+                        update.pointer("/_meta/promptIndex").and_then(Value::as_i64);
                     out.turns.push(MessageTurn {
                         id: String::new(), // assigned in a final pass
                         role: TurnRole::User,
@@ -1232,10 +1249,7 @@ fn grok_history_answer_to_envelope(content: &str) -> Option<Value> {
 }
 
 fn str_field(v: &Value, key: &str) -> String {
-    v.get(key)
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string()
+    v.get(key).and_then(Value::as_str).unwrap_or("").to_string()
 }
 
 /// The call's status as this LINE states it, read from wherever the wire
@@ -1283,10 +1297,7 @@ fn unwrap_use_tool(raw_input: Option<&Value>) -> Option<(&str, &Value)> {
 /// read predictably fails UTF-8 decoding for raster formats. Keep the match
 /// deliberately narrower than “read_file on an image” so genuine project-file
 /// failures remain visible.
-pub(crate) fn is_redundant_session_image_read(
-    tool_name: &str,
-    raw_input: Option<&Value>,
-) -> bool {
+pub(crate) fn is_redundant_session_image_read(tool_name: &str, raw_input: Option<&Value>) -> bool {
     if tool_name != "read_file" {
         return false;
     }
@@ -1306,7 +1317,20 @@ pub(crate) fn is_redundant_session_image_read(
     }
     matches!(
         asset.rsplit_once('.').map(|(_, ext)| ext),
-        Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "avif" | "tif" | "tiff" | "heic" | "heif")
+        Some(
+            "png"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "webp"
+                | "bmp"
+                | "ico"
+                | "avif"
+                | "tif"
+                | "tiff"
+                | "heic"
+                | "heif"
+        )
     )
 }
 
@@ -1607,10 +1631,7 @@ impl GrokTurnMeta {
     }
 }
 
-fn ensure_assistant(
-    assistant: &mut Option<MessageTurn>,
-    ts: DateTime<Utc>,
-) -> &mut MessageTurn {
+fn ensure_assistant(assistant: &mut Option<MessageTurn>, ts: DateTime<Utc>) -> &mut MessageTurn {
     if assistant.is_none() {
         *assistant = Some(MessageTurn {
             id: String::new(),
@@ -1682,7 +1703,10 @@ fn find_tool_result<'a>(turns: &'a [MessageTurn], call_id: &str) -> Option<&'a C
 /// `None` for any other text — notably a BLOCKING spawn's result, which is the
 /// child's final output.
 fn subagent_id_from_ack(output: &str) -> Option<String> {
-    if !output.trim_start().starts_with(GROK_SUBAGENT_STARTED_ACK_PREFIX) {
+    if !output
+        .trim_start()
+        .starts_with(GROK_SUBAGENT_STARTED_ACK_PREFIX)
+    {
         return None;
     }
     output.lines().find_map(|line| {
@@ -1756,7 +1780,9 @@ fn apply_subagent_result(
             if let Some(marker) = &marker {
                 *output_preview = Some(marker.clone());
             } else if !*is_error
-                && output_preview.as_deref().is_none_or(|o| o.trim().is_empty())
+                && output_preview
+                    .as_deref()
+                    .is_none_or(|o| o.trim().is_empty())
             {
                 if let Some(final_output) = &lifecycle.output {
                     *output_preview = Some(final_output.clone());
@@ -1908,23 +1934,36 @@ mod tests {
 
     // Two turns: a plain Q&A, then a prompt that runs a backgrounded command.
     const UPDATES: &str = concat!(
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"你会做什么"},"_meta":{"modelId":"grok-4.5","promptIndex":0}}},"timestamp":1783584019}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Thinking about it"}}},"timestamp":1783584019}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"我是 Grok"}}},"timestamp":1783584024}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p0","stop_reason":"end_turn"}},"timestamp":1783584024}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"执行 pnpm build"},"_meta":{"promptIndex":1}}},"timestamp":1783584029}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"正在执行"}}},"timestamp":1783584029}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-1","title":"run_terminal_command","rawInput":{"command":"pnpm build","background":true},"_meta":{"x.ai/tool":{"name":"run_terminal_command","kind":"execute"}}}},"timestamp":1783584029}"#, "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"你会做什么"},"_meta":{"modelId":"grok-4.5","promptIndex":0}}},"timestamp":1783584019}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Thinking about it"}}},"timestamp":1783584019}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"我是 Grok"}}},"timestamp":1783584024}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p0","stop_reason":"end_turn"}},"timestamp":1783584024}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"执行 pnpm build"},"_meta":{"promptIndex":1}}},"timestamp":1783584029}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"正在执行"}}},"timestamp":1783584029}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-1","title":"run_terminal_command","rawInput":{"command":"pnpm build","background":true},"_meta":{"x.ai/tool":{"name":"run_terminal_command","kind":"execute"}}}},"timestamp":1783584029}"#,
+        "\n",
         // The only event pairing the task id with the launching tool call.
-        r#"{"method":"_x.ai/session/update","params":{"sessionId":"s","update":{"sessionUpdate":"task_backgrounded","tool_call_id":"call-1","task_id":"term_x","command":"pnpm build"}},"timestamp":1783584029}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-1","status":"completed","title":"[bg] pnpm build (term_x)","content":[{"type":"content","content":{"type":"text","text":"Background task term_x started"}}]}},"timestamp":1783584033}"#, "\n",
+        r#"{"method":"_x.ai/session/update","params":{"sessionId":"s","update":{"sessionUpdate":"task_backgrounded","tool_call_id":"call-1","task_id":"term_x","command":"pnpm build"}},"timestamp":1783584029}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-1","status":"completed","title":"[bg] pnpm build (term_x)","content":[{"type":"content","content":{"type":"text","text":"Background task term_x started"}}]}},"timestamp":1783584033}"#,
+        "\n",
         // Snapshot keyed by `task_id` — deliberately ignored, so the launch call
         // stays exactly as the wire (and the live path) reports it.
-        r#"{"method":"_x.ai/session/update","params":{"sessionId":"s","update":{"sessionUpdate":"task_completed","task_snapshot":{"task_id":"term_x","command":"/bin/bash -lc 'pnpm build'","output":"boom","exit_code":1}}},"timestamp":1783584122}"#, "\n",
+        r#"{"method":"_x.ai/session/update","params":{"sessionId":"s","update":{"sessionUpdate":"task_completed","task_snapshot":{"task_id":"term_x","command":"/bin/bash -lc 'pnpm build'","output":"boom","exit_code":1}}},"timestamp":1783584122}"#,
+        "\n",
         // The model polls the task; its whole result lives in `rawOutput`.
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-2","title":"get_command_or_subagent_output","rawInput":{"task_ids":["term_x"],"timeout_ms":15000},"_meta":{"x.ai/tool":{"name":"get_command_or_subagent_output","kind":"background_task_action"}}}},"timestamp":1783584123}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-2","status":"completed","title":"/bin/bash -lc 'pnpm build' (term_x)","rawOutput":{"type":"TaskOutput","Result":{"task_id":"term_x","command":"/bin/bash -lc 'pnpm build'","status":"failed","exit_code":1,"output":"boom"}}}},"timestamp":1783584124}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p1","stop_reason":"end_turn"}},"timestamp":1783584129}"#, "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-2","title":"get_command_or_subagent_output","rawInput":{"task_ids":["term_x"],"timeout_ms":15000},"_meta":{"x.ai/tool":{"name":"get_command_or_subagent_output","kind":"background_task_action"}}}},"timestamp":1783584123}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-2","status":"completed","title":"/bin/bash -lc 'pnpm build' (term_x)","rawOutput":{"type":"TaskOutput","Result":{"task_id":"term_x","command":"/bin/bash -lc 'pnpm build'","status":"failed","exit_code":1,"output":"boom"}}}},"timestamp":1783584124}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p1","stop_reason":"end_turn"}},"timestamp":1783584129}"#,
+        "\n",
     );
 
     #[test]
@@ -1936,12 +1975,34 @@ mod tests {
         let s = &list[0];
         assert_eq!(s.id, "019f45e3-e1ef-7690-a29f-fe2554382b49");
         assert_eq!(s.agent_type, AgentType::Grok);
-        assert_eq!(s.title.as_deref(), Some("Build the project"));
+        assert_eq!(s.title.as_deref(), Some("你会做什么"));
         assert_eq!(s.model.as_deref(), Some("grok-4.5"));
         assert_eq!(s.folder_path.as_deref(), Some("/Users/me/proj"));
         assert_eq!(s.git_branch.as_deref(), Some("main"));
         // 2 user + 2 assistant turns.
         assert_eq!(s.message_count, 4);
+    }
+
+    #[test]
+    fn prefers_first_user_line_over_generated_title() {
+        let (_tmp, sessions) = fixture(SUMMARY, UPDATES);
+        let parser = GrokParser::with_base_dir(sessions);
+        let list = parser.list_conversations().unwrap();
+        assert_eq!(list[0].title.as_deref(), Some("你会做什么"));
+        assert_ne!(list[0].title.as_deref(), Some("Build the project"));
+    }
+
+    #[test]
+    fn skips_title_scratch_sessions() {
+        let summary = r#"{
+            "info": {"id": "019f45e3-e1ef-7690-a29f-fe2554382b49", "cwd": "/Users/me/.codeg/grok-title-scratch"},
+            "generated_title": "为下面这条用户消息起一个简短会话标题",
+            "created_at": "2026-07-09T07:59:50.598122Z",
+            "updated_at": "2026-07-09T08:02:09.789572Z"
+        }"#;
+        let (_tmp, sessions) = fixture(summary, UPDATES);
+        let parser = GrokParser::with_base_dir(sessions);
+        assert!(parser.list_conversations().unwrap().is_empty());
     }
 
     #[test]
@@ -1958,7 +2019,9 @@ mod tests {
         assert!(matches!(&turns[0].blocks[0], ContentBlock::Text { text } if text == "你会做什么"));
 
         assert!(matches!(turns[1].role, TurnRole::Assistant));
-        assert!(matches!(&turns[1].blocks[0], ContentBlock::Thinking { text } if text == "Thinking about it"));
+        assert!(
+            matches!(&turns[1].blocks[0], ContentBlock::Thinking { text } if text == "Thinking about it")
+        );
         assert!(matches!(&turns[1].blocks[1], ContentBlock::Text { text } if text == "我是 Grok"));
 
         // Assistant turn 2: text, then tool use + tool result.
@@ -2039,12 +2102,18 @@ mod tests {
     #[test]
     fn hidden_user_chunk_does_not_split_the_reply() {
         let updates = concat!(
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"启动服务"},"_meta":{"modelId":"grok-4.5","promptIndex":0}}},"timestamp":1783584019}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"已启动"}}},"timestamp":1783584020}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p0","stop_reason":"end_turn"}},"timestamp":1783584021}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"<system-reminder>\nBackground task \"term_x\" completed (exit code: 1).\n</system-reminder>"},"_meta":{"modelId":"grok-4.5","promptIndex":1,"hideFromScrollback":true}}},"timestamp":1783584022}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"那次失败可以忽略"}}},"timestamp":1783584023}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p1","stop_reason":"end_turn"}},"timestamp":1783584024}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"启动服务"},"_meta":{"modelId":"grok-4.5","promptIndex":0}}},"timestamp":1783584019}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"已启动"}}},"timestamp":1783584020}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p0","stop_reason":"end_turn"}},"timestamp":1783584021}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"<system-reminder>\nBackground task \"term_x\" completed (exit code: 1).\n</system-reminder>"},"_meta":{"modelId":"grok-4.5","promptIndex":1,"hideFromScrollback":true}}},"timestamp":1783584022}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"那次失败可以忽略"}}},"timestamp":1783584023}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p1","stop_reason":"end_turn"}},"timestamp":1783584024}"#,
+            "\n",
         );
         let (_tmp, sessions) = fixture(SUMMARY, updates);
         let detail = GrokParser::with_base_dir(sessions)
@@ -2060,11 +2129,12 @@ mod tests {
                 .count(),
             1
         );
-        assert!(!detail.turns.iter().any(|t| t
-            .blocks
-            .iter()
-            .any(|b| matches!(b, ContentBlock::Text { text } if text.contains("system-reminder")))));
-        assert!(matches!(&detail.turns[2].blocks[0], ContentBlock::Text { text } if text == "那次失败可以忽略"));
+        assert!(!detail.turns.iter().any(|t| t.blocks.iter().any(
+            |b| matches!(b, ContentBlock::Text { text } if text.contains("system-reminder"))
+        )));
+        assert!(
+            matches!(&detail.turns[2].blocks[0], ContentBlock::Text { text } if text == "那次失败可以忽略")
+        );
     }
 
     #[test]
@@ -2076,12 +2146,18 @@ mod tests {
         // `meta.contextCompaction` with the token delta — mirroring the live path —
         // rather than dropping it.
         let updates = concat!(
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"plan a page"},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"ok"}}},"timestamp":1783584020}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584021}"#, "\n",
-            r#"{"method":"_x.ai/session/update","params":{"sessionId":"s","update":{"sessionUpdate":"compaction_checkpoint","checkpoint_id":"c1","prompt_index_at_compaction":0},"_meta":{"eventId":"ev-compact-1"}},"timestamp":1783584030}"#, "\n",
-            r#"{"method":"_x.ai/session/update","params":{"sessionId":"s","update":{"sessionUpdate":"auto_compact_completed","tokens_before":51777,"tokens_after":4616,"summary_preview":null},"_meta":{"eventId":"ev-compact-2"}},"timestamp":1783584030}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"hi"},"_meta":{"promptIndex":1}}},"timestamp":1783584031}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"plan a page"},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"ok"}}},"timestamp":1783584020}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584021}"#,
+            "\n",
+            r#"{"method":"_x.ai/session/update","params":{"sessionId":"s","update":{"sessionUpdate":"compaction_checkpoint","checkpoint_id":"c1","prompt_index_at_compaction":0},"_meta":{"eventId":"ev-compact-1"}},"timestamp":1783584030}"#,
+            "\n",
+            r#"{"method":"_x.ai/session/update","params":{"sessionId":"s","update":{"sessionUpdate":"auto_compact_completed","tokens_before":51777,"tokens_after":4616,"summary_preview":null},"_meta":{"eventId":"ev-compact-2"}},"timestamp":1783584030}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"hi"},"_meta":{"promptIndex":1}}},"timestamp":1783584031}"#,
+            "\n",
         );
         let (_tmp, sessions) = fixture(SUMMARY, updates);
         let parser = GrokParser::with_base_dir(sessions);
@@ -2127,10 +2203,14 @@ mod tests {
         // re-checked on 1.0.3. Same merge rule as the legacy resource-blob shape
         // below.
         let updates = concat!(
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"这是什么"},"_meta":{"modelId":"grok-4.6","promptIndex":0}}},"timestamp":1783584019}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"image","data":"QUJD","mimeType":"image/png"},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"一张截图"}}},"timestamp":1783584024}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584024}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"这是什么"},"_meta":{"modelId":"grok-4.6","promptIndex":0}}},"timestamp":1783584019}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"image","data":"QUJD","mimeType":"image/png"},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"一张截图"}}},"timestamp":1783584024}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584024}"#,
+            "\n",
         );
         let (_tmp, sessions) = fixture(SUMMARY, updates);
         let parser = GrokParser::with_base_dir(sessions);
@@ -2141,9 +2221,7 @@ mod tests {
         assert_eq!(turns.len(), 2);
         assert!(matches!(turns[0].role, TurnRole::User));
         assert_eq!(turns[0].blocks.len(), 2);
-        assert!(
-            matches!(&turns[0].blocks[0], ContentBlock::Text { text } if text == "这是什么")
-        );
+        assert!(matches!(&turns[0].blocks[0], ContentBlock::Text { text } if text == "这是什么"));
         assert!(matches!(
             &turns[0].blocks[1],
             ContentBlock::Image { data, mime_type, .. }
@@ -2155,13 +2233,20 @@ mod tests {
     #[test]
     fn hides_redundant_session_image_read_from_history() {
         let updates = concat!(
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"识别一下文字。"},"_meta":{"modelId":"grok-4.6","promptIndex":0}}},"timestamp":1786710356}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"image","data":"QUJD","mimeType":"image/png"},"_meta":{"promptIndex":0}}},"timestamp":1786710356}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"我先把截图里的文字完整认出来。"}}},"timestamp":1786710358}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-image-read","title":"read_file","rawInput":{"target_file":"/Users/me/.grok/sessions/%2FUsers%2Fme%2Fproj/session-id/assets/image-1.png"},"_meta":{"x.ai/tool":{"name":"read_file","kind":"read"}}}},"timestamp":1786710364}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-image-read","status":"failed","content":[{"type":"content","content":{"type":"text","text":"Failed to read file: image-1.png: stream did not contain valid UTF-8"}}]}},"timestamp":1786710364}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"截图里的文字如下：今天准备做些什么呢？"}}},"timestamp":1786710365}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1786710365}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"识别一下文字。"},"_meta":{"modelId":"grok-4.6","promptIndex":0}}},"timestamp":1786710356}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"image","data":"QUJD","mimeType":"image/png"},"_meta":{"promptIndex":0}}},"timestamp":1786710356}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"我先把截图里的文字完整认出来。"}}},"timestamp":1786710358}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-image-read","title":"read_file","rawInput":{"target_file":"/Users/me/.grok/sessions/%2FUsers%2Fme%2Fproj/session-id/assets/image-1.png"},"_meta":{"x.ai/tool":{"name":"read_file","kind":"read"}}}},"timestamp":1786710364}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-image-read","status":"failed","content":[{"type":"content","content":{"type":"text","text":"Failed to read file: image-1.png: stream did not contain valid UTF-8"}}]}},"timestamp":1786710364}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"截图里的文字如下：今天准备做些什么呢？"}}},"timestamp":1786710365}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1786710365}"#,
+            "\n",
         );
         let (_tmp, sessions) = fixture(SUMMARY, updates);
         let parser = GrokParser::with_base_dir(sessions);
@@ -2224,10 +2309,14 @@ mod tests {
         // `promptIndex`). Both must still land in ONE user turn as
         // [Text, Image] — not a text turn plus a trailing image-only turn.
         let updates = concat!(
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"这是什么"},"_meta":{"modelId":"grok-4.5","promptIndex":0}}},"timestamp":1783584019}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"resource","resource":{"blob":"QUJD","mimeType":"image/png","uri":"clipboard://image.png-abc"}},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"一张截图"}}},"timestamp":1783584024}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584024}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"这是什么"},"_meta":{"modelId":"grok-4.5","promptIndex":0}}},"timestamp":1783584019}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"resource","resource":{"blob":"QUJD","mimeType":"image/png","uri":"clipboard://image.png-abc"}},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"一张截图"}}},"timestamp":1783584024}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584024}"#,
+            "\n",
         );
         let (_tmp, sessions) = fixture(SUMMARY, updates);
         let parser = GrokParser::with_base_dir(sessions);
@@ -2239,9 +2328,7 @@ mod tests {
         assert_eq!(turns.len(), 2);
         assert!(matches!(turns[0].role, TurnRole::User));
         assert_eq!(turns[0].blocks.len(), 2);
-        assert!(
-            matches!(&turns[0].blocks[0], ContentBlock::Text { text } if text == "这是什么")
-        );
+        assert!(matches!(&turns[0].blocks[0], ContentBlock::Text { text } if text == "这是什么"));
         assert!(matches!(
             &turns[0].blocks[1],
             ContentBlock::Image { data, mime_type, uri }
@@ -2256,9 +2343,12 @@ mod tests {
     /// `update._meta.modelId`, cumulative `totalTokens` + timing in the OUTER
     /// `params._meta`. Shared by the context-ring tests below.
     const RING_UPDATES: &str = concat!(
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"hi"},"_meta":{"modelId":"grok-4.5-fast","promptIndex":0}},"_meta":{"turnStartMs":1000,"totalTokens":100}},"timestamp":1783584019}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}},"_meta":{"totalTokens":500,"agentTimestampMs":3000}},"timestamp":1783584024}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"},"_meta":{"agentTimestampMs":5000}},"timestamp":1783584024}"#, "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"hi"},"_meta":{"modelId":"grok-4.5-fast","promptIndex":0}},"_meta":{"turnStartMs":1000,"totalTokens":100}},"timestamp":1783584019}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}},"_meta":{"totalTokens":500,"agentTimestampMs":3000}},"timestamp":1783584024}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"},"_meta":{"agentTimestampMs":5000}},"timestamp":1783584024}"#,
+        "\n",
     );
 
     #[test]
@@ -2370,7 +2460,10 @@ mod tests {
         );
         // Unknown model / malformed JSON / non-positive window → no opinion.
         assert_eq!(grok_context_window_from_models_cache(cache, "nope"), None);
-        assert_eq!(grok_context_window_from_models_cache("{oops", "grok-4.5"), None);
+        assert_eq!(
+            grok_context_window_from_models_cache("{oops", "grok-4.5"),
+            None
+        );
         assert_eq!(
             grok_context_window_from_models_cache(
                 r#"{"models":{"m":{"info":{"context_window":0}}}}"#,
@@ -2380,7 +2473,10 @@ mod tests {
         );
         // Same for the BYO TOML block.
         let toml = "[model.mine]\nmodel = \"mine\"\ncontext_window = 64000\n";
-        assert_eq!(grok_context_window_from_config_toml(toml, "mine"), Some(64_000));
+        assert_eq!(
+            grok_context_window_from_config_toml(toml, "mine"),
+            Some(64_000)
+        );
         assert_eq!(grok_context_window_from_config_toml(toml, "other"), None);
         assert_eq!(grok_context_window_from_config_toml("[model", "mine"), None);
         assert_eq!(
@@ -2397,9 +2493,12 @@ mod tests {
         // though — the records are timestamped, so `backfill_turn_durations`
         // reads the reply's span straight off the prompt→reply clock.
         let updates = concat!(
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"hi"},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}}},"timestamp":1783584024}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584024}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"hi"},"_meta":{"promptIndex":0}}},"timestamp":1783584019}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}}},"timestamp":1783584024}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584024}"#,
+            "\n",
         );
         let (_tmp, sessions) = fixture(SUMMARY, updates);
         let parser = GrokParser::with_base_dir(sessions);
@@ -2422,10 +2521,14 @@ mod tests {
         // the delegation card classifies + shows the task, and the ack (carrying
         // task_id, in an MCP `rawOutput`) surfaces as the tool result.
         let updates = concat!(
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"委派构建"}}},"timestamp":1783584019}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-d","title":"use_tool","rawInput":{"tool_name":"codeg-mcp__delegate_to_agent","tool_input":{"agent_type":"codex","working_dir":"/w","task":"run build"}},"_meta":{"x.ai/tool":{"name":"use_tool"}}}},"timestamp":1783584029}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-d","status":"completed","rawOutput":{"type":"MCP","tool_name":"delegate_to_agent","server_name":"codeg-mcp","output":{"OkayOutput":"Delegation successful. task_id=2dc85849-5426-44f7."}}}},"timestamp":1783584122}"#, "\n",
-            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584129}"#, "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"委派构建"}}},"timestamp":1783584019}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-d","title":"use_tool","rawInput":{"tool_name":"codeg-mcp__delegate_to_agent","tool_input":{"agent_type":"codex","working_dir":"/w","task":"run build"}},"_meta":{"x.ai/tool":{"name":"use_tool"}}}},"timestamp":1783584029}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"call-d","status":"completed","rawOutput":{"type":"MCP","tool_name":"delegate_to_agent","server_name":"codeg-mcp","output":{"OkayOutput":"Delegation successful. task_id=2dc85849-5426-44f7."}}}},"timestamp":1783584122}"#,
+            "\n",
+            r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1783584129}"#,
+            "\n",
         );
         let (_tmp, sessions) = fixture(SUMMARY, updates);
         let parser = GrokParser::with_base_dir(sessions);
@@ -2454,7 +2557,10 @@ mod tests {
             input.contains("\"task\":\"run build\""),
             "input carries the task: {input}"
         );
-        assert!(!input.contains("tool_input"), "the wrapper is peeled: {input}");
+        assert!(
+            !input.contains("tool_input"),
+            "the wrapper is peeled: {input}"
+        );
 
         // The MCP ack (with task_id) is the tool result.
         let result = assistant
@@ -2480,9 +2586,12 @@ mod tests {
         let long_task = "x".repeat(GROK_TOOL_INPUT_CAP + 5_000);
         let updates = format!(
             concat!(
-                r#"{{"method":"session/update","params":{{"sessionId":"s","update":{{"sessionUpdate":"user_message_chunk","content":{{"type":"text","text":"go"}}}}}},"timestamp":1783584019}}"#, "\n",
-                r#"{{"method":"session/update","params":{{"sessionId":"s","update":{{"sessionUpdate":"tool_call","toolCallId":"call-d","title":"use_tool","rawInput":{{"tool_name":"codeg-mcp__delegate_to_agent","tool_input":{{"agent_type":"codex","task":"{}"}}}}}}}},"timestamp":1783584029}}"#, "\n",
-                r#"{{"method":"session/update","params":{{"sessionId":"s","update":{{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}}}},"timestamp":1783584129}}"#, "\n",
+                r#"{{"method":"session/update","params":{{"sessionId":"s","update":{{"sessionUpdate":"user_message_chunk","content":{{"type":"text","text":"go"}}}}}},"timestamp":1783584019}}"#,
+                "\n",
+                r#"{{"method":"session/update","params":{{"sessionId":"s","update":{{"sessionUpdate":"tool_call","toolCallId":"call-d","title":"use_tool","rawInput":{{"tool_name":"codeg-mcp__delegate_to_agent","tool_input":{{"agent_type":"codex","task":"{}"}}}}}}}},"timestamp":1783584029}}"#,
+                "\n",
+                r#"{{"method":"session/update","params":{{"sessionId":"s","update":{{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}}}},"timestamp":1783584129}}"#,
+                "\n",
             ),
             long_task
         );
@@ -2504,8 +2613,7 @@ mod tests {
             .expect("tool use present");
         // The stored preview parses as valid JSON, preserving the structure, and
         // stays within the input cap (a raw byte truncation would corrupt it).
-        let parsed: Value =
-            serde_json::from_str(&input).expect("input_preview must be valid JSON");
+        let parsed: Value = serde_json::from_str(&input).expect("input_preview must be valid JSON");
         assert_eq!(
             parsed.get("agent_type").and_then(Value::as_str),
             Some("codex")
@@ -2585,7 +2693,10 @@ mod tests {
         assert_eq!(env["declined"], false);
         assert_eq!(env["answers"][0]["header"], "");
         assert_eq!(env["answers"][0]["question"], "你更喜欢哪种演示方式？");
-        assert_eq!(env["answers"][0]["selected"], serde_json::json!(["随便看看"]));
+        assert_eq!(
+            env["answers"][0]["selected"],
+            serde_json::json!(["随便看看"])
+        );
     }
 
     #[test]
@@ -2634,15 +2745,20 @@ mod tests {
         assert!(grok_history_answer_to_envelope("build ok\nexit code 0").is_none());
         assert!(grok_history_answer_to_envelope("").is_none());
         // Accepted prefix but no parseable pairs → None (leaves ToolResult as-is).
-        assert!(grok_history_answer_to_envelope("User has answered your questions: none.").is_none());
+        assert!(
+            grok_history_answer_to_envelope("User has answered your questions: none.").is_none()
+        );
     }
 
     // Updates carrying grok's native ask_user_question (meta kind "ask_user"),
     // whose answer never lands in updates.jsonl — only in chat_history.jsonl.
     const ASK_UPDATES: &str = concat!(
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"给我看看提问工具"},"_meta":{"promptIndex":0}}},"timestamp":1784334515}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-ask-0","title":"ask_user_question","rawInput":{"questions":[{"question":"你更喜欢哪种演示方式？","options":[{"label":"单选示例","description":"a"},{"label":"多选示例","description":"b"},{"label":"随便看看","description":"c"}]}]},"_meta":{"x.ai/tool":{"name":"ask_user_question","kind":"ask_user","namespace":"grok_build","label":"Ask User","read_only":true}}}},"timestamp":1784334520}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p0","stop_reason":"end_turn"}},"timestamp":1784334532}"#, "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"给我看看提问工具"},"_meta":{"promptIndex":0}}},"timestamp":1784334515}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"call-ask-0","title":"ask_user_question","rawInput":{"questions":[{"question":"你更喜欢哪种演示方式？","options":[{"label":"单选示例","description":"a"},{"label":"多选示例","description":"b"},{"label":"随便看看","description":"c"}]}]},"_meta":{"x.ai/tool":{"name":"ask_user_question","kind":"ask_user","namespace":"grok_build","label":"Ask User","read_only":true}}}},"timestamp":1784334520}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"turn_completed","prompt_id":"p0","stop_reason":"end_turn"}},"timestamp":1784334532}"#,
+        "\n",
     );
 
     fn ask_session_dir(sessions: &Path) -> PathBuf {
@@ -2676,8 +2792,10 @@ mod tests {
             &ask_session_dir(&sessions),
             "chat_history.jsonl",
             concat!(
-                r#"{"type":"assistant","content":"演示","tool_calls":[{"id":"call-ask-0","name":"ask_user_question","arguments":"{}"}]}"#, "\n",
-                r#"{"type":"tool_result","tool_call_id":"call-ask-0","content":"User has answered your questions: \"你更喜欢哪种演示方式？\"=\"随便看看\". You can now continue with the user's answers in mind."}"#, "\n",
+                r#"{"type":"assistant","content":"演示","tool_calls":[{"id":"call-ask-0","name":"ask_user_question","arguments":"{}"}]}"#,
+                "\n",
+                r#"{"type":"tool_result","tool_call_id":"call-ask-0","content":"User has answered your questions: \"你更喜欢哪种演示方式？\"=\"随便看看\". You can now continue with the user's answers in mind."}"#,
+                "\n",
             ),
         );
         let detail = ask_detail(sessions);
@@ -2685,7 +2803,10 @@ mod tests {
         let env: Value = serde_json::from_str(&output).unwrap();
         assert_eq!(env["declined"], false);
         assert_eq!(env["answers"][0]["question"], "你更喜欢哪种演示方式？");
-        assert_eq!(env["answers"][0]["selected"], serde_json::json!(["随便看看"]));
+        assert_eq!(
+            env["answers"][0]["selected"],
+            serde_json::json!(["随便看看"])
+        );
         assert_eq!(env["answers"][0]["header"], "");
     }
 
@@ -2696,7 +2817,8 @@ mod tests {
             &ask_session_dir(&sessions),
             "chat_history.jsonl",
             concat!(
-                r#"{"type":"tool_result","tool_call_id":"call-ask-0","content":"The user has indicated they have provided enough answers for the plan interview.\n\nQuestions asked and answers provided:\n- \"你更喜欢哪种演示方式？\"\n  (No answer provided)"}"#, "\n",
+                r#"{"type":"tool_result","tool_call_id":"call-ask-0","content":"The user has indicated they have provided enough answers for the plan interview.\n\nQuestions asked and answers provided:\n- \"你更喜欢哪种演示方式？\"\n  (No answer provided)"}"#,
+                "\n",
             ),
         );
         let detail = ask_detail(sessions);
@@ -2752,13 +2874,20 @@ mod tests {
 
     /// Child transcript (same wire format as the parent) with two tool calls.
     const CHILD_UPDATES: &str = concat!(
-        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Explore this codebase"},"_meta":{"promptIndex":0}}},"timestamp":1784897791}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"tool_call","toolCallId":"cc-1","title":"list_dir","rawInput":{"target_directory":"/Users/me/proj"},"_meta":{"x.ai/tool":{"name":"list_dir","kind":"list"}}}},"timestamp":1784897792}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"tool_call_update","toolCallId":"cc-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"- app/\n- package.json"}}]}},"timestamp":1784897793}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"tool_call","toolCallId":"cc-2","title":"read_file","rawInput":{"target_file":"/Users/me/proj/package.json"},"_meta":{"x.ai/tool":{"name":"read_file","kind":"read"}}}},"timestamp":1784897794}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"tool_call_update","toolCallId":"cc-2","status":"failed","content":[{"type":"content","content":{"type":"text","text":"boom"}}]}},"timestamp":1784897795}"#, "\n",
-        r###"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"## Codebase exploration summary"}}},"timestamp":1784897796}"###, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1784897797}"#, "\n",
+        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Explore this codebase"},"_meta":{"promptIndex":0}}},"timestamp":1784897791}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"tool_call","toolCallId":"cc-1","title":"list_dir","rawInput":{"target_directory":"/Users/me/proj"},"_meta":{"x.ai/tool":{"name":"list_dir","kind":"list"}}}},"timestamp":1784897792}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"tool_call_update","toolCallId":"cc-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"- app/\n- package.json"}}]}},"timestamp":1784897793}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"tool_call","toolCallId":"cc-2","title":"read_file","rawInput":{"target_file":"/Users/me/proj/package.json"},"_meta":{"x.ai/tool":{"name":"read_file","kind":"read"}}}},"timestamp":1784897794}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"tool_call_update","toolCallId":"cc-2","status":"failed","content":[{"type":"content","content":{"type":"text","text":"boom"}}]}},"timestamp":1784897795}"#,
+        "\n",
+        r###"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"## Codebase exploration summary"}}},"timestamp":1784897796}"###,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"c","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}},"timestamp":1784897797}"#,
+        "\n",
     );
 
     fn child_summary(kind: &str) -> String {
@@ -2899,10 +3028,17 @@ mod tests {
         write_child_session(&sessions);
         let parser = GrokParser::with_base_dir(sessions);
         let list = parser.list_conversations().unwrap();
-        assert_eq!(list.len(), 1, "child must not pollute the conversation list");
+        assert_eq!(
+            list.len(),
+            1,
+            "child must not pollute the conversation list"
+        );
         assert_eq!(list[0].id, PARENT_ID);
         let child = parser.get_conversation(CHILD_ID).unwrap();
-        assert!(!child.turns.is_empty(), "direct open still parses the child");
+        assert!(
+            !child.turns.is_empty(),
+            "direct open still parses the child"
+        );
     }
 
     /// A BLOCKING spawn (no background ack): the lifecycle pairs positionally,
@@ -2941,7 +3077,10 @@ mod tests {
         else {
             panic!("blocking spawn result should carry output + stats");
         };
-        assert_eq!(output, "## Findings", "lifecycle output fills the gap, no marker");
+        assert_eq!(
+            output, "## Findings",
+            "lifecycle output fills the gap, no marker"
+        );
         assert_eq!(stats.tool_calls.len(), 2);
     }
 
@@ -2969,7 +3108,10 @@ mod tests {
         else {
             panic!("lifecycle totals still attach");
         };
-        assert!(stats.tool_calls.is_empty(), "no transcript may load from a hostile id");
+        assert!(
+            stats.tool_calls.is_empty(),
+            "no transcript may load from a hostile id"
+        );
         assert_eq!(stats.total_duration_ms, Some(5));
         // …and the id is not handed to the frontend either: the card's "open
         // the child's session" action would feed it straight back into a
@@ -3019,7 +3161,9 @@ mod tests {
             results["call-s1"].is_none(),
             "the failed spawn must not steal the next lifecycle"
         );
-        let stats = results["call-s2"].as_ref().expect("stats on the real spawn");
+        let stats = results["call-s2"]
+            .as_ref()
+            .expect("stats on the real spawn");
         assert_eq!(stats.agent_type.as_deref(), Some("plan"));
         assert_eq!(stats.status.as_deref(), Some("completed"));
     }
@@ -3055,13 +3199,20 @@ mod tests {
     // capitalized values). Terminal `tool_call_update`s carry both (inner
     // lowercase + meta capitalized); mid-run cumulative updates carry neither.
     const STATUS_UPDATES: &str = concat!(
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c-run","title":"read_file","rawInput":{"target_file":"a.rs"}},"_meta":{"updateParams":{"toolCallId":"c-run","status":"Pending"}}},"timestamp":1784897790}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c-done","title":"read_file","rawInput":{"target_file":"b.rs"}},"_meta":{"updateParams":{"toolCallId":"c-done","status":"Pending"}}},"timestamp":1784897791}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"c-done","content":[{"type":"content","content":{"type":"text","text":"partial"}}]}},"timestamp":1784897792}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"c-done","status":"completed","content":[{"type":"content","content":{"type":"text","text":"ok"}}]},"_meta":{"updateParams":{"toolCallId":"c-done","status":"Completed"}}},"timestamp":1784897793}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c-empty","title":"write_file","rawInput":{"target_file":"c.rs"}},"_meta":{"updateParams":{"toolCallId":"c-empty","status":"Pending"}}},"timestamp":1784897794}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"c-empty","status":"completed"},"_meta":{"updateParams":{"toolCallId":"c-empty","status":"Completed"}}},"timestamp":1784897795}"#, "\n",
-        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c-silent","title":"read_file","rawInput":{"target_file":"d.rs"}}},"timestamp":1784897796}"#, "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c-run","title":"read_file","rawInput":{"target_file":"a.rs"}},"_meta":{"updateParams":{"toolCallId":"c-run","status":"Pending"}}},"timestamp":1784897790}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c-done","title":"read_file","rawInput":{"target_file":"b.rs"}},"_meta":{"updateParams":{"toolCallId":"c-done","status":"Pending"}}},"timestamp":1784897791}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"c-done","content":[{"type":"content","content":{"type":"text","text":"partial"}}]}},"timestamp":1784897792}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"c-done","status":"completed","content":[{"type":"content","content":{"type":"text","text":"ok"}}]},"_meta":{"updateParams":{"toolCallId":"c-done","status":"Completed"}}},"timestamp":1784897793}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c-empty","title":"write_file","rawInput":{"target_file":"c.rs"}},"_meta":{"updateParams":{"toolCallId":"c-empty","status":"Pending"}}},"timestamp":1784897794}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call_update","toolCallId":"c-empty","status":"completed"},"_meta":{"updateParams":{"toolCallId":"c-empty","status":"Completed"}}},"timestamp":1784897795}"#,
+        "\n",
+        r#"{"method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"c-silent","title":"read_file","rawInput":{"target_file":"d.rs"}}},"timestamp":1784897796}"#,
+        "\n",
     );
 
     #[test]

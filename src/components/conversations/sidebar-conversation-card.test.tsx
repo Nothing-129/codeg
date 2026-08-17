@@ -7,6 +7,10 @@ import { SidebarConversationCard } from "./sidebar-conversation-card"
 import { formatRelative } from "./sidebar-conversation-grouping"
 import type { DbConversationSummary } from "@/lib/types"
 import enMessages from "@/i18n/messages/en.json"
+import {
+  resetConversationUnreadStore,
+  useConversationUnreadStore,
+} from "@/stores/conversation-unread-store"
 
 // AgentIcon renders exactly once per card body execution, so counting its
 // renders counts how many cards actually re-rendered (a card that bails out via
@@ -96,6 +100,7 @@ const BASE = [conv(1), conv(2), conv(3), conv(4), conv(5)]
 describe("SidebarConversationCard memo (sidebar perf Phase 1 gate)", () => {
   beforeEach(() => {
     probe.agentIconRenders = 0
+    resetConversationUnreadStore()
   })
 
   it("re-renders only the card whose summary object changed", () => {
@@ -158,6 +163,69 @@ describe("SidebarConversationCard memo (sidebar perf Phase 1 gate)", () => {
       </NextIntlClientProvider>
     )
     expect(probe.agentIconRenders).toBe(BASE.length)
+  })
+})
+
+describe("SidebarConversationCard unread dot", () => {
+  beforeEach(() => {
+    resetConversationUnreadStore()
+  })
+
+  it("keeps the running spinner and hides unread while the thread is executing", () => {
+    useConversationUnreadStore.getState().noteActivity(1)
+    const running: DbConversationSummary = {
+      ...conv(1),
+      status: "in_progress",
+    }
+    const { getByText, queryByLabelText } = renderWithIntl(
+      <SidebarConversationCard
+        conversation={running}
+        isSelected={false}
+        timeLabel="5m"
+        onSelect={onSelect}
+        onDoubleClick={onDoubleClick}
+        onRename={onRename}
+        onDelete={onDelete}
+        onStatusChange={onStatusChange}
+      />
+    )
+    expect(getByText("Running")).not.toBeNull()
+    expect(queryByLabelText("Unread")).toBeNull()
+  })
+
+  it("shows the unread dot on a settled thread", () => {
+    useConversationUnreadStore.getState().noteActivity(1)
+    const { getByLabelText } = renderWithIntl(
+      <SidebarConversationCard
+        conversation={conv(1)}
+        isSelected={false}
+        timeLabel="5m"
+        onSelect={onSelect}
+        onDoubleClick={onDoubleClick}
+        onRename={onRename}
+        onDelete={onDelete}
+        onStatusChange={onStatusChange}
+      />
+    )
+    expect(getByLabelText("Unread")).not.toBeNull()
+  })
+
+  it("hides the unread dot after the thread is viewed", () => {
+    useConversationUnreadStore.getState().noteActivity(1)
+    useConversationUnreadStore.getState().setViewed([1])
+    const { queryByLabelText } = renderWithIntl(
+      <SidebarConversationCard
+        conversation={conv(1)}
+        isSelected
+        timeLabel="5m"
+        onSelect={onSelect}
+        onDoubleClick={onDoubleClick}
+        onRename={onRename}
+        onDelete={onDelete}
+        onStatusChange={onStatusChange}
+      />
+    )
+    expect(queryByLabelText("Unread")).toBeNull()
   })
 })
 
