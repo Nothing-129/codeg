@@ -1,6 +1,6 @@
 "use client"
 
-import { LayoutGrid, Monitor, Moon, Sun, Type } from "lucide-react"
+import { CircleDot, LayoutGrid, Monitor, Moon, Sun, Type } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { useTheme } from "next-themes"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -26,6 +26,7 @@ import {
   type ThemeColor,
   type ZoomLevel,
 } from "@/lib/theme-presets"
+import { useConversationStatusPrefs } from "@/lib/conversation-status-prefs"
 import { PetManagerSection } from "./pet-manager-section"
 import { FontSettingsSection } from "./font-settings-section"
 import { WorkspaceBackgroundSection } from "./workspace-background-section"
@@ -40,6 +41,8 @@ export function AppearanceSettings() {
   const { zoomLevel, setZoomLevel } = useZoomLevel()
   const { showWelcomeQuickActions, setShowWelcomeQuickActions } =
     useWelcomeQuickActions()
+  const { showStatus, allowActions, setShowStatus, setAllowActions } =
+    useConversationStatusPrefs()
 
   const resolvedThemeLabel =
     resolvedTheme === "dark"
@@ -213,6 +216,38 @@ export function AppearanceSettings() {
 
         {/* ===== Workspace background ===== */}
         <WorkspaceBackgroundSection />
+
+        {/* ===== Conversation status (display + actions) ===== */}
+        <section className="rounded-xl border bg-card p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <CircleDot className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">
+              {t("conversationStatus.sectionTitle")}
+            </h2>
+          </div>
+
+          <p className="text-xs text-muted-foreground leading-5">
+            {t("conversationStatus.sectionDescription")}
+          </p>
+
+          <div className="space-y-3">
+            <label className="flex items-center gap-2">
+              <Switch checked={showStatus} onCheckedChange={setShowStatus} />
+              <span className="text-xs text-muted-foreground">
+                {t("conversationStatus.showStatus")}
+              </span>
+            </label>
+            <label className="flex items-center gap-2">
+              <Switch
+                checked={allowActions}
+                onCheckedChange={setAllowActions}
+              />
+              <span className="text-xs text-muted-foreground">
+                {t("conversationStatus.allowActions")}
+              </span>
+            </label>
+          </div>
+        </section>
 
         {/* ===== New conversation — mode selection area ===== */}
         <section className="rounded-xl border bg-card p-4 space-y-4">

@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "ターミナルの合字は内蔵のコーディングフォントにのみ適用されます。",
       "preview": "プレビュー"
     },
+    "conversationStatus": {
+      "sectionTitle": "会話ステータス",
+      "sectionDescription": "進行中・レビュー・完了・キャンセルを色付きドットで区別します。色だけ隠すことも、ステータス変更をオフにすることもできます。",
+      "showStatus": "ステータスの色を表示",
+      "allowActions": "会話ステータスの変更を許可"
+    },
     "welcomePanel": {
       "sectionTitle": "モード選択エリア",
       "sectionDescription": "新しい会話ページで入力欄の上に表示される「コード開発 / 日常業務」のショートカットカードです。",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "会話を検索...",
       "viewOptions": "表示オプション",
       "showCompleted": "完了した会話を表示",
+      "showStatus": "ステータスの色を表示",
+      "allowStatusActions": "会話ステータスの変更を許可",
       "showWorktrees": "ワークツリーフォルダを表示",
       "showRecent": "「最近」グループを表示",
       "moreOptions": "その他のオプション",

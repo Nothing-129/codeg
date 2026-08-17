@@ -25,7 +25,9 @@ import { useLongPressDrag } from "@/hooks/use-long-press-drag"
 import type { TabItem as TabItemData } from "@/contexts/tab-context"
 import type { SplitDirection } from "@/lib/tab-group-layout"
 import { ConversationUnreadDot } from "@/components/conversations/conversation-unread-dot"
+import { ConversationStatusDot } from "@/components/conversations/conversation-status-dot"
 import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
+import { useConversationStatusDisplay } from "@/lib/conversation-status-prefs"
 
 /** A group this tab could move to (every group EXCEPT the tab's own), labeled
  *  by its traversal-order number and its selected tab's title. */
@@ -121,6 +123,7 @@ export const TabItem = memo(function TabItem({
   onTouchSortingEnd,
 }: TabItemProps) {
   const t = useTranslations("Folder.tabs")
+  const showStatus = useConversationStatusDisplay()
   const itemRef = useRef<HTMLDivElement>(null)
   const hasUnread = useConversationUnreadStore((s) =>
     tab.conversationId != null && tab.status !== "in_progress"
@@ -332,8 +335,15 @@ export const TabItem = memo(function TabItem({
                   ]
             )}
           >
-            <span aria-hidden="true" className="inline-flex shrink-0">
+            <span aria-hidden="true" className="relative inline-flex shrink-0">
               <AgentIcon agentType={tab.agentType} className="h-3.5 w-3.5" />
+              {showStatus && tab.status ? (
+                <ConversationStatusDot
+                  status={tab.status}
+                  size="xs"
+                  className="absolute -right-0.5 -bottom-0.5 ring-2 ring-background"
+                />
+              ) : null}
             </span>
             <span
               className={cn(

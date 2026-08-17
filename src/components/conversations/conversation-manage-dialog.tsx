@@ -105,6 +105,10 @@ import { cn } from "@/lib/utils"
 import { formatConversationTitle } from "@/lib/conversation-title"
 import { toErrorMessage } from "@/lib/app-error"
 import { ConversationStatusDot } from "@/components/conversations/conversation-status-dot"
+import {
+  useConversationStatusActions,
+  useConversationStatusDisplay,
+} from "@/lib/conversation-status-prefs"
 
 interface ConversationManageDialogProps {
   open: boolean
@@ -515,6 +519,8 @@ export function ConversationManageDialog({
   const t = useTranslations("Folder.sidebar.manageConversations")
   const tCommon = useTranslations("Folder.common")
   const tStatus = useTranslations("Folder.statusLabels")
+  const showStatus = useConversationStatusDisplay()
+  const allowStatusActions = useConversationStatusActions()
 
   const refreshConversations = useAppWorkspaceStore(
     (s) => s.refreshConversations
@@ -637,7 +643,7 @@ export function ConversationManageDialog({
           folder_ids: queryFolderIds,
           search: search.trim() || null,
           agent_type: agentFilter === "all" ? null : agentFilter,
-          status: statusFilter === "all" ? null : statusFilter,
+          status: !showStatus || statusFilter === "all" ? null : statusFilter,
         })
         if (cancelled) return
         const sorted = [...data].sort(
@@ -658,7 +664,15 @@ export function ConversationManageDialog({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [open, queryFolderIds, search, agentFilter, statusFilter, refreshKey])
+  }, [
+    open,
+    queryFolderIds,
+    search,
+    agentFilter,
+    statusFilter,
+    showStatus,
+    refreshKey,
+  ])
 
   // Branch options are derived from the rows the other facets already matched,
   // so every branch listed is guaranteed to yield at least one conversation —
@@ -805,7 +819,7 @@ export function ConversationManageDialog({
     search.trim() !== "" ||
     branchFilter.kind !== "all" ||
     agentFilter !== "all" ||
-    statusFilter !== "all"
+    (showStatus && statusFilter !== "all")
 
   return (
     <>
@@ -836,7 +850,12 @@ export function ConversationManageDialog({
             </div>
             {/* Four across once the dialog is at its `max-w-3xl` width, 2x2
                 below that. */}
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-2",
+                showStatus ? "md:grid-cols-4" : "md:grid-cols-3"
+              )}
+            >
               <FolderSelect
                 folders={folderOptions}
                 value={scopeFolderId}
@@ -880,34 +899,36 @@ export function ConversationManageDialog({
                   ))}
                 </SelectContent>
               </Select>
-              <Select
-                value={statusFilter}
-                onValueChange={(v) =>
-                  setStatusFilter(v as ConversationStatus | "all")
-                }
-              >
-                <SelectTrigger className={FACET_SELECT_TRIGGER_CLASS}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    <span className="flex items-center gap-2">
-                      {/* Statusless: the dot's grey fallback, which no real
-                          status uses (see STATUS_COLORS). */}
-                      <StatusGlyph />
-                      {t("statusFilterAll")}
-                    </span>
-                  </SelectItem>
-                  {STATUS_ORDER.map((s) => (
-                    <SelectItem key={s} value={s}>
+              {showStatus ? (
+                <Select
+                  value={statusFilter}
+                  onValueChange={(v) =>
+                    setStatusFilter(v as ConversationStatus | "all")
+                  }
+                >
+                  <SelectTrigger className={FACET_SELECT_TRIGGER_CLASS}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
                       <span className="flex items-center gap-2">
-                        <StatusGlyph status={s} />
-                        {tStatus(s)}
+                        {/* Statusless: the dot's grey fallback, which no real
+                          status uses (see STATUS_COLORS). */}
+                        <StatusGlyph />
+                        {t("statusFilterAll")}
                       </span>
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    {STATUS_ORDER.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        <span className="flex items-center gap-2">
+                          <StatusGlyph status={s} />
+                          {tStatus(s)}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
             </div>
           </div>
 
@@ -1038,16 +1059,18 @@ export function ConversationManageDialog({
                         <span className="shrink-0 text-xs text-muted-foreground w-10 text-right">
                           {formatRelative(conv.created_at)}
                         </span>
-                        <ConversationStatusDot
-                          status={conv.status as ConversationStatus}
-                          title={
-                            STATUS_ORDER.includes(
-                              conv.status as ConversationStatus
-                            )
-                              ? tStatus(conv.status as ConversationStatus)
-                              : conv.status
-                          }
-                        />
+                        {showStatus ? (
+                          <ConversationStatusDot
+                            status={conv.status as ConversationStatus}
+                            title={
+                              STATUS_ORDER.includes(
+                                conv.status as ConversationStatus
+                              )
+                                ? tStatus(conv.status as ConversationStatus)
+                                : conv.status
+                            }
+                          />
+                        ) : null}
                       </div>
                     )
                   })
@@ -1062,31 +1085,32 @@ export function ConversationManageDialog({
               {t("selectedCount", { count: selectedCount })}
             </span>
             <div className="flex flex-wrap items-center gap-2">
-              {/* Set status */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={selectedCount === 0 || pending}
-                  >
-                    <ListChecks className="h-3.5 w-3.5 mr-1" />
-                    {t("setStatus")}
-                    <ChevronDown className="h-3 w-3 ml-1 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {STATUS_ORDER.map((s) => (
-                    <DropdownMenuItem
-                      key={s}
-                      onSelect={() => handleBulkStatus(s)}
+              {allowStatusActions ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={selectedCount === 0 || pending}
                     >
-                      <ConversationStatusDot status={s} />
-                      {tStatus(s)}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      <ListChecks className="h-3.5 w-3.5 mr-1" />
+                      {t("setStatus")}
+                      <ChevronDown className="h-3 w-3 ml-1 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {STATUS_ORDER.map((s) => (
+                      <DropdownMenuItem
+                        key={s}
+                        onSelect={() => handleBulkStatus(s)}
+                      >
+                        <ConversationStatusDot status={s} />
+                        {tStatus(s)}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
 
               {/* Delete */}
               <Button

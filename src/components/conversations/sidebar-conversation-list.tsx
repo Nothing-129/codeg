@@ -1356,6 +1356,8 @@ export function SidebarConversationList({
         saveFolderExpanded(next)
         return next
       })
+      // Collapse is a fresh look: next expand shows the first page again.
+      setFolderLimitById((prev) => (Object.keys(prev).length === 0 ? prev : {}))
     },
   }))
 
@@ -1531,6 +1533,14 @@ export function SidebarConversationList({
       ) {
         handle.scrollToIndex(idx, { align: "start", smooth: false })
       }
+      // "Show more" is a reading gesture for this open: collapse drops the
+      // extra pages so the next expand starts at the first 10 again.
+      setFolderLimitById((prev) => {
+        if (prev[folderId] == null) return prev
+        const next = { ...prev }
+        delete next[folderId]
+        return next
+      })
     }
     setFolderExpanded((prev) => {
       const next = { ...prev, [folderId]: nextExpanded }
@@ -1544,8 +1554,19 @@ export function SidebarConversationList({
   const toggleRootGroup = useCallback((repoId: number) => {
     setRootGroupCollapsed((prev) => {
       const next = new Set(prev)
-      if (next.has(repoId)) next.delete(repoId)
-      else next.add(repoId)
+      if (next.has(repoId)) {
+        next.delete(repoId)
+        return next
+      }
+      next.add(repoId)
+      // Same reset as a folder collapse: the root sub-group shares the repo
+      // folder id, so reopening it should start at the first page again.
+      setFolderLimitById((limits) => {
+        if (limits[repoId] == null) return limits
+        const cleared = { ...limits }
+        delete cleared[repoId]
+        return cleared
+      })
       return next
     })
   }, [])

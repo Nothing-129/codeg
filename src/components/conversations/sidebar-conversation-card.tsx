@@ -53,6 +53,10 @@ import { Input } from "@/components/ui/input"
 import { ConversationStatusDot } from "./conversation-status-dot"
 import { ConversationUnreadDot } from "./conversation-unread-dot"
 import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
+import {
+  useConversationStatusActions,
+  useConversationStatusDisplay,
+} from "@/lib/conversation-status-prefs"
 import { SessionDetailsDialog } from "./session-details-dialog"
 import { AgentIcon } from "@/components/agent-icon"
 
@@ -169,6 +173,8 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   const tSidebar = useTranslations("Folder.sidebar")
   const tStatus = useTranslations("Folder.statusLabels")
   const tDetails = useTranslations("Folder.sessionDetails")
+  const showStatus = useConversationStatusDisplay()
+  const allowStatusActions = useConversationStatusActions()
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -236,6 +242,9 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
   // hand-toggling its status doesn't fit — its lifecycle is the sub-agent's. The
   // time / running badge then stays visible on hover (nothing swaps in for it).
   const isSubsession = conversation.parent_id != null
+  const showDoneAction = allowStatusActions && !isSubsession
+  const showHoverActions =
+    !isSubsession && (Boolean(onTogglePin) || showDoneAction)
 
   return (
     <>
@@ -330,6 +339,23 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                     agentType={conversation.agent_type}
                     className="h-[0.75rem] w-[0.75rem]"
                   />
+                  {showStatus ? (
+                    <ConversationStatusDot
+                      status={status}
+                      size="sm"
+                      className="absolute -right-0.5 -bottom-0.5 ring-2 ring-sidebar"
+                      title={
+                        STATUS_ORDER.includes(status) ? tStatus(status) : status
+                      }
+                    >
+                      {isOpenInTab ? (
+                        <span
+                          aria-hidden
+                          className="block h-[0.1875rem] w-[0.1875rem] rounded-full bg-sidebar"
+                        />
+                      ) : null}
+                    </ConversationStatusDot>
+                  ) : null}
                 </div>
 
                 <span
@@ -428,7 +454,7 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                     // Roots swap the badge out for the hover actions; sub-sessions
                     // have no actions, so keep the badge (incl. the running
                     // spinner) visible on hover.
-                    !isSubsession && "group-hover:hidden"
+                    showHoverActions && "group-hover:hidden"
                   )}
                 >
                   {isRunning ? (
@@ -446,7 +472,7 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                     </span>
                   ) : hasUnread ? (
                     <ConversationUnreadDot label={tSidebar("unreadBadge")} />
-                  ) : isCancelled ? (
+                  ) : isCancelled && !showStatus ? (
                     <span
                       className="relative inline-flex shrink-0 items-center justify-center"
                       title={tSidebar("statusCancelledBadge")}
@@ -482,7 +508,7 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                     slot's right edge (0.75rem) — the same edge the default
                     time/status badge fills — instead of sitting ~5px in as a
                     centred icon in a transparent box would. */}
-                {!isSubsession && (
+                {showHoverActions && (
                   <div className="hidden items-center gap-px group-hover:flex">
                     {onTogglePin && (
                       <button
@@ -507,28 +533,30 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
                         )}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onStatusChange(
-                          conversation.id,
-                          isCompleted ? "in_progress" : "completed"
-                        )
-                      }}
-                      title={isCompleted ? t("reopen") : t("markCompleted")}
-                      aria-label={
-                        isCompleted ? t("reopen") : t("markCompleted")
-                      }
-                      className={cn(
-                        "flex h-6 w-6 shrink-0 items-center justify-end rounded-[0.375rem]",
-                        "cursor-pointer outline-none transition-colors duration-150",
-                        "text-muted-foreground/90 hover:text-sidebar-foreground"
-                      )}
-                    >
-                      <CheckCircle2 className="h-[0.875rem] w-[0.875rem]" />
-                    </button>
+                    {showDoneAction && (
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onStatusChange(
+                            conversation.id,
+                            isCompleted ? "in_progress" : "completed"
+                          )
+                        }}
+                        title={isCompleted ? t("reopen") : t("markCompleted")}
+                        aria-label={
+                          isCompleted ? t("reopen") : t("markCompleted")
+                        }
+                        className={cn(
+                          "flex h-6 w-6 shrink-0 items-center justify-end rounded-[0.375rem]",
+                          "cursor-pointer outline-none transition-colors duration-150",
+                          "text-muted-foreground/90 hover:text-sidebar-foreground"
+                        )}
+                      >
+                        <CheckCircle2 className="h-[0.875rem] w-[0.875rem]" />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -567,26 +595,30 @@ export const SidebarConversationCard = memo(function SidebarConversationCard({
             <Info className="h-4 w-4" />
             {tDetails("menuLabel")}
           </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuSub>
-            <ContextMenuSubTrigger>
-              <Circle className="h-4 w-4" />
-              {t("status")}
-            </ContextMenuSubTrigger>
-            <ContextMenuSubContent>
-              {STATUS_ORDER.filter((s) => s !== conversation.status).map(
-                (s) => (
-                  <ContextMenuItem
-                    key={s}
-                    onSelect={() => onStatusChange(conversation.id, s)}
-                  >
-                    <ConversationStatusDot status={s} />
-                    {tStatus(s)}
-                  </ContextMenuItem>
-                )
-              )}
-            </ContextMenuSubContent>
-          </ContextMenuSub>
+          {allowStatusActions ? (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <Circle className="h-4 w-4" />
+                  {t("status")}
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent>
+                  {STATUS_ORDER.filter((s) => s !== conversation.status).map(
+                    (s) => (
+                      <ContextMenuItem
+                        key={s}
+                        onSelect={() => onStatusChange(conversation.id, s)}
+                      >
+                        <ConversationStatusDot status={s} />
+                        {tStatus(s)}
+                      </ContextMenuItem>
+                    )
+                  )}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            </>
+          ) : null}
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"

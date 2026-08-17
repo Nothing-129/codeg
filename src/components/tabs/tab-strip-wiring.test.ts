@@ -39,10 +39,11 @@ describe("tab strip draft gating", () => {
 })
 
 describe("tab leading glyph", () => {
-  it("shows the agent icon instead of a conversation status dot", () => {
+  it("shows the agent icon, with an optional conversation status badge", () => {
     expect(tabItem).toContain("AgentIcon")
     expect(tabItem).toContain("tab.agentType")
-    expect(tabItem).not.toContain("ConversationStatusDot")
+    expect(tabItem).toContain("ConversationStatusDot")
+    expect(tabItem).toContain("showStatus && tab.status")
   })
 })
 

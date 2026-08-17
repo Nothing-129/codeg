@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "終端機連字僅對內建程式字型生效。",
       "preview": "預覽"
     },
+    "conversationStatus": {
+      "sectionTitle": "會話狀態",
+      "sectionDescription": "用彩色圓點區分進行中、待審、已完成和已取消。可以只隱藏顏色，也可以同時關掉改狀態操作。",
+      "showStatus": "顯示狀態顏色",
+      "allowActions": "允許變更會話狀態"
+    },
     "welcomePanel": {
       "sectionTitle": "模式選擇區域",
       "sectionDescription": "新會話頁面輸入框上方顯示的「程式開發 / 日常辦公」快捷卡片區域。",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "搜尋對話...",
       "viewOptions": "顯示選項",
       "showCompleted": "顯示已完成對話",
+      "showStatus": "顯示狀態顏色",
+      "allowStatusActions": "允許變更會話狀態",
       "showWorktrees": "顯示工作樹資料夾",
       "showRecent": "顯示「最近」分組",
       "moreOptions": "更多選項",

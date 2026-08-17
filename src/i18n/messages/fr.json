@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "Les ligatures du terminal ne s’appliquent qu’aux polices de programmation intégrées.",
       "preview": "Aperçu"
     },
+    "conversationStatus": {
+      "sectionTitle": "Statut de la conversation",
+      "sectionDescription": "Des points colorés distinguent en cours, à revoir, terminée et annulée. Vous pouvez masquer les couleurs ou bloquer les changements de statut.",
+      "showStatus": "Afficher les couleurs de statut",
+      "allowActions": "Autoriser le changement de statut"
+    },
     "welcomePanel": {
       "sectionTitle": "Zone de sélection du mode",
       "sectionDescription": "Les cartes de raccourci « Développement / Bureautique » affichées au-dessus du champ de saisie sur la page de nouvelle conversation.",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "Rechercher des conversations...",
       "viewOptions": "Options d'affichage",
       "showCompleted": "Afficher les conversations terminées",
+      "showStatus": "Afficher les couleurs de statut",
+      "allowStatusActions": "Autoriser le changement de statut",
       "showWorktrees": "Afficher les dossiers de worktree",
       "showRecent": "Afficher le groupe Récents",
       "moreOptions": "Plus d'options",

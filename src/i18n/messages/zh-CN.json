@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "终端连字仅对内置编程字体生效。",
       "preview": "预览"
     },
+    "conversationStatus": {
+      "sectionTitle": "会话状态",
+      "sectionDescription": "用彩色圆点区分进行中、待审、已完成和已取消。可以只隐藏颜色，也可以同时关掉改状态操作。",
+      "showStatus": "显示状态颜色",
+      "allowActions": "允许更改会话状态"
+    },
     "welcomePanel": {
       "sectionTitle": "模式选择区域",
       "sectionDescription": "新会话页面输入框上方显示的「代码开发 / 日常办公」快捷卡片区域。",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "搜索会话...",
       "viewOptions": "显示选项",
       "showCompleted": "显示已完成会话",
+      "showStatus": "显示状态颜色",
+      "allowStatusActions": "允许更改会话状态",
       "showWorktrees": "显示工作树文件夹",
       "showRecent": "显示「最近」分组",
       "moreOptions": "更多选项",

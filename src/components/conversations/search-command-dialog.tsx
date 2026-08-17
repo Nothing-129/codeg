@@ -23,6 +23,7 @@ import { compareAgentType } from "@/lib/types"
 import { getAgentLabel } from "@/lib/custom-agents"
 import { AgentIcon } from "@/components/agent-icon"
 import { ConversationStatusDot } from "@/components/conversations/conversation-status-dot"
+import { useConversationStatusDisplay } from "@/lib/conversation-status-prefs"
 import {
   CommandDialog,
   CommandInput,
@@ -47,6 +48,7 @@ export function SearchCommandDialog({
 }: SearchCommandDialogProps) {
   const t = useTranslations("Folder.search")
   const locale = useLocale()
+  const showStatus = useConversationStatusDisplay()
   const dateFnsLocale =
     locale === "zh-CN" ? zhCN : locale === "zh-TW" ? zhTW : enUS
   const { activeFolder: folder, activeFolderId } = useActiveFolder()
@@ -284,9 +286,11 @@ export function SearchCommandDialog({
                     value={`${conv.id}-${formatConversationTitle(conv.title)}`}
                     onSelect={() => handleSelectConversation(conv)}
                   >
-                    <ConversationStatusDot
-                      status={conv.status as ConversationStatus}
-                    />
+                    {showStatus ? (
+                      <ConversationStatusDot
+                        status={conv.status as ConversationStatus}
+                      />
+                    ) : null}
                     <span className="flex-1 truncate">
                       {formatConversationTitle(conv.title) ||
                         t("untitledConversation")}

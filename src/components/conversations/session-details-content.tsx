@@ -22,6 +22,7 @@ import { useCopiedFlag } from "@/hooks/use-copied-flag"
 import { pickModelFromTurns } from "./active-session-details"
 import { AgentIcon } from "@/components/agent-icon"
 import { ConversationStatusDot } from "./conversation-status-dot"
+import { useConversationStatusDisplay } from "@/lib/conversation-status-prefs"
 
 interface SessionDetailsContentProps {
   summary: DbConversationSummary
@@ -174,6 +175,7 @@ export function SessionDetailsContent({
   const t = useTranslations("Folder.sessionDetails")
   const tStatus = useTranslations("Folder.statusLabels")
   const locale = useLocale()
+  const showStatus = useConversationStatusDisplay()
 
   // The only mirrored state is the outcome of the sidebar fetch, held as one
   // keyed union so the latest result simply overwrites the previous one (a
@@ -311,15 +313,17 @@ export function SessionDetailsContent({
             </span>
             {getAgentLabel(summary.agent_type)}
           </span>
-          <span className="inline-flex items-center gap-1.5">
-            <ConversationStatusDot
-              status={isKnownStatus(summary.status) ? summary.status : null}
-              size="sm"
-            />
-            {isKnownStatus(summary.status)
-              ? tStatus(summary.status)
-              : summary.status}
-          </span>
+          {showStatus ? (
+            <span className="inline-flex items-center gap-1.5">
+              <ConversationStatusDot
+                status={isKnownStatus(summary.status) ? summary.status : null}
+                size="sm"
+              />
+              {isKnownStatus(summary.status)
+                ? tStatus(summary.status)
+                : summary.status}
+            </span>
+          ) : null}
         </div>
       </div>
 

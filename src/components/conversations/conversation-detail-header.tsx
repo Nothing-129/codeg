@@ -28,6 +28,7 @@ import { getRuntimeSession } from "@/stores/conversation-runtime-store"
 import type { ConversationStatus } from "@/lib/types"
 import { STATUS_ORDER } from "@/lib/types"
 import { ConversationStatusDot } from "@/components/conversations/conversation-status-dot"
+import { useConversationStatusActions } from "@/lib/conversation-status-prefs"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -105,6 +106,7 @@ export const ConversationDetailHeader = memo(function ConversationDetailHeader({
   const tConv = useTranslations("Folder.conversation")
   const tStatus = useTranslations("Folder.statusLabels")
   const tDetails = useTranslations("Folder.sessionDetails")
+  const allowStatusActions = useConversationStatusActions()
   const { closeTab, openNewConversationTab } = useTabActions()
   const updateConversationLocal = useAppWorkspaceStore(
     (s) => s.updateConversationLocal
@@ -299,24 +301,28 @@ export const ConversationDetailHeader = memo(function ConversationDetailHeader({
               <Info className="h-4 w-4" />
               {tDetails("menuLabel")}
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger disabled={!persisted}>
-                <Circle className="h-4 w-4" />
-                {t("status")}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {STATUS_ORDER.filter((s) => s !== status).map((s) => (
-                  <DropdownMenuItem
-                    key={s}
-                    onSelect={() => handleStatusChange(s)}
-                  >
-                    <ConversationStatusDot status={s} />
-                    {tStatus(s)}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            {allowStatusActions ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger disabled={!persisted}>
+                    <Circle className="h-4 w-4" />
+                    {t("status")}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {STATUS_ORDER.filter((s) => s !== status).map((s) => (
+                      <DropdownMenuItem
+                        key={s}
+                        onSelect={() => handleStatusChange(s)}
+                      >
+                        <ConversationStatusDot status={s} />
+                        {tStatus(s)}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"

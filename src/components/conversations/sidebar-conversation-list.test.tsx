@@ -1087,4 +1087,37 @@ describe("SidebarConversationList — folder paging", () => {
       )
     ).toBe(false)
   })
+
+  it("resets to the first 10 after the folder is collapsed and reopened", () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={enMessages}>
+        <SidebarConversationList showCompleted sortMode="created" />
+      </NextIntlClientProvider>
+    )
+
+    const showMore = () =>
+      Array.from(document.querySelectorAll("button")).find(
+        (b) => b.textContent === SHOW_MORE
+      )
+
+    act(() => {
+      fireEvent.click(showMore()!)
+    })
+    expect(document.querySelectorAll("[data-conversation-id]")).toHaveLength(20)
+
+    const header = document.querySelector('[data-folder-id="1"]') as HTMLElement
+    act(() => {
+      fireEvent.click(header)
+    })
+    expect(document.querySelectorAll("[data-conversation-id]")).toHaveLength(0)
+
+    const reopened = document.querySelector(
+      '[data-folder-id="1"]'
+    ) as HTMLElement
+    act(() => {
+      fireEvent.click(reopened)
+    })
+    expect(document.querySelectorAll("[data-conversation-id]")).toHaveLength(10)
+    expect(showMore()).toBeTruthy()
+  })
 })

@@ -11,6 +11,10 @@ import {
   resetConversationUnreadStore,
   useConversationUnreadStore,
 } from "@/stores/conversation-unread-store"
+import {
+  saveConversationStatusActions,
+  saveConversationStatusDisplay,
+} from "@/lib/conversation-status-prefs"
 
 // AgentIcon renders exactly once per card body execution, so counting its
 // renders counts how many cards actually re-rendered (a card that bails out via
@@ -101,6 +105,7 @@ describe("SidebarConversationCard memo (sidebar perf Phase 1 gate)", () => {
   beforeEach(() => {
     probe.agentIconRenders = 0
     resetConversationUnreadStore()
+    localStorage.clear()
   })
 
   it("re-renders only the card whose summary object changed", () => {
@@ -279,6 +284,7 @@ describe("SidebarConversationCard hover quick actions", () => {
   beforeEach(() => {
     onTogglePin.mockClear()
     onStatusChange.mockClear()
+    localStorage.clear()
   })
 
   function renderCard(
@@ -345,6 +351,53 @@ describe("SidebarConversationCard hover quick actions", () => {
     expect(queryByLabelText("Unpin")).toBeNull()
     expect(queryByLabelText("Mark as completed")).toBeNull()
     expect(queryByLabelText("Reopen")).toBeNull()
+  })
+
+  it("hides the done button and status menu when status actions are off", () => {
+    saveConversationStatusActions(false)
+    const { getByText, queryByLabelText, queryByText } = renderCard(conv(7))
+    expect(queryByLabelText("Mark as completed")).toBeNull()
+    fireEvent.contextMenu(getByText("conv-7"))
+    expect(queryByText("Status")).toBeNull()
+  })
+})
+
+describe("SidebarConversationCard status display", () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it("paints a status badge on the agent icon by default", () => {
+    const { getByTitle } = renderWithIntl(
+      <SidebarConversationCard
+        conversation={{ ...conv(8), status: "pending_review" }}
+        isSelected={false}
+        timeLabel="5m"
+        onSelect={onSelect}
+        onDoubleClick={onDoubleClick}
+        onRename={onRename}
+        onDelete={onDelete}
+        onStatusChange={onStatusChange}
+      />
+    )
+    expect(getByTitle("Review")).toBeTruthy()
+  })
+
+  it("omits the status badge when status display is off", () => {
+    saveConversationStatusDisplay(false)
+    const { queryByTitle } = renderWithIntl(
+      <SidebarConversationCard
+        conversation={{ ...conv(9), status: "pending_review" }}
+        isSelected={false}
+        timeLabel="5m"
+        onSelect={onSelect}
+        onDoubleClick={onDoubleClick}
+        onRename={onRename}
+        onDelete={onDelete}
+        onStatusChange={onStatusChange}
+      />
+    )
+    expect(queryByTitle("Review")).toBeNull()
   })
 })
 

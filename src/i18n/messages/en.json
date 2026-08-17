@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "Terminal ligatures apply only to bundled coding fonts.",
       "preview": "Preview"
     },
+    "conversationStatus": {
+      "sectionTitle": "Conversation status",
+      "sectionDescription": "Colored dots mark in progress, review, completed, and cancelled. You can hide the colors, or keep them visible while locking status changes.",
+      "showStatus": "Show status colors",
+      "allowActions": "Allow changing conversation status"
+    },
     "welcomePanel": {
       "sectionTitle": "Mode selection area",
       "sectionDescription": "The Code Development / Office Work shortcut cards shown above the composer on the new conversation page.",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "Search conversations...",
       "viewOptions": "View options",
       "showCompleted": "Show completed conversations",
+      "showStatus": "Show status colors",
+      "allowStatusActions": "Allow changing conversation status",
       "showWorktrees": "Show worktree folders",
       "showRecent": "Show Recent group",
       "moreOptions": "More options",

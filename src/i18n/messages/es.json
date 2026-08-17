@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "Las ligaduras del terminal solo se aplican a las fuentes de programación incluidas.",
       "preview": "Vista previa"
     },
+    "conversationStatus": {
+      "sectionTitle": "Estado de la conversación",
+      "sectionDescription": "Puntos de color marcan en curso, revisión, completada y cancelada. Puedes ocultar los colores o bloquear los cambios de estado.",
+      "showStatus": "Mostrar colores de estado",
+      "allowActions": "Permitir cambiar el estado de la conversación"
+    },
     "welcomePanel": {
       "sectionTitle": "Área de selección de modo",
       "sectionDescription": "Las tarjetas de acceso rápido «Desarrollo de código / Ofimática» que se muestran sobre el editor en la página de nueva conversación.",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "Buscar conversaciones...",
       "viewOptions": "Opciones de visualización",
       "showCompleted": "Mostrar conversaciones completadas",
+      "showStatus": "Mostrar colores de estado",
+      "allowStatusActions": "Permitir cambiar el estado de la conversación",
       "showWorktrees": "Mostrar carpetas de worktree",
       "showRecent": "Mostrar grupo Recientes",
       "moreOptions": "Más opciones",

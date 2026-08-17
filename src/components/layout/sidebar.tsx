@@ -61,6 +61,7 @@ import {
   type SidebarSortMode,
   type SidebarSectionOrder,
 } from "@/lib/sidebar-view-mode-storage"
+import { useConversationStatusPrefs } from "@/lib/conversation-status-prefs"
 import { SidebarSectionOrderControl } from "./sidebar-section-order-control"
 import { cn } from "@/lib/utils"
 
@@ -152,6 +153,8 @@ export function Sidebar() {
   // (the mount effect below reconciles a persisted override). Each initial
   // value matches its own default so the pre-hydration render doesn't flash as
   // the stored preference is applied.
+  const { showStatus, allowActions, setShowStatus, setAllowActions } =
+    useConversationStatusPrefs()
   const [showCompleted, setShowCompleted] = useState(false)
   const [showWorktrees, setShowWorktrees] = useState(true)
   const [showRecent, setShowRecent] = useState(true)
@@ -372,6 +375,20 @@ export function Sidebar() {
                   list, and flipping two of them used to cost two round trips
                   through the trigger. The expand/collapse-all entry above is
                   the one real action here, so it still closes. */}
+              <DropdownMenuCheckboxItem
+                checked={showStatus}
+                onCheckedChange={setShowStatus}
+                onSelect={(event) => event.preventDefault()}
+              >
+                {t("showStatus")}
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={allowActions}
+                onCheckedChange={setAllowActions}
+                onSelect={(event) => event.preventDefault()}
+              >
+                {t("allowStatusActions")}
+              </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={showCompleted}
                 onCheckedChange={handleSetShowCompleted}

@@ -198,6 +198,37 @@ describe("Sidebar — Show worktree folders toggle", () => {
   })
 })
 
+describe("Sidebar — conversation status view options", () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it("defaults both status switches on and persists turning them off", async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole("button", { name: "View options" }))
+    const showStatus = screen.getByRole("menuitemcheckbox", {
+      name: "Show status colors",
+    })
+    const allowActions = screen.getByRole("menuitemcheckbox", {
+      name: "Allow changing conversation status",
+    })
+    expect(showStatus).toHaveAttribute("data-state", "checked")
+    expect(allowActions).toHaveAttribute("data-state", "checked")
+
+    await user.click(showStatus)
+    await user.click(allowActions)
+
+    expect(localStorage.getItem("workspace:conversation-status-display")).toBe(
+      "false"
+    )
+    expect(localStorage.getItem("workspace:conversation-status-actions")).toBe(
+      "false"
+    )
+  })
+})
+
 describe("Sidebar — Show completed default", () => {
   beforeEach(() => {
     localStorage.clear()

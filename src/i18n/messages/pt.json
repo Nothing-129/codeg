@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "As ligaduras do terminal aplicam-se apenas às fontes de programação incluídas.",
       "preview": "Pré-visualização"
     },
+    "conversationStatus": {
+      "sectionTitle": "Status da conversa",
+      "sectionDescription": "Pontos coloridos marcam em andamento, revisão, concluída e cancelada. Você pode ocultar as cores ou bloquear as mudanças de status.",
+      "showStatus": "Mostrar cores de status",
+      "allowActions": "Permitir alterar o status da conversa"
+    },
     "welcomePanel": {
       "sectionTitle": "Área de seleção de modo",
       "sectionDescription": "Os cartões de atalho «Desenvolvimento / Escritório» exibidos acima do campo de entrada na página de nova conversa.",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "Buscar conversas...",
       "viewOptions": "Opções de exibição",
       "showCompleted": "Mostrar conversas concluídas",
+      "showStatus": "Mostrar cores de status",
+      "allowStatusActions": "Permitir alterar o status da conversa",
       "showWorktrees": "Mostrar pastas de worktree",
       "showRecent": "Mostrar grupo Recentes",
       "moreOptions": "Mais opções",

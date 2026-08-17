@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "تنطبق الحروف المتصلة في الطرفية على خطوط البرمجة المضمّنة فقط.",
       "preview": "معاينة"
     },
+    "conversationStatus": {
+      "sectionTitle": "حالة المحادثة",
+      "sectionDescription": "نقاط ملونة تميز قيد التنفيذ والمراجعة والمكتملة والملغاة. يمكنك إخفاء الألوان أو منع تغيير الحالة.",
+      "showStatus": "إظهار ألوان الحالة",
+      "allowActions": "السماح بتغيير حالة المحادثة"
+    },
     "welcomePanel": {
       "sectionTitle": "منطقة اختيار الوضع",
       "sectionDescription": "بطاقات الاختصار «تطوير الكود / الأعمال المكتبية» التي تظهر أعلى مربع الإدخال في صفحة المحادثة الجديدة.",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "بحث عن محادثات...",
       "viewOptions": "خيارات العرض",
       "showCompleted": "عرض المحادثات المكتملة",
+      "showStatus": "إظهار ألوان الحالة",
+      "allowStatusActions": "السماح بتغيير حالة المحادثة",
       "showWorktrees": "عرض مجلدات worktree",
       "showRecent": "عرض مجموعة الأحدث",
       "moreOptions": "المزيد من الخيارات",

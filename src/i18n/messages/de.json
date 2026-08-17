@@ -168,6 +168,12 @@
       "terminalLigaturesHint": "Terminal-Ligaturen gelten nur für mitgelieferte Programmierschriftarten.",
       "preview": "Vorschau"
     },
+    "conversationStatus": {
+      "sectionTitle": "Konversationsstatus",
+      "sectionDescription": "Farbige Punkte kennzeichnen In Bearbeitung, Prüfung, Abgeschlossen und Abgebrochen. Die Farben lassen sich ausblenden, Statusänderungen separat sperren.",
+      "showStatus": "Statusfarben anzeigen",
+      "allowActions": "Ändern des Konversationsstatus erlauben"
+    },
     "welcomePanel": {
       "sectionTitle": "Modusauswahlbereich",
       "sectionDescription": "Die Shortcut-Karten „Code-Entwicklung / Büroarbeit“ über dem Eingabefeld auf der Seite für eine neue Konversation.",
@@ -1576,6 +1582,8 @@
       "searchPlaceholder": "Konversationen suchen...",
       "viewOptions": "Anzeigeoptionen",
       "showCompleted": "Abgeschlossene Konversationen anzeigen",
+      "showStatus": "Statusfarben anzeigen",
+      "allowStatusActions": "Ändern des Konversationsstatus erlauben",
       "showWorktrees": "Worktree-Ordner anzeigen",
       "showRecent": "Gruppe „Zuletzt“ anzeigen",
       "moreOptions": "Weitere Optionen",
