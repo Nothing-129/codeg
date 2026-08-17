@@ -11,6 +11,7 @@ import { APPEARANCE_INIT_SCRIPT } from "@/lib/appearance-script"
 import { AppearanceProvider } from "@/components/appearance-provider"
 import { OverlayScrollbarsInit } from "@/components/overlay-scrollbars-init"
 import { ClipboardFallbackInit } from "@/components/clipboard-fallback-init"
+import { PwaRegister } from "@/components/pwa-register"
 import { WebConnectionGuard } from "@/components/connection/web-connection-guard"
 import { WindowResizeGrips } from "@/components/layout/window-resize-grips"
 
@@ -18,6 +19,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
 }
 
 export const metadata: Metadata = {
@@ -28,7 +33,11 @@ export const metadata: Metadata = {
       { url: "/icon-32x32.png", sizes: "32x32", type: "image/png" },
       { url: "/icon.svg", type: "image/svg+xml" },
     ],
-    apple: { url: "/icon-128x128.png", sizes: "128x128", type: "image/png" },
+    apple: {
+      url: "/apple-touch-icon.png",
+      sizes: "180x180",
+      type: "image/png",
+    },
   },
 }
 
@@ -71,6 +80,7 @@ export default async function RootLayout({
               <AppearanceProvider>
                 <OverlayScrollbarsInit />
                 <ClipboardFallbackInit />
+                <PwaRegister />
                 <WebConnectionGuard />
                 <WindowResizeGrips />
                 {children}
