@@ -327,102 +327,16 @@ jobs:
           fi
           ls -la "$file"
 
-      - name: Import Apple Developer ID certificate
-        if: contains(matrix.target, 'apple-darwin')
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-
-          missing=()
-          for name in \
-            APPLE_CERTIFICATE \
-            APPLE_CERTIFICATE_PASSWORD \
-            KEYCHAIN_PASSWORD \
-            APPLE_ID \
-            APPLE_PASSWORD \
-            APPLE_TEAM_ID; do
-            if [ -z "${!name:-}" ]; then
-              missing+=("$name")
-            fi
-          done
-
-          if [ "${#missing[@]}" -ne 0 ]; then
-            printf '::error::Missing required Apple signing secret(s): %s\n' "${missing[*]}"
-            exit 1
-          fi
-
-          keychain_path="$RUNNER_TEMP/codeg-signing.keychain-db"
-          certificate_path="$RUNNER_TEMP/developer-id.p12"
-          keychain_search_list_path="$RUNNER_TEMP/codeg-keychains.txt"
-          original_default_keychain="$(
-            security default-keychain -d user \
-              | sed -e 's/^[[:space:]]*//' -e 's/^"//' -e 's/"$//'
-          )"
-          security list-keychains -d user \
-            | sed -e 's/^[[:space:]]*//' -e 's/^"//' -e 's/"$//' \
-            > "$keychain_search_list_path"
-
-          echo "APPLE_KEYCHAIN_PATH=$keychain_path" >> "$GITHUB_ENV"
-          echo "APPLE_CERTIFICATE_PATH=$certificate_path" >> "$GITHUB_ENV"
-          echo "APPLE_KEYCHAIN_SEARCH_LIST_PATH=$keychain_search_list_path" >> "$GITHUB_ENV"
-          echo "APPLE_ORIGINAL_DEFAULT_KEYCHAIN=$original_default_keychain" >> "$GITHUB_ENV"
-
-          echo "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
-          existing_keychains=()
-          while IFS= read -r existing_keychain; do
-            if [ -n "$existing_keychain" ]; then
-              existing_keychains+=("$existing_keychain")
-            fi
-          done < "$keychain_search_list_path"
-          if [ "${#existing_keychains[@]}" -eq 0 ]; then
-            security list-keychains -d user -s "$keychain_path"
-          else
-            security list-keychains -d user -s "$keychain_path" "${existing_keychains[@]}"
-          fi
-          security default-keychain -s "$keychain_path"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
-          security set-keychain-settings -t 21600 -u "$keychain_path"
-          security import "$certificate_path" \
-            -k "$keychain_path" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/productbuild
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$keychain_path"
-          security find-identity -v -p codesigning "$keychain_path"
-
-      - name: Resolve Apple Developer ID identity
-        if: contains(matrix.target, 'apple-darwin')
+      - name: Prepare unsigned desktop bundle config
         shell: bash
         run: |
-          set -euo pipefail
-          cert_info="$(
-            security find-identity -v -p codesigning "$APPLE_KEYCHAIN_PATH" \
-              | grep "Developer ID Application" \
-              | head -n 1 \
-              || true
-          )"
-
-          if [ -z "$cert_info" ]; then
-            echo "::error::No Developer ID Application signing identity found in imported keychain."
-            security find-identity -v -p codesigning "$APPLE_KEYCHAIN_PATH" || true
-            exit 1
-          fi
-
-          cert_id="$(echo "$cert_info" | awk -F'"' '{print $2}')"
-          echo "APPLE_SIGNING_IDENTITY=$cert_id" >> "$GITHUB_ENV"
-          echo "Using Apple signing identity: $cert_id"
+          cat > src-tauri/ci-release.conf.json <<'EOF'
+          {
+            "bundle": {
+              "createUpdaterArtifacts": false
+            }
+          }
+          EOF
 
       - name: Build and upload to draft release (Linux arm64)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -433,8 +347,6 @@ jobs:
           # do not fall back to the runner host triple.
           CODEG_SKIP_SIDECAR: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           PKG_CONFIG_ALLOW_CROSS: 1
           PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
           PKG_CONFIG_LIBDIR: /usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
@@ -452,7 +364,11 @@ jobs:
           releaseDraft: true
           prerelease: ${{ needs.create-draft-release.outputs.prerelease }}
           tauriScript: pnpm tauri
-          args: --target ${{ matrix.target }} --bundles deb,rpm
+          args: >-
+            --target ${{ matrix.target }}
+            --bundles deb,rpm
+            --no-sign
+            --config src-tauri/ci-release.conf.json
           includeUpdaterJson: false
           retryAttempts: 2
 
@@ -465,8 +381,6 @@ jobs:
           # do not fall back to the runner host triple.
           CODEG_SKIP_SIDECAR: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-draft-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
@@ -475,10 +389,14 @@ jobs:
           prerelease: ${{ needs.create-draft-release.outputs.prerelease }}
           tauriScript: pnpm tauri
           # Skip MSI bundling on Windows: tauri-apps/tauri#14681 — light.exe
-          # fails when externalBin is configured. NSIS installer + updater
-          # artifacts cover the same distribution channel.
-          args: --target ${{ matrix.target }} --bundles nsis,updater
-          includeUpdaterJson: true
+          # fails when externalBin is configured. The unsigned NSIS installer
+          # is still usable without the updater signing key.
+          args: >-
+            --target ${{ matrix.target }}
+            --bundles nsis
+            --no-sign
+            --config src-tauri/ci-release.conf.json
+          includeUpdaterJson: false
           retryAttempts: 2
 
       - name: Build and upload to draft release (Linux x64)
@@ -490,8 +408,6 @@ jobs:
           # do not fall back to the runner host triple.
           CODEG_SKIP_SIDECAR: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-draft-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
@@ -499,11 +415,14 @@ jobs:
           releaseDraft: true
           prerelease: ${{ needs.create-draft-release.outputs.prerelease }}
           tauriScript: pnpm tauri
-          args: --target ${{ matrix.target }}
-          includeUpdaterJson: true
+          args: >-
+            --target ${{ matrix.target }}
+            --no-sign
+            --config src-tauri/ci-release.conf.json
+          includeUpdaterJson: false
           retryAttempts: 2
 
-      - name: Build, sign, and upload to draft release (macOS)
+      - name: Build and upload unsigned app to draft release (macOS)
         if: contains(matrix.target, 'apple-darwin')
         uses: tauri-apps/tauri-action@v0.6.1
         env:
@@ -512,14 +431,6 @@ jobs:
           # do not fall back to the runner host triple.
           CODEG_SKIP_SIDECAR: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Tauri notarizes the signed bundle when these three env vars are
-          # present (in addition to the imported Developer ID cert +
-          # APPLE_SIGNING_IDENTITY used for code signing).
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           releaseId: ${{ needs.create-draft-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
@@ -527,43 +438,12 @@ jobs:
           releaseDraft: true
           prerelease: ${{ needs.create-draft-release.outputs.prerelease }}
           tauriScript: pnpm tauri
-          args: --target ${{ matrix.target }}
-          includeUpdaterJson: true
+          args: >-
+            --target ${{ matrix.target }}
+            --no-sign
+            --config src-tauri/ci-release.conf.json
+          includeUpdaterJson: false
           retryAttempts: 2
-
-      - name: Delete Apple signing keychain
-        if: always() && contains(matrix.target, 'apple-darwin')
-        shell: bash
-        run: |
-          if [ -n "${APPLE_ORIGINAL_DEFAULT_KEYCHAIN:-}" ]; then
-            security default-keychain -s "$APPLE_ORIGINAL_DEFAULT_KEYCHAIN" || true
-          fi
-
-          if [ -n "${APPLE_KEYCHAIN_SEARCH_LIST_PATH:-}" ] && \
-             [ -f "$APPLE_KEYCHAIN_SEARCH_LIST_PATH" ]; then
-            restored_keychains=()
-            while IFS= read -r restored_keychain; do
-              if [ -n "$restored_keychain" ]; then
-                restored_keychains+=("$restored_keychain")
-              fi
-            done < "$APPLE_KEYCHAIN_SEARCH_LIST_PATH"
-
-            if [ "${#restored_keychains[@]}" -ne 0 ]; then
-              security list-keychains -d user -s "${restored_keychains[@]}" || true
-            fi
-          fi
-
-          if [ -n "${APPLE_KEYCHAIN_PATH:-}" ]; then
-            security delete-keychain "$APPLE_KEYCHAIN_PATH" || true
-          fi
-
-          for path in \
-            "${APPLE_CERTIFICATE_PATH:-}" \
-            "${APPLE_KEYCHAIN_SEARCH_LIST_PATH:-}"; do
-            if [ -n "$path" ]; then
-              rm -f "$path"
-            fi
-          done
 
   build-server:
     needs: create-draft-release
@@ -860,9 +740,7 @@ jobs:
     needs:
       - create-draft-release
       - build-tauri
-      - build-server
-      - build-docker
-    if: ${{ needs.build-tauri.result == 'success' && needs.build-server.result == 'success' && needs.build-docker.result == 'success' }}
+    if: ${{ needs.build-tauri.result == 'success' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: write
