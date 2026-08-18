@@ -82,12 +82,14 @@ describe("message-input-draft v2", () => {
     saveMessageInputDraft("k-fail", "legacy survives")
     // Spy on the live instance (not Storage.prototype) so this also works when
     // localStorage comes from the in-memory fallback in test-setup (Node ≥ 25).
+    const originalSetItem = localStorage.setItem.bind(localStorage)
     const setItem = vi
       .spyOn(localStorage, "setItem")
-      .mockImplementation((key: string) => {
+      .mockImplementation((key: string, value: string) => {
         if (key.startsWith("codeg:message-input-draft:v2:")) {
           throw new Error("quota exceeded")
         }
+        originalSetItem(key, value)
       })
     try {
       // Flushes synchronously in jsdom; the v2 setItem throws.
