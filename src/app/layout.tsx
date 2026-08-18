@@ -29,9 +29,7 @@ export const metadata: Metadata = {
   title: "codeg",
   description: "AI Coding Agent Conversation Manager",
   icons: {
-    icon: [
-      { url: "/icon-32x32.png?v=13", sizes: "32x32", type: "image/png" },
-    ],
+    icon: [{ url: "/icon-32x32.png?v=13", sizes: "32x32", type: "image/png" }],
     apple: {
       url: "/apple-touch-icon.png?v=13",
       sizes: "180x180",

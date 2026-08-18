@@ -15,7 +15,6 @@ use sea_orm::DatabaseConnection;
 
 use crate::db::service::conversation_service;
 use crate::models::system::{AppLocale, LanguageMode, SystemLanguageSettings};
-use crate::models::{ContentBlock, MessageTurn, TurnRole};
 use crate::parsers::fold_reference_links;
 use crate::web::event_bridge::EventEmitter;
 
@@ -147,27 +146,6 @@ pub fn heuristic_title(message: &str) -> String {
     }
     let collapsed: String = line.split_whitespace().collect::<Vec<_>>().join(" ");
     truncate_chars(&collapsed, HEURISTIC_MAX_CHARS)
-}
-
-pub fn first_user_text_from_turns(turns: &[MessageTurn]) -> Option<String> {
-    for turn in turns {
-        if !matches!(turn.role, TurnRole::User) {
-            continue;
-        }
-        let mut parts = Vec::new();
-        for block in &turn.blocks {
-            if let ContentBlock::Text { text } = block {
-                let t = text.trim();
-                if !t.is_empty() && !is_title_refine_prompt(t) {
-                    parts.push(t);
-                }
-            }
-        }
-        if !parts.is_empty() {
-            return Some(parts.join(" "));
-        }
-    }
-    None
 }
 
 pub fn title_seed_from_blocks(blocks: &[crate::acp::types::PromptInputBlock]) -> Option<String> {
