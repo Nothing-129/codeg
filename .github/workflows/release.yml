@@ -641,8 +641,9 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           version="${GITHUB_REF_NAME#v}"
+          image_repository="${GITHUB_REPOSITORY,,}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          tags=$'ghcr.io/${{ github.repository }}:'"$version"$'\n''ghcr.io/${{ github.repository }}:latest'
+          tags=$'ghcr.io/'"$image_repository"':'"$version"$'\n''ghcr.io/'"$image_repository"':latest'
           if [ -n "${DOCKERHUB_USERNAME}" ]; then
             echo "dockerhub=true" >> "$GITHUB_OUTPUT"
             tags+=$'\n'"${DOCKERHUB_USERNAME}/codeg:${version}"$'\n'"${DOCKERHUB_USERNAME}/codeg:latest"

@@ -86,6 +86,7 @@ describe("message-input-draft v2", () => {
     // Spy on the live instance (not Storage.prototype) so this also works when
     // localStorage comes from the in-memory fallback in test-setup (Node ≥ 25).
     const originalSetItem = localStorage.setItem.bind(localStorage)
+    const originalRemoveItem = localStorage.removeItem.bind(localStorage)
     const setItem = vi
       .spyOn(localStorage, "setItem")
       .mockImplementation((key: string, value: string) => {
@@ -94,14 +95,21 @@ describe("message-input-draft v2", () => {
         }
         originalSetItem(key, value)
       })
+    const removeItem = vi
+      .spyOn(localStorage, "removeItem")
+      .mockImplementation((key: string) => {
+        if (key !== V1("k-fail")) originalRemoveItem(key)
+      })
     try {
       // The scheduler may flush during the mock; the v2 setItem throws.
       saveMessageInputDraftV2("k-fail", DOC)
     } finally {
       setItem.mockRestore()
+      removeItem.mockRestore()
     }
-    // v1 is still on disk because the v2 write never succeeded.
-    expect(localStorage.getItem(V1("k-fail"))).not.toBeNull()
+    // Other test files can clear shared localStorage concurrently. The
+    // behavior under test is that this key is not retired on a failed v2 write.
+    expect(removeItem).not.toHaveBeenCalledWith(V1("k-fail"))
   })
 
   it("ignores a corrupt v2 payload and falls back to the legacy v1 draft", () => {
