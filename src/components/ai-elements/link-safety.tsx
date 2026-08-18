@@ -3,15 +3,16 @@
 import type { ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
-import { openUrl } from "@/lib/platform"
+import { isLocalDesktop, openPath, openUrl } from "@/lib/platform"
 import { getActiveRemoteConnectionId, isDesktop } from "@/lib/transport"
 import { toErrorMessage } from "@/lib/app-error"
 import type { LinkSafetyConfig, LinkSafetyModalProps } from "streamdown"
 import { toast } from "sonner"
 import { useActiveFolder } from "@/contexts/active-folder-context"
 import { useWorkspaceActions } from "@/contexts/workspace-context"
-import { isHomeRelativePath } from "@/lib/file-open-target"
-import { isAbsoluteFilePath } from "@/lib/file-path-display"
+import { expandHomePath, isHomeRelativePath } from "@/lib/file-open-target"
+import { isAbsoluteFilePath, toAbsoluteFilePath } from "@/lib/file-path-display"
+import { shouldOpenWithSystemApp } from "@/lib/language-detect"
 import { cn } from "@/lib/utils"
 
 export interface LocalFileTarget {
@@ -292,6 +293,45 @@ function isSelfLocatingPath(path: string): boolean {
 }
 
 /**
+ * Hand a binary artifact — an installer, app bundle, archive, or media file
+ * (see `shouldOpenWithSystemApp`) — to the OS default application instead of
+ * the workspace text preview, which for these types can only ever surface
+ * mojibake or a read error. Resolving the absolute path mirrors the preview
+ * flow: `~/…` expands via the backend, relatives join onto the active
+ * folder (no folder → the same "no workspace" toast).
+ *
+ * Returns true when the click was fully handled here (including the
+ * error-toast path), so the caller skips the preview open. False means "not
+ * mine" — web/remote mode (openPath no-ops there) or an extension the app
+ * previews itself — and the caller proceeds exactly as before.
+ */
+async function openArtifactWithSystemApp(
+  path: string,
+  folderPath: string | null | undefined,
+  onError: (description: string) => void,
+  onNoWorkspace: () => void
+): Promise<boolean> {
+  // Extension check first: it's pure, and keeping platform access behind it
+  // means the common text-file click never touches the platform module at
+  // all (which matters for tests that mock it narrowly).
+  if (!shouldOpenWithSystemApp(path) || !isLocalDesktop()) return false
+
+  const absolute = isHomeRelativePath(path)
+    ? await expandHomePath(path)
+    : toAbsoluteFilePath(path.replace(/^\.\/+/, ""), folderPath ?? undefined)
+  if (!absolute) {
+    onNoWorkspace()
+    return true
+  }
+  try {
+    await openPath(absolute)
+  } catch (error) {
+    onError(toErrorMessage(error))
+  }
+  return true
+}
+
+/**
  * Streamdown's link-safety contract renders this component whenever
  * `onLinkCheck` declines a click. We render nothing — instead we hijack
  * the `isOpen` transition to run our open-target action immediately, then
@@ -353,6 +393,20 @@ export function useOpenLinkOrFile() {
     async (url: string) => {
       const localTarget = parseLocalFileTarget(url)
       if (localTarget) {
+        // A binary artifact (installer/archive/media) opens with the OS
+        // default application — the text preview can't render it. Falls
+        // through to the preview flow in web/remote mode.
+        const openedAsArtifact = await openArtifactWithSystemApp(
+          localTarget.path,
+          folderPath,
+          (description) => toast.error(t("errorFailedOpen"), { description }),
+          () =>
+            toast.error(t("errorCannotOpen"), {
+              description: t("errorNoWorkspace"),
+            })
+        )
+        if (openedAsArtifact) return
+
         // Absolute and ~ paths open with no folder context (works in chat
         // mode too); only folder-relative paths still need an active
         // folder to resolve against.
@@ -476,35 +530,52 @@ export function FilePathLink({
     if (openingRef.current) return
     const target = resolveToolFilePath(filePath)
     if (!target) return
-    // Only folder-relative paths need an active folder; absolute and ~
-    // paths are self-locating.
-    if (!isSelfLocatingPath(target) && !folderPath) {
-      toast.error(t("errorCannotOpen"), {
-        description: t("errorNoWorkspace"),
-      })
-      return
-    }
+    void (async () => {
+      // A binary artifact (installer/archive/media) opens with the OS
+      // default application; the preview flow below stays for everything
+      // the app renders itself (and for web/remote mode).
+      const openedAsArtifact = await openArtifactWithSystemApp(
+        target,
+        folderPath,
+        (description) => toast.error(t("errorFailedOpen"), { description }),
+        () =>
+          toast.error(t("errorCannotOpen"), {
+            description: t("errorNoWorkspace"),
+          })
+      )
+      if (openedAsArtifact) return
 
-    openingRef.current = true
-    setOpening(true)
-    void openFilePreview(target, {
-      line: line ?? undefined,
-    })
-      .catch((error) => {
+      // Only folder-relative paths need an active folder; absolute and ~
+      // paths are self-locating.
+      if (!isSelfLocatingPath(target) && !folderPath) {
+        toast.error(t("errorCannotOpen"), {
+          description: t("errorNoWorkspace"),
+        })
+        return
+      }
+
+      openingRef.current = true
+      setOpening(true)
+      try {
+        await openFilePreview(target, {
+          line: line ?? undefined,
+        })
+      } catch (error) {
         toast.error(t("errorFailedOpen"), {
           description: toErrorMessage(error),
         })
-      })
-      .finally(() => {
+      } finally {
         openingRef.current = false
         setOpening(false)
-      })
+      }
+    })()
   }, [filePath, folderPath, line, openFilePreview, t])
 
   return (
     <span className={cn("block min-w-0", className)}>
       <button
         type="button"
+        data-resource-kind="file"
         title={title ?? filePath}
         aria-busy={opening}
         disabled={opening}

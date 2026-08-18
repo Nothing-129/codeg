@@ -13,6 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { useActiveFolder } from "@/contexts/active-folder-context"
 import { useSidebarContext } from "@/contexts/sidebar-context"
 import { useTabActions } from "@/contexts/tab-context"
@@ -37,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useIsCoarsePointer } from "@/hooks/use-is-coarse-pointer"
 import { useIsMac } from "@/hooks/use-is-mac"
 import { usePlatform } from "@/hooks/use-platform"
 import { useZoomLevel } from "@/hooks/use-appearance"
@@ -62,6 +64,7 @@ import {
   type SidebarSectionOrder,
 } from "@/lib/sidebar-view-mode-storage"
 import { useConversationStatusPrefs } from "@/lib/conversation-status-prefs"
+import { toErrorMessage } from "@/lib/app-error"
 import { SidebarSectionOrderControl } from "./sidebar-section-order-control"
 import { cn } from "@/lib/utils"
 
@@ -142,6 +145,12 @@ export function Sidebar() {
   const { zoomLevel } = useZoomLevel()
   const { shortcuts } = useShortcutSettings()
   const isMobile = useIsMobile()
+  // Touch devices must also collapse the sidebar after navigating AWAY from it
+  // when they land in the desktop shell — a phone in landscape, a foldable, or
+  // "request desktop site" reports ≥768px so the sidebar renders inline instead
+  // of as a Sheet, and its 320px still crowds a phone-width viewport.
+  const isCoarsePointer = useIsCoarsePointer()
+  const collapseOnNavigate = isMobile || isCoarsePointer
   const listRef = useRef<SidebarConversationListHandle>(null)
   // On desktop the header's top-left is owned by the fixed window-chrome overlay
   // (sidebar toggle + remote); reserve exactly its width so the view controls
@@ -155,6 +164,13 @@ export function Sidebar() {
   // the stored preference is applied.
   const { showStatus, allowActions, setShowStatus, setAllowActions } =
     useConversationStatusPrefs()
+  // 会话状态开关异步持久化到后端；失败时乐观值已回滚，这里补一个 toast。
+  const announcePrefsSaveFailure = useCallback(
+    (err: unknown) => {
+      toast.error(t("prefsSaveFailed", { message: toErrorMessage(err) }))
+    },
+    [t]
+  )
   const [showCompleted, setShowCompleted] = useState(false)
   const [showWorktrees, setShowWorktrees] = useState(true)
   const [showRecent, setShowRecent] = useState(true)
@@ -238,8 +254,9 @@ export function Sidebar() {
   const handleNewConversation = useCallback(() => {
     // On mobile the sidebar is a Sheet overlay — close it so the new
     // conversation is visible (mirrors tapping a conversation card, which the
-    // list wrapper already closes on).
-    if (isMobile) toggle()
+    // list wrapper already closes on). Touch devices in the desktop shell
+    // (landscape phone ≥768px) need the same, per `collapseOnNavigate`.
+    if (collapseOnNavigate) toggle()
     // Starting a conversation always returns to the conversation workspace (in
     // case a route like Automations was taking over the content region).
     openConversations()
@@ -256,7 +273,7 @@ export function Sidebar() {
     openChatModeTab,
     openNewConversationTab,
     openConversations,
-    isMobile,
+    collapseOnNavigate,
     toggle,
   ])
 
@@ -377,14 +394,18 @@ export function Sidebar() {
                   the one real action here, so it still closes. */}
               <DropdownMenuCheckboxItem
                 checked={showStatus}
-                onCheckedChange={setShowStatus}
+                onCheckedChange={(v) => {
+                  setShowStatus(v).catch(announcePrefsSaveFailure)
+                }}
                 onSelect={(event) => event.preventDefault()}
               >
                 {t("showStatus")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={allowActions}
-                onCheckedChange={setAllowActions}
+                onCheckedChange={(v) => {
+                  setAllowActions(v).catch(announcePrefsSaveFailure)
+                }}
                 onSelect={(event) => event.preventDefault()}
               >
                 {t("allowStatusActions")}
@@ -481,15 +502,17 @@ export function Sidebar() {
         />
         {/* Both route rows close the mobile Sheet on the way out, like tapping a
             conversation card (handled by the list wrapper below) — otherwise the
-            page they just opened stays hidden behind the sidebar. "Search" above
-            is deliberately left alone: it opens a dialog that sits on top of the
-            sidebar, and closing it would only cost the user their place. */}
+            page they just opened stays hidden behind the sidebar. Touch devices
+            in the desktop shell get the same via `collapseOnNavigate`. "Search"
+            above is deliberately left alone: it opens a dialog that sits on top
+            of the sidebar, and closing it would only cost the user their
+            place. */}
         <SidebarNavButton
           icon={Zap}
           label={t("automations")}
           active={routeId === "automations"}
           onClick={() => {
-            if (isMobile) toggle()
+            if (collapseOnNavigate) toggle()
             setRoute("automations")
           }}
           trailing={
@@ -505,7 +528,7 @@ export function Sidebar() {
           label={t("tasks")}
           active={routeId === "tasks"}
           onClick={() => {
-            if (isMobile) toggle()
+            if (collapseOnNavigate) toggle()
             setRoute("tasks")
           }}
           trailing={
@@ -520,11 +543,12 @@ export function Sidebar() {
         />
       </div>
 
-      {/* On mobile, clicking a conversation card auto-closes the Sheet */}
+      {/* On touch layouts, clicking a conversation card auto-closes the sidebar
+          (mobile Sheet, or a coarse-pointer device in the desktop shell). */}
       <div
         className="flex flex-col flex-1 min-h-0 overflow-hidden pt-1.5"
         onClick={
-          isMobile
+          collapseOnNavigate
             ? (e) => {
                 const target = e.target as HTMLElement
                 if (target.closest("[data-conversation-id]")) {

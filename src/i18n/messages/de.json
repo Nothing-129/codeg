@@ -168,6 +168,7 @@
       "terminalLigaturesHint": "Terminal-Ligaturen gelten nur für mitgelieferte Programmierschriftarten.",
       "preview": "Vorschau"
     },
+    "saveFailed": "Speichern der Darstellungseinstellung fehlgeschlagen: {message}",
     "conversationStatus": {
       "sectionTitle": "Konversationsstatus",
       "sectionDescription": "Farbige Punkte kennzeichnen In Bearbeitung, Prüfung, Abgeschlossen und Abgebrochen. Die Farben lassen sich ausblenden, Statusänderungen separat sperren.",
@@ -1596,6 +1597,7 @@
       "showCompleted": "Abgeschlossene Konversationen anzeigen",
       "showStatus": "Statusfarben anzeigen",
       "allowStatusActions": "Ändern des Konversationsstatus erlauben",
+      "prefsSaveFailed": "Speichern der Ansichtseinstellung fehlgeschlagen: {message}",
       "showWorktrees": "Worktree-Ordner anzeigen",
       "showRecent": "Gruppe „Zuletzt“ anzeigen",
       "moreOptions": "Weitere Optionen",
@@ -2930,6 +2932,7 @@
         "openInFinder": "In Finder öffnen",
         "openInExplorer": "In Explorer öffnen",
         "openInFileManager": "Im Dateimanager öffnen",
+        "openWithDefaultApp": "Mit Standard-App öffnen",
         "copyRelativePath": "Relativen Pfad kopieren",
         "copyAbsolutePath": "Absoluten Pfad kopieren",
         "pathCopied": "Pfad kopiert",

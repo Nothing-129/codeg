@@ -15,6 +15,23 @@ import {
   saveConversationStatusActions,
   saveConversationStatusDisplay,
 } from "@/lib/conversation-status-prefs"
+import { __resetUiPreferencesStoreForTests } from "@/lib/ui-preferences-store"
+
+// The status prefs are backend-persisted through the UiPreferences store —
+// mock the transport-facing api + broadcast wiring so no real transport is
+// constructed, and reset the store singleton between every test below.
+vi.mock("@/lib/api", () => ({
+  getUiPreferences: vi.fn(async () => null),
+  updateUiPreferences: vi.fn((prefs: unknown) => Promise.resolve(prefs)),
+}))
+vi.mock("@/lib/platform", () => ({
+  subscribe: vi.fn(async () => () => {}),
+  onTransportReconnect: vi.fn(() => null),
+}))
+
+beforeEach(() => {
+  __resetUiPreferencesStoreForTests()
+})
 
 // AgentIcon renders exactly once per card body execution, so counting its
 // renders counts how many cards actually re-rendered (a card that bails out via
@@ -354,7 +371,7 @@ describe("SidebarConversationCard hover quick actions", () => {
   })
 
   it("hides the done button and status menu when status actions are off", () => {
-    saveConversationStatusActions(false)
+    void saveConversationStatusActions(false)
     const { getByText, queryByLabelText, queryByText } = renderCard(conv(7))
     expect(queryByLabelText("Mark as completed")).toBeNull()
     fireEvent.contextMenu(getByText("conv-7"))
@@ -384,7 +401,7 @@ describe("SidebarConversationCard status display", () => {
   })
 
   it("omits the status badge when status display is off", () => {
-    saveConversationStatusDisplay(false)
+    void saveConversationStatusDisplay(false)
     const { queryByTitle } = renderWithIntl(
       <SidebarConversationCard
         conversation={{ ...conv(9), status: "pending_review" }}

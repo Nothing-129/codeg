@@ -176,6 +176,13 @@ pub const SESSION_INFO_SETTINGS_CHANGED_EVENT: &str = "session-info-settings://c
 /// (`{ "automations_enabled": bool, "work_tasks_enabled": bool }`).
 pub const CHAT_AUTHORING_SETTINGS_CHANGED_EVENT: &str = "chat-authoring-settings://changed";
 
+/// Global side-channel announcing a pure-UI preferences change (conversation
+/// status dots/actions + welcome quick-actions). The settings UI and the
+/// sidebar view-options menu both write these from different windows, so every
+/// other window converges only via this backend broadcast. Payload:
+/// `UiPreferences` (full blob, all-bool).
+pub const UI_PREFERENCES_CHANGED_EVENT: &str = "ui-preferences://changed";
+
 /// Payload for the global [`CONVERSATION_CHANGED_EVENT`] side-channel. Drives
 /// cross-client sidebar sync (membership + status) independent of the
 /// per-connection ACP attach protocol, so clients that are NOT attached to a

@@ -14,9 +14,8 @@ import {
 export const STORAGE_KEY_THEME_COLOR = "codeg-theme-color"
 export const STORAGE_KEY_ZOOM_LEVEL = "codeg-zoom-level"
 
-// 新会话欢迎页「模式选择区域」（代码开发 / 日常办公 快捷卡片）是否显示。
-// 缺省即回退为开启（保持历史行为）；仅在欢迎态客户端渲染，无需预水合。
-export const STORAGE_KEY_WELCOME_QUICK_ACTIONS = "codeg-welcome-quick-actions"
+// 新会话欢迎页「模式选择区域」（代码开发 / 日常办公 快捷卡片）已迁至后端
+// UiPreferences（`@/lib/ui-preferences-store`），不再走 localStorage。
 
 // 字体偏好（界面 / 编辑器 / 终端）。
 // 只有界面字体需要 *_STACK（已解析的 CSS font-family 栈），供 inline 脚本零依赖地

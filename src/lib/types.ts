@@ -458,6 +458,12 @@ export const FOLDER_LINKS_CHANGED_EVENT = "folder://links-changed"
  *  frontend-only cache. Mirrors the Rust `FEEDBACK_SETTINGS_CHANGED_EVENT`. */
 export const FEEDBACK_SETTINGS_CHANGED_EVENT = "feedback-settings://changed"
 
+/** Global side-channel announcing a pure-UI preferences change (payload is the
+ *  full `UiPreferences` blob). The settings window and the sidebar view-options
+ *  menu are different windows, so every other window converges on this backend
+ *  broadcast. Mirrors the Rust `UI_PREFERENCES_CHANGED_EVENT`. */
+export const UI_PREFERENCES_CHANGED_EVENT = "ui-preferences://changed"
+
 /** Payload for the global `tabs://changed` side-channel that keeps every
  *  client's open-tab set in sync across desktop + browsers. Mirrors the Rust
  *  `TabsChanged` struct. The full conversation-bound tab set is sent as a

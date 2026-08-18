@@ -32,6 +32,7 @@ pub mod system_settings;
 pub mod terminal;
 pub mod token_usage;
 mod upload_jail;
+pub mod ui_preferences;
 pub mod version_control;
 pub mod web_server;
 pub mod work_task;

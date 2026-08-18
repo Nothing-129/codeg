@@ -168,6 +168,7 @@
       "terminalLigaturesHint": "As ligaduras do terminal aplicam-se apenas às fontes de programação incluídas.",
       "preview": "Pré-visualização"
     },
+    "saveFailed": "Falha ao salvar a preferência de aparência: {message}",
     "conversationStatus": {
       "sectionTitle": "Status da conversa",
       "sectionDescription": "Pontos coloridos marcam em andamento, revisão, concluída e cancelada. Você pode ocultar as cores ou bloquear as mudanças de status.",
@@ -1596,6 +1597,7 @@
       "showCompleted": "Mostrar conversas concluídas",
       "showStatus": "Mostrar cores de status",
       "allowStatusActions": "Permitir alterar o status da conversa",
+      "prefsSaveFailed": "Falha ao salvar a preferência de exibição: {message}",
       "showWorktrees": "Mostrar pastas de worktree",
       "showRecent": "Mostrar grupo Recentes",
       "moreOptions": "Mais opções",
@@ -2930,6 +2932,7 @@
         "openInFinder": "Abrir no Finder",
         "openInExplorer": "Abrir no Explorer",
         "openInFileManager": "Abrir no gerenciador de arquivos",
+        "openWithDefaultApp": "Abrir com o aplicativo padrão",
         "copyRelativePath": "Copiar caminho relativo",
         "copyAbsolutePath": "Copiar caminho absoluto",
         "pathCopied": "Caminho copiado",

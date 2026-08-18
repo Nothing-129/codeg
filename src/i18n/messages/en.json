@@ -168,6 +168,7 @@
       "terminalLigaturesHint": "Terminal ligatures apply only to bundled coding fonts.",
       "preview": "Preview"
     },
+    "saveFailed": "Failed to save appearance preference: {message}",
     "conversationStatus": {
       "sectionTitle": "Conversation status",
       "sectionDescription": "Colored dots mark in progress, review, completed, and cancelled. You can hide the colors, or keep them visible while locking status changes.",
@@ -1596,6 +1597,7 @@
       "showCompleted": "Show completed conversations",
       "showStatus": "Show status colors",
       "allowStatusActions": "Allow changing conversation status",
+      "prefsSaveFailed": "Failed to save view preference: {message}",
       "showWorktrees": "Show worktree folders",
       "showRecent": "Show Recent group",
       "moreOptions": "More options",
@@ -2930,6 +2932,7 @@
         "openInFinder": "Open in Finder",
         "openInExplorer": "Open in Explorer",
         "openInFileManager": "Open in file manager",
+        "openWithDefaultApp": "Open with default app",
         "copyRelativePath": "Copy relative path",
         "copyAbsolutePath": "Copy absolute path",
         "pathCopied": "Path copied",

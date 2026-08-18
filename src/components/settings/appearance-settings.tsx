@@ -3,6 +3,7 @@
 import { CircleDot, LayoutGrid, Monitor, Moon, Sun, Type } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { useTheme } from "next-themes"
+import { toast } from "sonner"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
@@ -27,6 +28,7 @@ import {
   type ZoomLevel,
 } from "@/lib/theme-presets"
 import { useConversationStatusPrefs } from "@/lib/conversation-status-prefs"
+import { toErrorMessage } from "@/lib/app-error"
 import { PetManagerSection } from "./pet-manager-section"
 import { FontSettingsSection } from "./font-settings-section"
 import { WorkspaceBackgroundSection } from "./workspace-background-section"
@@ -43,6 +45,11 @@ export function AppearanceSettings() {
     useWelcomeQuickActions()
   const { showStatus, allowActions, setShowStatus, setAllowActions } =
     useConversationStatusPrefs()
+
+  // 这些开关现在异步持久化到后端；失败时乐观值已回滚，这里再报个 toast。
+  const announceSaveFailure = (err: unknown) => {
+    toast.error(t("saveFailed", { message: toErrorMessage(err) }))
+  }
 
   const resolvedThemeLabel =
     resolvedTheme === "dark"
@@ -232,7 +239,12 @@ export function AppearanceSettings() {
 
           <div className="space-y-3">
             <label className="flex items-center gap-2">
-              <Switch checked={showStatus} onCheckedChange={setShowStatus} />
+              <Switch
+                checked={showStatus}
+                onCheckedChange={(v) => {
+                  setShowStatus(v).catch(announceSaveFailure)
+                }}
+              />
               <span className="text-xs text-muted-foreground">
                 {t("conversationStatus.showStatus")}
               </span>
@@ -240,7 +252,9 @@ export function AppearanceSettings() {
             <label className="flex items-center gap-2">
               <Switch
                 checked={allowActions}
-                onCheckedChange={setAllowActions}
+                onCheckedChange={(v) => {
+                  setAllowActions(v).catch(announceSaveFailure)
+                }}
               />
               <span className="text-xs text-muted-foreground">
                 {t("conversationStatus.allowActions")}
@@ -265,7 +279,9 @@ export function AppearanceSettings() {
           <label className="flex items-center gap-2">
             <Switch
               checked={showWelcomeQuickActions}
-              onCheckedChange={setShowWelcomeQuickActions}
+              onCheckedChange={(v) => {
+                setShowWelcomeQuickActions(v).catch(announceSaveFailure)
+              }}
             />
             <span className="text-xs text-muted-foreground">
               {t("welcomePanel.showQuickActions")}

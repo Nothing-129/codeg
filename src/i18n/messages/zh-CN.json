@@ -168,6 +168,7 @@
       "terminalLigaturesHint": "终端连字仅对内置编程字体生效。",
       "preview": "预览"
     },
+    "saveFailed": "保存外观偏好失败：{message}",
     "conversationStatus": {
       "sectionTitle": "会话状态",
       "sectionDescription": "用彩色圆点区分进行中、待审、已完成和已取消。可以只隐藏颜色，也可以同时关掉改状态操作。",
@@ -1596,6 +1597,7 @@
       "showCompleted": "显示已完成会话",
       "showStatus": "显示状态颜色",
       "allowStatusActions": "允许更改会话状态",
+      "prefsSaveFailed": "保存视图偏好失败：{message}",
       "showWorktrees": "显示工作树文件夹",
       "showRecent": "显示「最近」分组",
       "moreOptions": "更多选项",
@@ -2930,6 +2932,7 @@
         "openInFinder": "在访达打开",
         "openInExplorer": "在资源管理器打开",
         "openInFileManager": "在文件管理器打开",
+        "openWithDefaultApp": "用默认应用打开",
         "copyRelativePath": "复制相对路径",
         "copyAbsolutePath": "复制绝对路径",
         "pathCopied": "已复制路径",

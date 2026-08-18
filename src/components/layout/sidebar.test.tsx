@@ -4,7 +4,14 @@ import { NextIntlClientProvider } from "next-intl"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Sidebar } from "./sidebar"
+import { __resetUiPreferencesStoreForTests } from "@/lib/ui-preferences-store"
 import enMessages from "@/i18n/messages/en.json"
+
+// The conversation-status switches now persist through the backend
+// UiPreferences store — capture the write instead of reading localStorage.
+const uiPrefsSpies = vi.hoisted(() => ({
+  updateUiPreferences: vi.fn((prefs: unknown) => Promise.resolve(prefs)),
+}))
 
 // Stable spies + mutable active-folder, referenced from the hoisted mock
 // factories below (vi.mock is hoisted above imports).
@@ -86,6 +93,15 @@ vi.mock("@/hooks/use-shortcut-settings", () => ({
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
 vi.mock("@/hooks/use-appearance", () => ({
   useZoomLevel: () => ({ zoomLevel: 100, setZoomLevel: () => {} }),
+}))
+vi.mock("@/lib/api", () => ({
+  getUiPreferences: vi.fn(async () => null),
+  updateUiPreferences: uiPrefsSpies.updateUiPreferences,
+}))
+vi.mock("@/lib/platform", () => ({
+  isDesktop: () => false,
+  subscribe: vi.fn(async () => () => {}),
+  onTransportReconnect: vi.fn(() => null),
 }))
 
 function renderSidebar() {
@@ -201,6 +217,8 @@ describe("Sidebar — Show worktree folders toggle", () => {
 describe("Sidebar — conversation status view options", () => {
   beforeEach(() => {
     localStorage.clear()
+    __resetUiPreferencesStoreForTests()
+    uiPrefsSpies.updateUiPreferences.mockClear()
   })
 
   it("defaults both status switches on and persists turning them off", async () => {
@@ -220,12 +238,14 @@ describe("Sidebar — conversation status view options", () => {
     await user.click(showStatus)
     await user.click(allowActions)
 
-    expect(localStorage.getItem("workspace:conversation-status-display")).toBe(
-      "false"
-    )
-    expect(localStorage.getItem("workspace:conversation-status-actions")).toBe(
-      "false"
-    )
+    expect(showStatus).toHaveAttribute("data-state", "unchecked")
+    expect(allowActions).toHaveAttribute("data-state", "unchecked")
+    // Persisted to the backend as the full UiPreferences blob (not localStorage).
+    expect(uiPrefsSpies.updateUiPreferences).toHaveBeenLastCalledWith({
+      show_conversation_status: false,
+      allow_conversation_status_actions: false,
+      show_welcome_quick_actions: true,
+    })
   })
 })
 

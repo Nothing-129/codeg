@@ -6,12 +6,16 @@ import { FileText, Globe, Mail, Phone, type LucideIcon } from "lucide-react"
 import type { Components, LinkSafetyModalProps } from "streamdown"
 
 import { ReferenceBadge } from "@/components/chat/composer/badges/reference-badge"
-import { parseCodegReferenceUri } from "@/components/chat/composer/reference-uri"
+import {
+  parseCodegReferenceUri,
+  parseFilePathReferenceUri,
+} from "@/components/chat/composer/reference-uri"
 import { FileReferenceActions } from "@/components/message/file-reference-actions"
 import type { ReferenceAttrs } from "@/components/chat/composer/types"
 import { classifyResourceKind, type ResourceKind } from "@/lib/resource-kind"
 import { cn } from "@/lib/utils"
 import {
+  FilePathLink,
   openExternalTab,
   openLinkWithSafety,
   useStreamdownLinkSafety,
@@ -104,6 +108,34 @@ export function MarkdownLink({
   // editor uses on draft restore recovers refType/id/meta from the uri; the link
   // text is the label.
   if (!isIncomplete && href.toLowerCase().startsWith("codeg:")) {
+    // A path-bearing `codeg://file/…` reference — an autolinked plain-text
+    // path (remark-autolink-local-paths). Same chip look as the file badges
+    // below, but the click routes through FilePathLink, which resolves
+    // folder-relative / `~` / `./` paths the way tool-call paths resolve; a
+    // plain href cannot carry those forms through Streamdown's URL
+    // normalization unharmed. The menu takes the decoded path directly.
+    const filePath = parseFilePathReferenceUri(href)
+    if (filePath !== null) {
+      const fileData: ReferenceAttrs = {
+        refType: "file",
+        id: filePath,
+        label: nodeText(children) || filePath,
+        uri: href,
+        meta: { fileKind: "file" },
+      }
+      return (
+        <FileReferenceActions path={filePath}>
+          <FilePathLink
+            filePath={filePath}
+            title={filePath}
+            className="inline-block max-w-full -translate-y-[1.5px] align-middle"
+          >
+            <ReferenceBadge data={fileData} />
+          </FilePathLink>
+        </FileReferenceActions>
+      )
+    }
+
     const reference = parseCodegReferenceUri(href, nodeText(children))
     if (reference) return <ReferenceBadge data={reference} />
   }

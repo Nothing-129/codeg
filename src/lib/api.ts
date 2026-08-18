@@ -4454,6 +4454,27 @@ export async function submitSessionFeedback(
   })
 }
 
+// ─── UI preferences (conversation status + welcome quick-actions) ────────
+
+/** Mirror of Rust `UiPreferences` (all default true; wire fields are
+ *  snake_case). `null` from `getUiPreferences` means "no row yet" — the
+ *  one-time localStorage migration keys on that exact signal. */
+export interface UiPreferences {
+  show_conversation_status: boolean
+  allow_conversation_status_actions: boolean
+  show_welcome_quick_actions: boolean
+}
+
+export async function getUiPreferences(): Promise<UiPreferences | null> {
+  return getTransport().call("get_ui_preferences")
+}
+
+export async function updateUiPreferences(
+  settings: UiPreferences
+): Promise<UiPreferences> {
+  return getTransport().call("set_ui_preferences", { settings })
+}
+
 // ─── Ask-user-question settings ────────────────────────────────────────────
 
 /** Mirror of Rust `QuestionSettings` (default ON). */

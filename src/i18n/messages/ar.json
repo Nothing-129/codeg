@@ -168,6 +168,7 @@
       "terminalLigaturesHint": "تنطبق الحروف المتصلة في الطرفية على خطوط البرمجة المضمّنة فقط.",
       "preview": "معاينة"
     },
+    "saveFailed": "فشل حفظ تفضيل المظهر: {message}",
     "conversationStatus": {
       "sectionTitle": "حالة المحادثة",
       "sectionDescription": "نقاط ملونة تميز قيد التنفيذ والمراجعة والمكتملة والملغاة. يمكنك إخفاء الألوان أو منع تغيير الحالة.",
@@ -1596,6 +1597,7 @@
       "showCompleted": "عرض المحادثات المكتملة",
       "showStatus": "إظهار ألوان الحالة",
       "allowStatusActions": "السماح بتغيير حالة المحادثة",
+      "prefsSaveFailed": "فشل حفظ تفضيل العرض: {message}",
       "showWorktrees": "عرض مجلدات worktree",
       "showRecent": "عرض مجموعة الأحدث",
       "moreOptions": "المزيد من الخيارات",
@@ -2930,6 +2932,7 @@
         "openInFinder": "فتح في Finder",
         "openInExplorer": "فتح في Explorer",
         "openInFileManager": "فتح في مدير الملفات",
+        "openWithDefaultApp": "فتح باستخدام التطبيق الافتراضي",
         "copyRelativePath": "نسخ المسار النسبي",
         "copyAbsolutePath": "نسخ المسار المطلق",
         "pathCopied": "تم نسخ المسار",

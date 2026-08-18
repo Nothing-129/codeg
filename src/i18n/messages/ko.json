@@ -168,6 +168,7 @@
       "terminalLigaturesHint": "터미널 합자는 내장 코딩 글꼴에만 적용됩니다.",
       "preview": "미리 보기"
     },
+    "saveFailed": "외관 기본 설정 저장 실패: {message}",
     "conversationStatus": {
       "sectionTitle": "대화 상태",
       "sectionDescription": "진행 중, 검토, 완료, 취소를 색상 점으로 구분합니다. 색상만 숨기거나 상태 변경을 끌 수 있습니다.",
@@ -1596,6 +1597,7 @@
       "showCompleted": "완료된 대화 표시",
       "showStatus": "상태 색상 표시",
       "allowStatusActions": "대화 상태 변경 허용",
+      "prefsSaveFailed": "보기 기본 설정 저장 실패: {message}",
       "showWorktrees": "워크트리 폴더 표시",
       "showRecent": "'최근' 그룹 표시",
       "moreOptions": "더 많은 옵션",
@@ -2930,6 +2932,7 @@
         "openInFinder": "Finder에서 열기",
         "openInExplorer": "Explorer에서 열기",
         "openInFileManager": "파일 관리자에서 열기",
+        "openWithDefaultApp": "기본 앱으로 열기",
         "copyRelativePath": "상대 경로 복사",
         "copyAbsolutePath": "절대 경로 복사",
         "pathCopied": "경로가 복사되었습니다",

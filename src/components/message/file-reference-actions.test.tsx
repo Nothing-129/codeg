@@ -7,6 +7,7 @@ import enMessages from "@/i18n/messages/en.json"
 const mocks = vi.hoisted(() => ({
   isLocalDesktop: vi.fn(() => true),
   revealItemInDir: vi.fn(async () => {}),
+  openPath: vi.fn(async () => {}),
   copyTextFromMenu: vi.fn(async () => true),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/platform", () => ({
   isLocalDesktop: mocks.isLocalDesktop,
   revealItemInDir: mocks.revealItemInDir,
+  openPath: mocks.openPath,
 }))
 
 vi.mock("sonner", () => ({
@@ -198,10 +200,27 @@ describe("FileReferenceActions", () => {
     renderActions("file:///repo/src/app.ts#L10-25")
     openMenu()
 
-    fireEvent.click(screen.getByRole("menuitem", { name: /^Open in/ }))
+    // Platform-agnostic match on the reveal row (its label varies with the
+    // host OS); "Open with default app" must not match it.
+    fireEvent.click(
+      screen.getByRole("menuitem", {
+        name: /^Open in (Finder|Explorer|file manager)/,
+      })
+    )
     await waitFor(() => {
       expect(mocks.revealItemInDir).toHaveBeenCalledWith("/repo/src/app.ts")
     })
+  })
+
+  it("opens the file with the OS default application", async () => {
+    renderActions("file:///repo/src/app.ts")
+    openMenu()
+
+    fireEvent.click(item("Open with default app"))
+    await waitFor(() => {
+      expect(mocks.openPath).toHaveBeenCalledWith("/repo/src/app.ts")
+    })
+    expect(mocks.revealItemInDir).not.toHaveBeenCalled()
   })
 
   it("copies the relative and the absolute path", async () => {
@@ -246,7 +265,16 @@ describe("FileReferenceActions", () => {
     renderActions("file:///repo/src/app.ts")
     openMenu()
 
-    expect(screen.queryByRole("menuitem", { name: /^Open in/ })).toBeNull()
+    expect(
+      screen.queryByRole("menuitem", {
+        name: /^Open in (Finder|Explorer|file manager)/,
+      })
+    ).toBeNull()
+    expect(
+      screen.queryByRole("menuitem", {
+        name: "Open with default app",
+      })
+    ).toBeNull()
     expect(item("Copy absolute path")).toBeInTheDocument()
   })
 })

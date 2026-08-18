@@ -168,6 +168,7 @@
       "terminalLigaturesHint": "ターミナルの合字は内蔵のコーディングフォントにのみ適用されます。",
       "preview": "プレビュー"
     },
+    "saveFailed": "外観設定の保存に失敗しました：{message}",
     "conversationStatus": {
       "sectionTitle": "会話ステータス",
       "sectionDescription": "進行中・レビュー・完了・キャンセルを色付きドットで区別します。色だけ隠すことも、ステータス変更をオフにすることもできます。",
@@ -1596,6 +1597,7 @@
       "showCompleted": "完了した会話を表示",
       "showStatus": "ステータスの色を表示",
       "allowStatusActions": "会話ステータスの変更を許可",
+      "prefsSaveFailed": "表示設定の保存に失敗しました：{message}",
       "showWorktrees": "ワークツリーフォルダを表示",
       "showRecent": "「最近」グループを表示",
       "moreOptions": "その他のオプション",
@@ -2930,6 +2932,7 @@
         "openInFinder": "Finderで開く",
         "openInExplorer": "エクスプローラーで開く",
         "openInFileManager": "ファイルマネージャーで開く",
+        "openWithDefaultApp": "デフォルトアプリで開く",
         "copyRelativePath": "相対パスをコピー",
         "copyAbsolutePath": "絶対パスをコピー",
         "pathCopied": "パスをコピーしました",

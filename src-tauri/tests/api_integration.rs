@@ -241,6 +241,54 @@ async fn feedback_settings_round_trip_defaults_off() {
 // (`submit_feedback_rejected_when_tool_unavailable`), not via the global setting.
 
 // ────────────────────────────────────────────────────────────────────────────
+// UI preferences (conversation-status + welcome quick-actions toggles)
+// ────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn ui_preferences_round_trip_defaults_on() {
+    let (server, _data, _static) = build_test_server().await;
+    // No row yet → null (the exact signal the frontend one-time migration keys
+    // on — must not be conflated with a stored all-defaults blob).
+    let resp = server
+        .post("/api/get_ui_preferences")
+        .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
+        .json(&json!({}))
+        .await;
+    assert_eq!(resp.status_code(), 200);
+    assert_eq!(resp.json::<Value>(), Value::Null);
+
+    // Persist a partial-off blob.
+    let resp = server
+        .post("/api/set_ui_preferences")
+        .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
+        .json(&json!({
+            "settings": {
+                "show_conversation_status": false,
+                "allow_conversation_status_actions": true,
+                "show_welcome_quick_actions": false
+            }
+        }))
+        .await;
+    assert_eq!(resp.status_code(), 200);
+    let body: Value = resp.json();
+    // Field naming sanity: the wire contract is snake_case.
+    assert_eq!(body["show_conversation_status"], false);
+    assert_eq!(body["allow_conversation_status_actions"], true);
+    assert_eq!(body["show_welcome_quick_actions"], false);
+
+    // Reads back the persisted blob.
+    let resp = server
+        .post("/api/get_ui_preferences")
+        .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
+        .json(&json!({}))
+        .await;
+    let body: Value = resp.json();
+    assert_eq!(body["show_conversation_status"], false);
+    assert_eq!(body["allow_conversation_status_actions"], true);
+    assert_eq!(body["show_welcome_quick_actions"], false);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Response compression (allowlist predicate) + turn-window params
 // ────────────────────────────────────────────────────────────────────────────
 

@@ -78,6 +78,14 @@ pub fn build_router(
             post(handlers::feedback::submit_session_feedback),
         )
         .route(
+            "/get_ui_preferences",
+            post(handlers::ui_preferences::get_ui_preferences),
+        )
+        .route(
+            "/set_ui_preferences",
+            post(handlers::ui_preferences::set_ui_preferences),
+        )
+        .route(
             "/get_question_settings",
             post(handlers::question::get_question_settings),
         )

@@ -35,6 +35,33 @@ export function isEmbeddedReferenceUri(uri: string): boolean {
   return uri.toLowerCase().startsWith(EMBEDDED_URI_PREFIX)
 }
 
+// A real local path carried inside a `codeg://` reference uri. The payload is
+// the whole path, percent-encoded by {@link buildFilePathReferenceUri}, so
+// spaces / CJK / backslashes survive Streamdown's sanitize + harden + URL
+// normalization gauntlet — which plain-text hrefs do not: a relative href is
+// re-resolved against the webview origin (`./src/a.ts` → `/src/a.ts`) and a
+// `~/…` href fails rehype-harden's `new URL` parse and renders "[blocked]".
+// Emitted by remark-autolink-local-paths; consumed by MarkdownLink, which
+// renders it as an openable file badge.
+const FILE_PATH_URI = /^codeg:\/\/file\/(.+)$/i
+
+/** Mint a uri carrying `path` (absolute, `~/…`, or folder-relative). */
+export function buildFilePathReferenceUri(path: string): string {
+  return `codeg://file/${encodeURIComponent(path)}`
+}
+
+/** The local path carried by a `codeg://file/…` uri, or null. */
+export function parseFilePathReferenceUri(uri: string): string | null {
+  const payload = uri.match(FILE_PATH_URI)?.[1]
+  if (payload === undefined) return null
+  try {
+    return decodeURIComponent(payload) || null
+  } catch {
+    // keep the raw payload when it isn't valid percent-encoding
+    return payload || null
+  }
+}
+
 /**
  * Parse a composer reference uri (`file://` / `codeg://…`) back into
  * {@link ReferenceAttrs}, or null when it isn't a recognized reference scheme
@@ -55,6 +82,20 @@ export function parseCodegReferenceUri(
       refType: "file",
       id: base || uri,
       label: label || base || uri,
+      uri,
+      meta: { fileKind: "file" },
+    }
+  }
+
+  // A path-bearing `codeg://file/…` reference (autolinked plain-text path —
+  // see remark-autolink-local-paths). Unlike the inert `codeg://embedded/…`
+  // badge below, the decoded path in `id` is a real, openable target.
+  const filePath = parseFilePathReferenceUri(uri)
+  if (filePath !== null) {
+    return {
+      refType: "file",
+      id: filePath,
+      label: label || filePath,
       uri,
       meta: { fileKind: "file" },
     }

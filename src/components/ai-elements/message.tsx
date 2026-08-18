@@ -30,6 +30,7 @@ import {
 } from "streamdown"
 import { markdownLinkComponents } from "./markdown-link"
 import { rehypePluginsAllowingCodeg } from "./rehype-allow-codeg"
+import { remarkAutolinkLocalPaths } from "./remark-autolink-local-paths"
 import { remarkTrimCjkAutolinkTail } from "./remark-cjk-autolink-tail"
 import { remarkRewriteFileUriLinks } from "./remark-file-uri-links"
 import { MATH_FENCE_PAD, useStreamdownPlugins } from "./streamdown-plugins"
@@ -474,6 +475,7 @@ function containerPrefixEnd(
 const remarkPlugins = [
   ...Object.values(defaultRemarkPlugins),
   remarkRewriteFileUriLinks,
+  remarkAutolinkLocalPaths,
   remarkTrimCjkAutolinkTail,
 ]
 

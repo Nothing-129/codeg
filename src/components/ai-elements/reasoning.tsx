@@ -27,6 +27,7 @@ import { Shimmer } from "./shimmer"
 import { markdownLinkComponents } from "./markdown-link"
 import { normalizeMathDelimiters } from "./message"
 import { remarkTrimCjkAutolinkTail } from "./remark-cjk-autolink-tail"
+import { remarkAutolinkLocalPaths } from "./remark-autolink-local-paths"
 import { remarkRewriteFileUriLinks } from "./remark-file-uri-links"
 import { useStreamdownPlugins } from "./streamdown-plugins"
 
@@ -230,6 +231,7 @@ export type ReasoningContentProps = ComponentProps<
 const remarkPlugins = [
   ...Object.values(defaultRemarkPlugins),
   remarkRewriteFileUriLinks,
+  remarkAutolinkLocalPaths,
   remarkTrimCjkAutolinkTail,
 ]
 

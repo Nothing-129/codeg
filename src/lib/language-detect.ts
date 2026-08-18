@@ -212,6 +212,67 @@ export function isOfficePreviewable(path: string | null | undefined): boolean {
   return ext === "docx" || ext === "xlsx" || ext === "pptx"
 }
 
+// Binary artifacts and media the in-app preview cannot render — installers
+// (.dmg/.pkg/.exe), app bundles (.app), archives, audio/video, fonts. A file
+// reference with one of these extensions opens with the OS default
+// application (desktop opener's openPath) instead of the workspace text
+// preview, which for these types can only ever surface mojibake or a read
+// error. Everything else — text/code, images, office docs — keeps the
+// in-app preview, so this set is deliberately an exclusion list, not a
+// "known text" allowlist.
+const OPEN_WITH_SYSTEM_APP_EXTENSIONS = new Set([
+  // installers & app bundles
+  "dmg",
+  "pkg",
+  "app",
+  "exe",
+  "msi",
+  "deb",
+  "rpm",
+  "apk",
+  "ipa",
+  // archives
+  "zip",
+  "gz",
+  "tgz",
+  "bz2",
+  "xz",
+  "zst",
+  "tar",
+  "7z",
+  "rar",
+  // audio / video
+  "mp3",
+  "wav",
+  "flac",
+  "aac",
+  "ogg",
+  "m4a",
+  "mp4",
+  "mov",
+  "avi",
+  "mkv",
+  "webm",
+  // fonts
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+])
+
+/**
+ * True when a file reference should open with the OS default application
+ * (local desktop) rather than the in-app workspace preview — a build
+ * artifact like a .dmg installer or an .app bundle is "opened" by the
+ * system, not read as text. Extension check is case-insensitive.
+ */
+export function shouldOpenWithSystemApp(path: string): boolean {
+  const basename = path.toLowerCase().split(/[\\/]/).pop() ?? ""
+  const dot = basename.lastIndexOf(".")
+  if (dot === -1) return false
+  return OPEN_WITH_SYSTEM_APP_EXTENSIONS.has(basename.slice(dot + 1))
+}
+
 export function languageFromPath(path: string): string {
   const lower = path.toLowerCase()
   const basename = lower.split(/[\\/]/).pop() ?? lower

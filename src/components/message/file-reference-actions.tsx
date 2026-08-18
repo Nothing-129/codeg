@@ -19,7 +19,7 @@ import {
   toAbsoluteFilePath,
   toFolderRelativePath,
 } from "@/lib/file-path-display"
-import { isLocalDesktop, revealItemInDir } from "@/lib/platform"
+import { isLocalDesktop, openPath, revealItemInDir } from "@/lib/platform"
 import { copyTextFromMenu } from "@/lib/utils"
 
 /** The two path forms offered by the badge's action menu. */
@@ -54,12 +54,26 @@ export function resolveFileReferenceTarget(
 ): FileReferencePaths | null {
   const target = parseLocalFileTarget(rawTarget)
   if (!target) return null
+  return resolveLocalPaths(target.path, folderPath)
+}
 
-  if (isHomeRelativePath(target.path)) {
-    return { absolute: target.path, relative: null }
+/**
+ * Resolve an already-trusted local path (absolute, `~/…`, or folder-relative)
+ * into its absolute and folder-relative forms. Shared by the url-parsing
+ * {@link resolveFileReferenceTarget} and the `path` prop mode below, whose
+ * paths arrive pre-validated (minted by remark-autolink-local-paths) and so
+ * skip `parseLocalFileTarget` — which rejects bare-relative paths that are
+ * perfectly valid here.
+ */
+function resolveLocalPaths(
+  path: string,
+  folderPath?: string | null
+): FileReferencePaths | null {
+  if (isHomeRelativePath(path)) {
+    return { absolute: path, relative: null }
   }
 
-  const absolute = toAbsoluteFilePath(target.path, folderPath ?? undefined)
+  const absolute = toAbsoluteFilePath(path, folderPath ?? undefined)
   if (!absolute) return null
 
   // `toFolderRelativePath` returns the absolute path unchanged when the file
@@ -90,13 +104,24 @@ export function systemFileManagerLabelKey():
  * transcript pays for neither the active-folder subscription, the path
  * resolution, nor a translator.
  */
-function FileReferenceActionsMenu({ target }: { target: string }) {
+function FileReferenceActionsMenu({
+  target,
+  path,
+}: {
+  target?: string
+  path?: string
+}) {
   const t = useTranslations("Folder.chat.fileActions")
   const { activeFolder } = useActiveFolder()
   const folderPath = activeFolder?.path
   const paths = useMemo(
-    () => resolveFileReferenceTarget(target, folderPath),
-    [target, folderPath]
+    () =>
+      path !== undefined
+        ? resolveLocalPaths(path, folderPath)
+        : target !== undefined
+          ? resolveFileReferenceTarget(target, folderPath)
+          : null,
+    [target, path, folderPath]
   )
 
   const handleReveal = () => {
@@ -107,6 +132,23 @@ function FileReferenceActionsMenu({ target }: { target: string }) {
           ? await expandHomePath(paths.absolute)
           : paths.absolute
         await revealItemInDir(absolute)
+      } catch (error) {
+        toast.error(t("openFailed"), { description: toErrorMessage(error) })
+      }
+    })()
+  }
+
+  // Open the file with the OS default application — the "double-click it in
+  // the file manager" action. Most useful for binary artifacts (installer /
+  // archive / media) the in-app preview can't render.
+  const handleOpenWithSystemApp = () => {
+    if (!paths) return
+    void (async () => {
+      try {
+        const absolute = isHomeRelativePath(paths.absolute)
+          ? await expandHomePath(paths.absolute)
+          : paths.absolute
+        await openPath(absolute)
       } catch (error) {
         toast.error(t("openFailed"), { description: toErrorMessage(error) })
       }
@@ -125,12 +167,18 @@ function FileReferenceActionsMenu({ target }: { target: string }) {
 
   return (
     <>
-      {/* `revealItemInDir` is a no-op in web mode and for a desktop window
-          bound to a remote workspace, so the row is hidden rather than dead. */}
+      {/* `openPath` / `revealItemInDir` are no-ops in web mode and for a
+          desktop window bound to a remote workspace, so those rows are
+          hidden rather than dead. */}
       {isLocalDesktop() && (
-        <ContextMenuItem disabled={!paths} onSelect={handleReveal}>
-          {t(systemFileManagerLabelKey())}
-        </ContextMenuItem>
+        <>
+          <ContextMenuItem disabled={!paths} onSelect={handleOpenWithSystemApp}>
+            {t("openWithDefaultApp")}
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!paths} onSelect={handleReveal}>
+            {t(systemFileManagerLabelKey())}
+          </ContextMenuItem>
+        </>
       )}
       <ContextMenuItem
         disabled={!paths?.relative}
@@ -170,16 +218,30 @@ function FileReferenceActionsMenu({ target }: { target: string }) {
  */
 export function FileReferenceActions({
   target,
+  path,
   children,
 }: {
-  target: string
+  /**
+   * A url-shaped target — a `file://` uri (user-message badge) or a local
+   * path (assistant markdown link) — parsed with `parseLocalFileTarget`
+   * before use.
+   */
+  target?: string
+  /**
+   * A trusted local path carried by a `codeg://file/…` badge (an autolinked
+   * plain-text path, see remark-autolink-local-paths). Used as-is, no url
+   * parsing — bare-relative paths are valid here.
+   */
+  path?: string
   children: ReactNode
 }) {
   // Folder-independent: whether this target is a local file at all. The full
   // resolution (which needs the active folder) happens inside the open menu.
   const isLocalFile = useMemo(
-    () => parseLocalFileTarget(target) !== null,
-    [target]
+    () =>
+      (path !== undefined && path !== "") ||
+      (target !== undefined && parseLocalFileTarget(target) !== null),
+    [target, path]
   )
 
   if (!isLocalFile) return <>{children}</>
@@ -205,7 +267,7 @@ export function FileReferenceActions({
         </span>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <FileReferenceActionsMenu target={target} />
+        <FileReferenceActionsMenu target={target} path={path} />
       </ContextMenuContent>
     </ContextMenu>
   )

@@ -73,8 +73,9 @@ mod tauri_app {
         question as question_commands, quick_messages as quick_messages_commands,
         remote_proxy as remote_proxy_commands, remote_workspace as remote_workspace_commands,
         science as science_commands, session_info as session_info_commands, system_settings,
-        terminal as terminal_commands, token_usage as token_usage_commands, version_control,
-        windows, work_task as work_task_commands, workspace_state as workspace_state_commands,
+        terminal as terminal_commands, token_usage as token_usage_commands, ui_preferences,
+        version_control, windows, work_task as work_task_commands,
+        workspace_state as workspace_state_commands,
     };
     use crate::terminal::manager::TerminalManager;
     use crate::{db, git_credential, network, paths, process, web};
@@ -1173,6 +1174,8 @@ mod tauri_app {
                 session_info_commands::set_session_info_settings,
                 chat_authoring_commands::get_chat_authoring_settings,
                 chat_authoring_commands::set_chat_authoring_settings,
+                ui_preferences::get_ui_preferences,
+                ui_preferences::set_ui_preferences,
                 version_control::detect_git,
                 version_control::test_git_path,
                 version_control::get_git_settings,

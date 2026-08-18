@@ -1,86 +1,65 @@
 // Conversation-status UI preference: whether to show the colored status
 // (in progress / review / completed / cancelled) and whether the user can
-// change it. Persisted in localStorage; both default ON so the main-branch
-// status workflow stays available until the user turns a switch off.
+// change it. Backed by the backend-persisted UiPreferences store
+// (`app_metadata`), so the toggles survive an app reinstall; both default ON
+// so the main-branch status workflow stays available until the user turns a
+// switch off. Thin sugar over `@/lib/ui-preferences-store` — consumers keep
+// the historical load/save/use API surface.
 
-import { useEffect, useState } from "react"
+import {
+  DEFAULT_UI_PREFERENCES,
+  getCachedUiPreferences,
+  setUiPreferences,
+  useUiPreferences,
+} from "@/lib/ui-preferences-store"
 
-const SHOW_STATUS_KEY = "workspace:conversation-status-display"
-const ALLOW_ACTIONS_KEY = "workspace:conversation-status-actions"
-const SHOW_STATUS_EVENT = "codeg:conversation-status-display-changed"
-const ALLOW_ACTIONS_EVENT = "codeg:conversation-status-actions-changed"
-
-function readFlag(key: string): boolean {
-  if (typeof window === "undefined") return true
-  try {
-    // Default ON: only an explicit "false" disables it.
-    return localStorage.getItem(key) !== "false"
-  } catch {
-    return true
-  }
-}
-
-function writeFlag(key: string, eventName: string, value: boolean): void {
-  if (typeof window === "undefined") return
-  try {
-    localStorage.setItem(key, String(value))
-  } catch {
-    /* ignore */
-  }
-  window.dispatchEvent(new CustomEvent(eventName, { detail: value }))
-}
-
+/** Synchronous read of the "show status colors" preference (cache only). */
 export function loadConversationStatusDisplay(): boolean {
-  return readFlag(SHOW_STATUS_KEY)
+  return (getCachedUiPreferences() ?? DEFAULT_UI_PREFERENCES)
+    .show_conversation_status
 }
 
-export function saveConversationStatusDisplay(value: boolean): void {
-  writeFlag(SHOW_STATUS_KEY, SHOW_STATUS_EVENT, value)
-}
-
+/** Synchronous read of the "allow changing status" preference (cache only). */
 export function loadConversationStatusActions(): boolean {
-  return readFlag(ALLOW_ACTIONS_KEY)
+  return (getCachedUiPreferences() ?? DEFAULT_UI_PREFERENCES)
+    .allow_conversation_status_actions
 }
 
-export function saveConversationStatusActions(value: boolean): void {
-  writeFlag(ALLOW_ACTIONS_KEY, ALLOW_ACTIONS_EVENT, value)
+/** Optimistic save; persists to the backend and reverts on failure (rejects
+ *  after the revert — callers that care surface a toast). */
+export function saveConversationStatusDisplay(value: boolean): Promise<void> {
+  return setUiPreferences({ show_conversation_status: value }).then(
+    () => undefined
+  )
 }
 
-function useStoredFlag(load: () => boolean, eventName: string): boolean {
-  const [enabled, setEnabled] = useState<boolean>(load)
-  useEffect(() => {
-    const sync = () => setEnabled(load())
-    window.addEventListener(eventName, sync)
-    window.addEventListener("storage", sync)
-    return () => {
-      window.removeEventListener(eventName, sync)
-      window.removeEventListener("storage", sync)
-    }
-  }, [load, eventName])
-  return enabled
+/** See {@link saveConversationStatusDisplay}. */
+export function saveConversationStatusActions(value: boolean): Promise<void> {
+  return setUiPreferences({ allow_conversation_status_actions: value }).then(
+    () => undefined
+  )
 }
 
 /** Live read of the "show status colors" preference. */
 export function useConversationStatusDisplay(): boolean {
-  return useStoredFlag(loadConversationStatusDisplay, SHOW_STATUS_EVENT)
+  return useUiPreferences().show_conversation_status
 }
 
 /** Live read of the "allow changing status" preference. */
 export function useConversationStatusActions(): boolean {
-  return useStoredFlag(loadConversationStatusActions, ALLOW_ACTIONS_EVENT)
+  return useUiPreferences().allow_conversation_status_actions
 }
 
 export function useConversationStatusPrefs(): {
   showStatus: boolean
   allowActions: boolean
-  setShowStatus: (value: boolean) => void
-  setAllowActions: (value: boolean) => void
+  setShowStatus: (value: boolean) => Promise<void>
+  setAllowActions: (value: boolean) => Promise<void>
 } {
-  const showStatus = useConversationStatusDisplay()
-  const allowActions = useConversationStatusActions()
+  const prefs = useUiPreferences()
   return {
-    showStatus,
-    allowActions,
+    showStatus: prefs.show_conversation_status,
+    allowActions: prefs.allow_conversation_status_actions,
     setShowStatus: saveConversationStatusDisplay,
     setAllowActions: saveConversationStatusActions,
   }

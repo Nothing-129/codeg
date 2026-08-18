@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { languageFromPath } from "./language-detect"
+import { languageFromPath, shouldOpenWithSystemApp } from "./language-detect"
 
 describe("languageFromPath", () => {
   // The original implementation was a 13-case switch. These cases lock that
@@ -175,5 +175,35 @@ describe("languageFromPath", () => {
     ])("%s -> plaintext", (path) => {
       expect(languageFromPath(path)).toBe("plaintext")
     })
+  })
+})
+
+describe("shouldOpenWithSystemApp", () => {
+  it.each([
+    // The artifact-table case: installers, app bundles, archives, media.
+    ["src-tauri/target/release/bundle/dmg/Codeg_0.26.1_aarch64.dmg"],
+    ["src-tauri/target/release/bundle/macos/Codeg.app"],
+    ["dist/tool.zip"],
+    ["assets/演示视频.mp4"],
+    ["~/Downloads/Installer.pkg"],
+    ["C:\\Users\\a\\setup.exe"],
+    // Case-insensitive extension match.
+    ["release/APP-1.0.DMG"],
+  ])("%s opens with the system app", (path) => {
+    expect(shouldOpenWithSystemApp(path)).toBe(true)
+  })
+
+  it.each([
+    // Everything the app previews itself: text/code, images, office.
+    ["src/app.ts"],
+    ["README.md"],
+    ["docs/手册.docx"],
+    ["logo.png"],
+    ["noextension"],
+    ["trailing."],
+    [""],
+    ["."],
+  ])("%s stays with the in-app preview", (path) => {
+    expect(shouldOpenWithSystemApp(path)).toBe(false)
   })
 })
