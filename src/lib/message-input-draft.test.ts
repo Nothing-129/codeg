@@ -79,7 +79,10 @@ describe("message-input-draft v2", () => {
   })
 
   it("keeps the legacy v1 draft when the v2 write fails (not retired early)", () => {
-    saveMessageInputDraft("k-fail", "legacy survives")
+    localStorage.setItem(
+      V1("k-fail"),
+      JSON.stringify({ text: "legacy survives" })
+    )
     // Spy on the live instance (not Storage.prototype) so this also works when
     // localStorage comes from the in-memory fallback in test-setup (Node ≥ 25).
     const originalSetItem = localStorage.setItem.bind(localStorage)
@@ -92,7 +95,7 @@ describe("message-input-draft v2", () => {
         originalSetItem(key, value)
       })
     try {
-      // Flushes synchronously in jsdom; the v2 setItem throws.
+      // The scheduler may flush during the mock; the v2 setItem throws.
       saveMessageInputDraftV2("k-fail", DOC)
     } finally {
       setItem.mockRestore()
