@@ -5286,7 +5286,7 @@ mod tests {
             "empty selection is invalid input"
         );
 
-        let _held = IMPORT_GUARD.try_lock().expect("guard free in test");
+        let _held = IMPORT_GUARD.lock().await;
         assert!(
             import_selected_sessions_core(
                 &db.conn,
@@ -5308,7 +5308,7 @@ mod tests {
         let db = fresh_in_memory_db().await;
         let folder_id = seed_folder(&db, "/tmp/legacy-guard").await;
 
-        let _held = IMPORT_GUARD.try_lock().expect("guard free in test");
+        let _held = IMPORT_GUARD.lock().await;
         let err = import_local_conversations_core(
             &db.conn,
             &EventEmitter::Noop,
