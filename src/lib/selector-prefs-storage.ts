@@ -17,7 +17,7 @@
  * incoming event and overwrite locally" path.
  */
 
-import type { SessionModeStateInfo } from "@/lib/types"
+import type { SessionConfigOptionInfo, SessionModeStateInfo } from "@/lib/types"
 
 const STORAGE_KEY = "codeg:selector-prefs"
 
@@ -121,4 +121,61 @@ export function saveConfigPreference(
     ...prefs,
     configValues: { ...prefs.configValues, [configId]: valueId },
   }))
+}
+
+function selectHasValue(
+  kind: Extract<SessionConfigOptionInfo["kind"], { type: "select" }>,
+  value: string
+): boolean {
+  if (kind.options.some((option) => option.value === value)) return true
+  return kind.groups.some((group) =>
+    group.options.some((option) => option.value === value)
+  )
+}
+
+/** Overlay the user's last pick onto a cached catalog (not a live snapshot). */
+export function applySavedModePreference(
+  agentType: string,
+  modes: SessionModeStateInfo | null
+): SessionModeStateInfo | null {
+  if (!modes) return null
+  const modeId = getSavedModeId(agentType)
+  if (!modeId || !modes.available_modes.some((mode) => mode.id === modeId)) {
+    return modes
+  }
+  if (modes.current_mode_id === modeId) return modes
+  return { ...modes, current_mode_id: modeId }
+}
+
+/** Overlay saved config/model picks onto a cached catalog. */
+export function applySavedConfigPreferences(
+  agentType: string,
+  options: SessionConfigOptionInfo[] | null
+): SessionConfigOptionInfo[] | null {
+  if (!options) return null
+  const { configValues } = getSavedPrefsForConnect(agentType)
+  if (!configValues) return options
+  let changed = false
+  const next = options.map((option) => {
+    const saved = configValues[option.id]
+    if (saved == null) return option
+    if (option.kind.type === "select") {
+      if (
+        option.kind.current_value === saved ||
+        !selectHasValue(option.kind, saved)
+      ) {
+        return option
+      }
+      changed = true
+      return { ...option, kind: { ...option.kind, current_value: saved } }
+    }
+    if (option.kind.type === "boolean") {
+      const nextValue = saved === "true"
+      if (option.kind.current_value === nextValue) return option
+      changed = true
+      return { ...option, kind: { ...option.kind, current_value: nextValue } }
+    }
+    return option
+  })
+  return changed ? next : options
 }

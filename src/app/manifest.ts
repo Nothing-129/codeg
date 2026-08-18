@@ -4,9 +4,9 @@ import type { MetadataRoute } from "next"
 export const dynamic = "force-static"
 
 // PWA manifest, consumed by browsers in server / Docker / remote-desktop web
-// mode (Tauri desktop ignores it). Icons are full-bleed near-black so the
-// install splash blends into the app's dark theme; the maskable variants keep
-// the mark inside the platform safe zone.
+// mode (Tauri desktop ignores it). Follows the pi-web recipe: only
+// purpose "any" (no maskable — Android otherwise adaptive-crops 66%),
+// pre-rounded plate with transparent corners. `?v=` busts icon cache.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Codeg",
@@ -16,22 +16,20 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    background_color: "#000105",
+    background_color: "#2a3348",
     theme_color: "#09090b",
     icons: [
-      { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
       {
-        src: "/icon-maskable-192.png",
+        src: "/icon-192.png?v=13",
         sizes: "192x192",
         type: "image/png",
-        purpose: "maskable",
+        purpose: "any",
       },
       {
-        src: "/icon-maskable-512.png",
+        src: "/icon-512.png?v=13",
         sizes: "512x512",
         type: "image/png",
-        purpose: "maskable",
+        purpose: "any",
       },
     ],
   }

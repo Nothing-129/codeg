@@ -94,6 +94,11 @@ import {
   saveModePreference,
   saveConfigPreference,
 } from "@/lib/selector-prefs-storage"
+import {
+  ensureCachedSelectors,
+  getCachedSelectors,
+  updateCachedSelectors,
+} from "@/lib/selectors-cache-storage"
 import { useAlertContext, type AlertAction } from "@/contexts/alert-context"
 import { useActiveFolder } from "@/contexts/active-folder-context"
 
@@ -660,18 +665,30 @@ const MAX_RECONNECT_SETTLE_WAITS = 3
 const CONNECT_SETTLE_WAIT_TIMEOUT_MS = 15_000
 
 // Per-agentType cache for selectors (modes / configOptions).
-// Populated when real data arrives from the backend.
-// Used as UI-layer fallback when the connection hasn't received real data yet.
-const selectorsCache = new Map<
-  string,
-  {
-    modes: SessionModeStateInfo | null
-    configOptions: SessionConfigOptionInfo[] | null
-  }
->()
+// Populated when real data arrives from the backend, and persisted so a
+// later new-conversation tab can render the model picker before spawn.
+export { getCachedSelectors } from "@/lib/selectors-cache-storage"
 
-export function getCachedSelectors(agentType: string) {
-  return selectorsCache.get(agentType) ?? null
+async function applyPrefsChangedDuringConnect(
+  connectionId: string,
+  sent: { modeId: string | null; configValues: Record<string, string> | null },
+  latest: { modeId: string | null; configValues: Record<string, string> | null }
+): Promise<void> {
+  try {
+    if (latest.modeId && latest.modeId !== sent.modeId) {
+      await acpSetMode(connectionId, latest.modeId)
+    }
+    if (!latest.configValues) return
+    for (const [configId, valueId] of Object.entries(latest.configValues)) {
+      if (sent.configValues?.[configId] === valueId) continue
+      await acpSetConfigOption(connectionId, configId, valueId)
+    }
+  } catch (error) {
+    console.warn(
+      "[acp-context] failed to apply selector prefs changed during connect",
+      error
+    )
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -2278,7 +2295,7 @@ function connectionsReducer(
       if (!conn) return state
       const options =
         conn.configOptions ??
-        selectorsCache.get(conn.agentType)?.configOptions ??
+        getCachedSelectors(conn.agentType)?.configOptions ??
         null
       if (!options) return state
       const idx = options.findIndex((o) => o.id === action.configId)
@@ -3749,12 +3766,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           })
           const modeConn = storeRef.current.connections.get(contextKey)
           if (modeConn) {
-            const entry = selectorsCache.get(modeConn.agentType) ?? {
-              modes: null,
-              configOptions: null,
-            }
-            entry.modes = e.modes
-            selectorsCache.set(modeConn.agentType, entry)
+            updateCachedSelectors(modeConn.agentType, { modes: e.modes })
           }
           break
         }
@@ -3769,12 +3781,9 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           })
           const cfgConn = storeRef.current.connections.get(contextKey)
           if (cfgConn) {
-            const entry = selectorsCache.get(cfgConn.agentType) ?? {
-              modes: null,
-              configOptions: null,
-            }
-            entry.configOptions = e.config_options
-            selectorsCache.set(cfgConn.agentType, entry)
+            updateCachedSelectors(cfgConn.agentType, {
+              configOptions: e.config_options,
+            })
           }
           break
         }
@@ -3809,8 +3818,8 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           // Cache for agent types that may not emit session_modes /
           // session_config_options at all (no selectors).
           const rdyConn = storeRef.current.connections.get(contextKey)
-          if (rdyConn && !selectorsCache.has(rdyConn.agentType)) {
-            selectorsCache.set(rdyConn.agentType, {
+          if (rdyConn) {
+            ensureCachedSelectors(rdyConn.agentType, {
               modes: rdyConn.modes,
               configOptions: rdyConn.configOptions,
             })
@@ -5167,6 +5176,10 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           savedPrefs.modeId,
           savedPrefs.configValues
         )
+        // Spawn takes seconds. The composer can show the cached catalog in
+        // that window and accept a pick; re-read prefs so a change made
+        // while `acpConnect` was in flight still lands on the live session.
+        const latestPrefs = getSavedPrefsForConnect(agentType)
 
         // If disconnect was requested while connect was in flight, tear down
         // immediately instead of registering the connection — but tear down
@@ -5200,6 +5213,11 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           agentType,
           workingDir: nextWorkingDir,
         })
+        void applyPrefsChangedDuringConnect(
+          connectionId,
+          savedPrefs,
+          latestPrefs
+        )
 
         // Subscribe-with-Snapshot path. When the active transport supports
         // the attach protocol (currently web mode), the per-connection WS
@@ -5700,7 +5718,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
     if (!conn) return
     // Persist user's mode selection to localStorage
     const modes =
-      conn.modes ?? selectorsCache.get(conn.agentType)?.modes ?? null
+      conn.modes ?? getCachedSelectors(conn.agentType)?.modes ?? null
     if (modes) {
       saveModePreference(conn.agentType, {
         ...modes,

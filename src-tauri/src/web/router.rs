@@ -639,6 +639,10 @@ pub fn build_router(
         )
         .route("/acp_list_agents", post(handlers::acp::acp_list_agents))
         .route(
+            "/acp_list_enabled_agents",
+            post(handlers::acp::acp_list_enabled_agents),
+        )
+        .route(
             "/acp_env_diagnostics",
             post(handlers::acp::acp_env_diagnostics),
         )

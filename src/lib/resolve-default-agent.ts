@@ -1,6 +1,8 @@
 import { AGENT_DISPLAY_ORDER, type AgentType } from "@/lib/types"
 
 export interface ResolveDefaultAgentInput {
+  /** Agent most recently selected by the user, shared across all projects. */
+  lastSelected: AgentType | null
   /** Folder's saved `default_agent_type`, or null if none set. */
   folderDefault: AgentType | null
   /**
@@ -37,11 +39,13 @@ export interface ResolveDefaultAgentResult {
  * spinning up a renderer.
  *
  * Priority (highest first):
- *   1. `folderDefault` — the user explicitly pinned a default on this folder.
- *   2. `inherit` — "new conversation" launched from inside an existing
+ *   1. `lastSelected` — the user's most recent explicit selection, shared
+ *      across all projects.
+ *   2. `folderDefault` — used only until the user has selected an agent.
+ *   3. `inherit` — "new conversation" launched from inside an existing
  *      conversation should produce another conversation with the same agent.
- *   3. `sortedTypes[0]` — first entry of the user-managed drag-sorted list.
- *   4. `AGENT_DISPLAY_ORDER[0]` — final fallback when even the sorted list
+ *   4. `sortedTypes[0]` — first entry of the user-managed drag-sorted list.
+ *   5. `AGENT_DISPLAY_ORDER[0]` — final fallback when even the sorted list
  *      isn't available yet (cold start).
  *
  * The result is marked `provisional: true` for cases 3 and 4 when `fresh`
@@ -52,7 +56,10 @@ export interface ResolveDefaultAgentResult {
 export function resolveDefaultAgent(
   input: ResolveDefaultAgentInput
 ): ResolveDefaultAgentResult {
-  const { folderDefault, inherit, sortedTypes, fresh } = input
+  const { lastSelected, folderDefault, inherit, sortedTypes, fresh } = input
+  if (lastSelected) {
+    return { agentType: lastSelected, provisional: false }
+  }
   if (folderDefault) {
     return { agentType: folderDefault, provisional: false }
   }

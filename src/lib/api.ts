@@ -427,6 +427,11 @@ export async function acpListAgents(): Promise<AcpAgentInfo[]> {
   return getTransport().call("acp_list_agents")
 }
 
+/** Chat-facing registry query. Excludes disabled agents and their probes. */
+export async function acpListEnabledAgents(): Promise<AcpAgentInfo[]> {
+  return getTransport().call("acp_list_enabled_agents")
+}
+
 export async function acpGetAgentStatus(
   agentType: AgentType
 ): Promise<AcpAgentStatus> {

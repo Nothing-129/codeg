@@ -121,9 +121,13 @@ import {
 } from "@/lib/session-failures"
 import { getAgentLabel } from "@/lib/custom-agents"
 import {
+  applySavedConfigPreferences,
+  applySavedModePreference,
   getSavedModeId,
+  saveConfigPreference,
   saveModePreference,
 } from "@/lib/selector-prefs-storage"
+import { saveLastSelectedAgent } from "@/lib/last-selected-agent-storage"
 import {
   adoptLegacyNewConversationDraft,
   buildConversationDraftStorageKey,
@@ -330,6 +334,7 @@ const ConversationTabView = memo(function ConversationTabView({
   const [agentConnectError, setAgentConnectError] = useState<string | null>(
     null
   )
+  const [selectorPrefsEpoch, setSelectorPrefsEpoch] = useState(0)
   const [hasSentMessage, setHasSentMessage] = useState(false)
   const [quickActionInject, setQuickActionInject] =
     useState<ComposerInjectContent | null>(null)
@@ -622,11 +627,29 @@ const ConversationTabView = memo(function ConversationTabView({
   // selectors (empty until it connects).
   const connIsForOtherAgent =
     conn.agentType != null && conn.agentType !== selectedAgent
-  const effectiveModes = connIsForOtherAgent
-    ? (getCachedSelectors(selectedAgent)?.modes ?? null)
+  // Catalog from a previous session of this agent. Used before the new
+  // tab's `acpConnect` returns (no store entry yet) and while switching
+  // away from a still-bound previous agent.
+  const cachedSelectors = getCachedSelectors(selectedAgent)
+  const useCachedCatalog = connIsForOtherAgent || !conn.selectorsReady
+  // `selectorPrefsEpoch` is bumped when the user picks a model before the
+  // session is live, so this render re-reads localStorage onto the cache.
+  void selectorPrefsEpoch
+  const effectiveModes = useCachedCatalog
+    ? applySavedModePreference(
+        selectedAgent,
+        (connIsForOtherAgent ? null : conn.modes) ??
+          cachedSelectors?.modes ??
+          null
+      )
     : conn.modes
-  const effectiveConfigOptions = connIsForOtherAgent
-    ? (getCachedSelectors(selectedAgent)?.configOptions ?? null)
+  const effectiveConfigOptions = useCachedCatalog
+    ? applySavedConfigPreferences(
+        selectedAgent,
+        (connIsForOtherAgent ? null : conn.configOptions) ??
+          cachedSelectors?.configOptions ??
+          null
+      )
     : conn.configOptions
   // The live connection is ready for THIS tab only when it's connected AND its
   // cwd matches the tab's intended working dir. A just-retargeted chat draft (or
@@ -1330,6 +1353,7 @@ const ConversationTabView = memo(function ConversationTabView({
       setDraftAgentType(nextAgentType)
       setModeId(getSavedModeId(nextAgentType))
       setAgentConnectError(null)
+      saveLastSelectedAgent(nextAgentType)
       // Real user click — clear the provisional flag so TabProvider's
       // correction effect leaves this tab alone.
       confirmDraftAgent(tabId, nextAgentType)
@@ -1354,6 +1378,17 @@ const ConversationTabView = memo(function ConversationTabView({
       setDraftAgentFromFallback(tabId, nextAgentType)
     },
     [setDraftAgentFromFallback, tabId]
+  )
+
+  const handleConfigOptionChange = useCallback(
+    (configId: string, valueId: string) => {
+      // Persist even when the new tab has no live connection yet so the
+      // picker can change during spawn; connect() re-reads prefs after.
+      saveConfigPreference(selectedAgent, configId, valueId)
+      setSelectorPrefsEpoch((epoch) => epoch + 1)
+      handleSetConfigOption(configId, valueId)
+    },
+    [handleSetConfigOption, selectedAgent]
   )
 
   const handleModeChange = useCallback(
@@ -1826,7 +1861,7 @@ const ConversationTabView = memo(function ConversationTabView({
       selectorsLoading={selectorsLoading}
       selectedModeId={selectedModeId}
       onModeChange={handleModeChange}
-      onConfigOptionChange={handleSetConfigOption}
+      onConfigOptionChange={handleConfigOptionChange}
       agentType={selectedAgent}
       availableCommands={connectionCommands}
       attachmentTabId={tabId}
@@ -1947,7 +1982,7 @@ const ConversationTabView = memo(function ConversationTabView({
                 selectorsLoading={selectorsLoading}
                 selectedModeId={selectedModeId}
                 onModeChange={handleModeChange}
-                onConfigOptionChange={handleSetConfigOption}
+                onConfigOptionChange={handleConfigOptionChange}
                 agentType={selectedAgent}
                 availableCommands={connectionCommands}
                 attachmentTabId={tabId}

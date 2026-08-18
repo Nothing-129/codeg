@@ -9953,7 +9953,10 @@ pub async fn acp_get_agent_status(
     acp_get_agent_status_core(agent_type, &db).await
 }
 
-pub(crate) async fn acp_list_agents_core(db: &AppDatabase) -> Result<Vec<AcpAgentInfo>, AcpError> {
+async fn acp_list_agents_with_disabled(
+    db: &AppDatabase,
+    include_disabled: bool,
+) -> Result<Vec<AcpAgentInfo>, AcpError> {
     let platform = registry::current_platform();
     let agent_types = registry::all_acp_agents();
 
@@ -9980,6 +9983,9 @@ pub(crate) async fn acp_list_agents_core(db: &AppDatabase) -> Result<Vec<AcpAgen
     let mut npx_resolver = NpxCommandResolver::default();
     for (idx, agent_type) in agent_types.into_iter().enumerate() {
         let setting = settings_map.get(&agent_type);
+        if !include_disabled && setting.is_some_and(|setting| !setting.enabled) {
+            continue;
+        }
         let meta = registry::get_agent_meta(agent_type);
         let (available, dist_type, local_installed_version) = match &meta.distribution {
             registry::AgentDistribution::Npx { cmd, package, .. } => {
@@ -10200,12 +10206,30 @@ pub(crate) async fn acp_list_agents_core(db: &AppDatabase) -> Result<Vec<AcpAgen
     Ok(agents)
 }
 
+pub(crate) async fn acp_list_agents_core(db: &AppDatabase) -> Result<Vec<AcpAgentInfo>, AcpError> {
+    acp_list_agents_with_disabled(db, true).await
+}
+
+pub(crate) async fn acp_list_enabled_agents_core(
+    db: &AppDatabase,
+) -> Result<Vec<AcpAgentInfo>, AcpError> {
+    acp_list_agents_with_disabled(db, false).await
+}
+
 #[cfg(feature = "tauri-runtime")]
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
 pub async fn acp_list_agents(
     db: tauri::State<'_, AppDatabase>,
 ) -> Result<Vec<AcpAgentInfo>, AcpError> {
     acp_list_agents_core(&db).await
+}
+
+#[cfg(feature = "tauri-runtime")]
+#[cfg_attr(feature = "tauri-runtime", tauri::command)]
+pub async fn acp_list_enabled_agents(
+    db: tauri::State<'_, AppDatabase>,
+) -> Result<Vec<AcpAgentInfo>, AcpError> {
+    acp_list_enabled_agents_core(&db).await
 }
 
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]

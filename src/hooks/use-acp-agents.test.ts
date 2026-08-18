@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { AcpAgentInfo, AgentType } from "@/lib/types"
 
 // The registry fetch, driven per test.
-const mockAcpListAgents = vi.fn()
+const mockAcpListEnabledAgents = vi.fn()
 vi.mock("@/lib/api", () => ({
-  acpListAgents: () => mockAcpListAgents(),
+  acpListEnabledAgents: () => mockAcpListEnabledAgents(),
 }))
 
 // The hook subscribes through the platform layer. Capture the event handler and
@@ -70,21 +70,23 @@ function makeAgent(agentType: AgentType, sortOrder: number): AcpAgentInfo {
 }
 
 beforeEach(() => {
-  mockAcpListAgents.mockReset()
+  mockAcpListEnabledAgents.mockReset()
   mockEventHandler = null
   mockDeferSubscribe = false
   mockResolveSubscribe = null
   mockSubscribeDispose.mockClear()
+  window.localStorage.removeItem("codeg:enabled-acp-agents:v1")
   resetAcpAgentsStore()
 })
 
 afterEach(() => {
   resetAcpAgentsStore()
+  window.localStorage.removeItem("codeg:enabled-acp-agents:v1")
 })
 
 describe("useAcpAgents — shared subscription", () => {
   it("shares one fetch across N mounted consumers and coalesces focus reloads", async () => {
-    mockAcpListAgents.mockResolvedValue([makeAgent("claude_code", 0)])
+    mockAcpListEnabledAgents.mockResolvedValue([makeAgent("claude_code", 0)])
 
     const a = renderHook(() => useAcpAgents())
     const b = renderHook(() => useAcpAgents())
@@ -94,25 +96,25 @@ describe("useAcpAgents — shared subscription", () => {
       expect(b.result.current.fresh).toBe(true)
     })
     // One shared initial fetch — not one per mounted consumer.
-    expect(mockAcpListAgents).toHaveBeenCalledTimes(1)
+    expect(mockAcpListEnabledAgents).toHaveBeenCalledTimes(1)
     // Both read the same shared list.
     expect(a.result.current.agents).toEqual(b.result.current.agents)
 
-    mockAcpListAgents.mockClear()
+    mockAcpListEnabledAgents.mockClear()
     await act(async () => {
       window.dispatchEvent(new Event("focus"))
       await Promise.resolve()
     })
     // One coalesced reload on focus, regardless of how many consumers are up
     // (the old per-instance hook fired one scan each).
-    expect(mockAcpListAgents).toHaveBeenCalledTimes(1)
+    expect(mockAcpListEnabledAgents).toHaveBeenCalledTimes(1)
 
     a.unmount()
     b.unmount()
   })
 
   it("resets to a cold, non-authoritative state when the last consumer unmounts", async () => {
-    mockAcpListAgents.mockResolvedValue([makeAgent("claude_code", 0)])
+    mockAcpListEnabledAgents.mockResolvedValue([makeAgent("claude_code", 0)])
 
     const first = renderHook(() => useAcpAgents())
     await waitFor(() => expect(first.result.current.fresh).toBe(true))
@@ -126,7 +128,7 @@ describe("useAcpAgents — shared subscription", () => {
     // The registry changes while nobody is subscribed. Defer the next reload so
     // the pre-reload state on remount is observable.
     let resolveList: (list: AcpAgentInfo[]) => void = () => {}
-    mockAcpListAgents.mockReturnValue(
+    mockAcpListEnabledAgents.mockReturnValue(
       new Promise<AcpAgentInfo[]>((resolve) => {
         resolveList = resolve
       })
@@ -137,10 +139,12 @@ describe("useAcpAgents — shared subscription", () => {
     await act(async () => {
       await Promise.resolve()
     })
-    // Cold: the missed-update cache is not exposed as authoritative, and there
-    // are no stale agents that could drive an (ungated) AgentSelector fallback.
+    // Cold: the persisted list can paint immediately, but it is not marked
+    // authoritative, so a missed update cannot drive a fresh-gated default.
     expect(second.result.current.fresh).toBe(false)
-    expect(second.result.current.agents).toEqual([])
+    expect(second.result.current.agents.map((x) => x.agent_type)).toEqual([
+      "claude_code",
+    ])
 
     await act(async () => {
       resolveList([makeAgent("claude_code", 0), makeAgent("codex", 1)])
@@ -156,7 +160,7 @@ describe("useAcpAgents — shared subscription", () => {
   })
 
   it("skips the queued initial reload if the consumer unmounts before it runs", async () => {
-    mockAcpListAgents.mockResolvedValue([makeAgent("claude_code", 0)])
+    mockAcpListEnabledAgents.mockResolvedValue([makeAgent("claude_code", 0)])
 
     // Mount then unmount synchronously — the deferred initial reload's microtask
     // has NOT run yet, and (having never started) it never incremented the
@@ -172,12 +176,12 @@ describe("useAcpAgents — shared subscription", () => {
     // The queued reload must have been skipped (refCount hit 0) — no fetch, so
     // nothing repopulated the cold cache. Without the refCount guard this reload
     // would fire here and set `fresh=true` on the zombie store.
-    expect(mockAcpListAgents).not.toHaveBeenCalled()
+    expect(mockAcpListEnabledAgents).not.toHaveBeenCalled()
 
     // A remount must therefore start cold and re-fetch, not inherit a stale
     // `fresh=true`.
     let resolveList: (list: AcpAgentInfo[]) => void = () => {}
-    mockAcpListAgents.mockReturnValue(
+    mockAcpListEnabledAgents.mockReturnValue(
       new Promise<AcpAgentInfo[]>((resolve) => {
         resolveList = resolve
       })
@@ -205,7 +209,7 @@ describe("useAcpAgents — shared subscription", () => {
     // Defer the subscribe promise: the transport has registered the event
     // handler, but `.then(dispose)` (which sets eventUnsub) has NOT run.
     mockDeferSubscribe = true
-    mockAcpListAgents.mockResolvedValue([makeAgent("claude_code", 0)])
+    mockAcpListEnabledAgents.mockResolvedValue([makeAgent("claude_code", 0)])
 
     const first = renderHook(() => useAcpAgents())
     // Handler captured; subscribe's promise is still pending (eventUnsub null).
@@ -228,12 +232,12 @@ describe("useAcpAgents — shared subscription", () => {
       mockEventHandler?.()
       await Promise.resolve()
     })
-    expect(mockAcpListAgents).not.toHaveBeenCalled()
+    expect(mockAcpListEnabledAgents).not.toHaveBeenCalled()
 
     // A remount still starts cold and re-fetches.
     mockDeferSubscribe = false
     let resolveList: (list: AcpAgentInfo[]) => void = () => {}
-    mockAcpListAgents.mockReturnValue(
+    mockAcpListEnabledAgents.mockReturnValue(
       new Promise<AcpAgentInfo[]>((resolve) => {
         resolveList = resolve
       })

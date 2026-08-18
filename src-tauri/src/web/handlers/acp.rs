@@ -44,6 +44,15 @@ pub async fn acp_list_agents(
     Ok(Json(result))
 }
 
+pub async fn acp_list_enabled_agents(
+    Extension(state): Extension<Arc<AppState>>,
+) -> Result<Json<Vec<AcpAgentInfo>>, AppCommandError> {
+    let result = acp_commands::acp_list_enabled_agents_core(&state.db)
+        .await
+        .map_err(|e| AppCommandError::task_execution_failed(e.to_string()))?;
+    Ok(Json(result))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcpEnvDiagnosticsParams {

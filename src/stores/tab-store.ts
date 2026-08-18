@@ -8,6 +8,7 @@ import {
   saveOpenedTabs,
 } from "@/lib/api"
 import { resolveDefaultAgent } from "@/lib/resolve-default-agent"
+import { getLastSelectedAgent } from "@/lib/last-selected-agent-storage"
 import { formatConversationTitle } from "@/lib/conversation-title"
 import {
   firstLeafId,
@@ -944,8 +945,8 @@ function recomputeTabs() {
 }
 
 /** Pick the agent + provisional flag for a new draft tab. Wraps the pure
- *  `resolveDefaultAgent` helper with tab-store-scoped lookups (folder default
- *  from the live app-workspace store, latest sorted types, fresh flag). */
+ *  `resolveDefaultAgent` helper with the global last selection, folder default
+ *  from the live app-workspace store, latest sorted types, and fresh flag. */
 function resolveAgentForFolder(
   folderId: number,
   inherit: AgentType | null,
@@ -958,6 +959,7 @@ function resolveAgentForFolder(
       : (useAppWorkspaceStore.getState().folders.find((f) => f.id === folderId)
           ?.default_agent_type ?? null)
   return resolveDefaultAgent({
+    lastSelected: getLastSelectedAgent(),
     folderDefault,
     inherit,
     sortedTypes: runtime.sortedAvailableAgents,

@@ -175,6 +175,10 @@ export async function acpListAgents(): Promise<AcpAgentInfo[]> {
   return invoke("acp_list_agents")
 }
 
+export async function acpListEnabledAgents(): Promise<AcpAgentInfo[]> {
+  return invoke("acp_list_enabled_agents")
+}
+
 export async function acpGetAgentStatus(
   agentType: AgentType
 ): Promise<AcpAgentStatus> {

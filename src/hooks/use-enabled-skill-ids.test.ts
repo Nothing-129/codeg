@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { AcpAgentInfo, ExpertInstallStatus } from "@/lib/types"
 
 // All three status scans are mocked so we can count how many times a window
-// focus triggers them across multiple mounted consumers. `acpListAgents` is
+// focus triggers them across multiple mounted consumers. `acpListEnabledAgents` is
 // pulled in transitively via `useAcpAgents` (the hook reads each agent's
 // env_json to spot a custom-dir pi); it returns no agents here, so detection
 // stays inert.
@@ -12,7 +12,7 @@ vi.mock("@/lib/api", () => ({
   expertsListAllInstallStatuses: vi.fn(),
   officecliSkillListAllInstallStatuses: vi.fn(),
   scienceListAllInstallStatuses: vi.fn(),
-  acpListAgents: vi.fn().mockResolvedValue([]),
+  acpListEnabledAgents: vi.fn().mockResolvedValue([]),
 }))
 
 // `useAcpAgents` subscribes through the platform layer; stub it to inert
@@ -117,7 +117,7 @@ describe("useEnabledSkillIds — custom-dir pi gating", () => {
     const { api, hook } = await setup()
     // A pi pinned to a custom PI_CODING_AGENT_DIR, plus a default-dir expert
     // link that must NOT be surfaced for it.
-    vi.mocked(api.acpListAgents).mockResolvedValue([
+    vi.mocked(api.acpListEnabledAgents).mockResolvedValue([
       piAgent({ PI_CODING_AGENT_DIR: "/custom/pi" }),
     ])
     vi.mocked(api.expertsListAllInstallStatuses).mockResolvedValue([
@@ -132,7 +132,7 @@ describe("useEnabledSkillIds — custom-dir pi gating", () => {
     expect(result.current.enabledIds.size).toBe(0)
 
     // Let the agent registry and the skill snapshot both resolve.
-    await waitFor(() => expect(api.acpListAgents).toHaveBeenCalled())
+    await waitFor(() => expect(api.acpListEnabledAgents).toHaveBeenCalled())
     await waitFor(() =>
       expect(api.expertsListAllInstallStatuses).toHaveBeenCalled()
     )
@@ -147,7 +147,7 @@ describe("useEnabledSkillIds — custom-dir pi gating", () => {
 
   it("manages a default-dir pi once the registry resolves", async () => {
     const { api, hook } = await setup()
-    vi.mocked(api.acpListAgents).mockResolvedValue([piAgent({})])
+    vi.mocked(api.acpListEnabledAgents).mockResolvedValue([piAgent({})])
     vi.mocked(api.expertsListAllInstallStatuses).mockResolvedValue([
       piLinkedStatus("writer"),
     ])

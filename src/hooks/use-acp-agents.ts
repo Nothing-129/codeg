@@ -2,8 +2,12 @@
 
 import { useEffect } from "react"
 import { create } from "zustand"
-import { acpListAgents } from "@/lib/api"
+import { acpListAgents, acpListEnabledAgents } from "@/lib/api"
 import { setCustomAgentDisplay } from "@/lib/custom-agents"
+import {
+  loadEnabledAcpAgentsCache,
+  saveEnabledAcpAgentsCache,
+} from "@/lib/enabled-acp-agents-storage"
 import { onTransportReconnect, subscribe } from "@/lib/platform"
 import type { UnsubscribeFn } from "@/lib/transport/types"
 import type { AcpAgentInfo } from "@/lib/types"
@@ -43,14 +47,28 @@ interface AcpAgentsStore {
 let latestRequestId = 0
 let latestSuccessId = 0
 
+const initialCachedAgents = loadEnabledAcpAgentsCache()
+
+function publishCustomAgentDisplay(agents: AcpAgentInfo[]) {
+  setCustomAgentDisplay(
+    agents.map((agent) => ({
+      agentType: agent.agent_type,
+      name: agent.name,
+      iconUrl: agent.icon_url,
+    }))
+  )
+}
+
+publishCustomAgentDisplay(initialCachedAgents)
+
 const useAcpAgentsStore = create<AcpAgentsStore>((set) => ({
-  agents: [],
+  agents: initialCachedAgents,
   fresh: false,
   reload: async () => {
     const requestId = latestRequestId + 1
     latestRequestId = requestId
     try {
-      const list = await acpListAgents()
+      const list = await acpListEnabledAgents()
       // Only bail if a strictly later success has already committed state —
       // older successes are still useful when newer requests are pending or
       // failed.
@@ -64,17 +82,28 @@ const useAcpAgentsStore = create<AcpAgentsStore>((set) => ({
       // of the agent registry, so hydrating here covers every label call site
       // (sidebar, composer, status bar) without threading a context through all
       // of them.
-      setCustomAgentDisplay(
-        sorted.map((agent) => ({
-          agentType: agent.agent_type,
-          name: agent.name,
-          iconUrl: agent.icon_url,
-        }))
-      )
+      publishCustomAgentDisplay(sorted)
+      saveEnabledAcpAgentsCache(sorted)
       set({ agents: sorted, fresh: true })
     } catch {
       // Keep the previous list — clearing on transient failure would silently
       // regress downstream defaults to AGENT_DISPLAY_ORDER[0].
+    }
+  },
+}))
+
+const useAllAcpAgentsStore = create<AcpAgentsStore>((set) => ({
+  agents: [],
+  fresh: false,
+  reload: async () => {
+    try {
+      const list = await acpListAgents()
+      const sorted = [...list].sort(
+        (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
+      )
+      set({ agents: sorted, fresh: true })
+    } catch {
+      // Keep the previous full list while Settings is open.
     }
   },
 }))
@@ -170,18 +199,18 @@ function acquireSharedSubscription(): () => void {
       for (const dispose of disposers) dispose()
       disposers = []
       // With zero subscribers the listeners are gone, so a registry update
-      // during this gap would be missed. Drop the cache to a COLD,
-      // non-authoritative state (and invalidate any in-flight reload so it
-      // can't repopulate it after the reset) so the next mount re-fetches from
-      // scratch — exactly like the old per-instance hook, where every mount
-      // started `fresh=false` with no agents. Without this, a remount would see
-      // the possibly-stale cache as `fresh=true` and drive a `fresh`-gated
-      // default (or an AgentSelector fallback, which reads `agents` ungated)
-      // before the fresh reload lands. In the running app TabProvider +
-      // SidebarConversationList keep the refcount ≥ 1 for the whole session, so
-      // this only fires on full teardown.
+      // during this gap would be missed. Rehydrate the presentation cache
+      // from localStorage so the selector can paint immediately, but keep
+      // `fresh=false` so a missed update cannot drive a fresh-gated default
+      // until the next remount re-fetches. Invalidate any in-flight reload
+      // so it can't latch `fresh=true` after this reset. In the running app
+      // TabProvider + SidebarConversationList keep the refcount ≥ 1 for the
+      // whole session, so this only fires on full teardown.
       latestSuccessId = latestRequestId
-      useAcpAgentsStore.setState({ agents: [], fresh: false })
+      useAcpAgentsStore.setState({
+        agents: loadEnabledAcpAgentsCache(),
+        fresh: false,
+      })
     }
   }
 }
@@ -202,6 +231,36 @@ export function useAcpAgents(): UseAcpAgentsResult {
   const agents = useAcpAgentsStore((s) => s.agents)
   const fresh = useAcpAgentsStore((s) => s.fresh)
   const refresh = useAcpAgentsStore((s) => s.reload)
+  return { agents, fresh, refresh }
+}
+
+/**
+ * Full registry for Settings-only surfaces. Unlike the chat hook, this retains
+ * disabled agents and deliberately does not use the chat's local cache.
+ */
+export function useAllAcpAgents(): UseAcpAgentsResult {
+  useEffect(() => {
+    const { reload } = useAllAcpAgentsStore.getState()
+    void reload()
+    let disposed = false
+    let unsubscribe: UnsubscribeFn | null = null
+    void subscribe<unknown>(ACP_AGENTS_UPDATED_EVENT, () => void reload())
+      .then((dispose) => {
+        if (disposed) {
+          dispose()
+        } else {
+          unsubscribe = dispose
+        }
+      })
+      .catch(() => {})
+    return () => {
+      disposed = true
+      unsubscribe?.()
+    }
+  }, [])
+  const agents = useAllAcpAgentsStore((s) => s.agents)
+  const fresh = useAllAcpAgentsStore((s) => s.fresh)
+  const refresh = useAllAcpAgentsStore((s) => s.reload)
   return { agents, fresh, refresh }
 }
 

@@ -38,7 +38,7 @@ import {
 } from "@/lib/types"
 import { getAgentLabel, isCustomAgentType } from "@/lib/custom-agents"
 import { describeAgentOptions } from "@/lib/api"
-import { useAcpAgents } from "@/hooks/use-acp-agents"
+import { useAllAcpAgents } from "@/hooks/use-acp-agents"
 import { toErrorMessage } from "@/lib/app-error"
 
 // Sentinel `value` slot used by the top "Default" Select item in mode +
@@ -107,7 +107,7 @@ export function DelegationAgentDefaultsPanel({
   // Custom ACP agents are delegation targets too (codeg-mcp advertises them
   // in `delegate_to_agent`'s enum), so they get a defaults tab after the
   // built-ins. The list mirrors what the agent registry currently holds.
-  const { agents } = useAcpAgents()
+  const { agents } = useAllAcpAgents()
   const agentTypes = useMemo<AgentType[]>(
     () => [
       ...BUILTIN_AGENT_TYPES,

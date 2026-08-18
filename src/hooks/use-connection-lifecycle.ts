@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { useAcpActions } from "@/contexts/acp-connections-context"
+import {
+  getCachedSelectors,
+  useAcpActions,
+} from "@/contexts/acp-connections-context"
 import { useTaskContext } from "@/contexts/task-context"
 import { useConnection, type UseConnectionReturn } from "@/hooks/use-connection"
 import { extractAppCommandError } from "@/lib/app-error"
@@ -136,7 +139,7 @@ export function useConnectionLifecycle({
     respondPermission: connRespondPermission,
     modes,
     configOptions,
-    hasCachedSelectors,
+    hasCachedSelectors: connHasCachedSelectors,
   } = conn
   const isInteractiveStatus = status === "connected" || status === "prompting"
   const hasSelectorsData = modes !== null || configOptions !== null
@@ -146,6 +149,11 @@ export function useConnectionLifecycle({
   // Skip loading indicators when we have cached selectors — even if the
   // cache contains no modes/configOptions (the agent simply doesn't have
   // them), we already know what to show and don't need a loading state.
+  // Look up by the *intended* agent, not the live connection: a new
+  // conversation has no store entry until `acpConnect` returns (several
+  // seconds of spawn), and that's exactly when the composer used to wait.
+  const hasCachedSelectors =
+    connHasCachedSelectors || getCachedSelectors(agentType) !== null
   const modeLoading =
     !hasCachedSelectors &&
     (status === "connecting" ||
