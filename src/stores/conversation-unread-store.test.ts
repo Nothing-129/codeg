@@ -36,6 +36,13 @@ describe("conversation-unread-store", () => {
     expect(localStorage.getItem(conversationUnreadStorageKey())).toBe("[]")
   })
 
+  it("tracks visible conversations separately from persisted unread state", () => {
+    useConversationUnreadStore.getState().setVisible([4, 5, 5, 0])
+    const visibleIds = [...useConversationUnreadStore.getState().visibleIds]
+    expect(visibleIds).toEqual([4, 5])
+    expect(localStorage.getItem(conversationUnreadStorageKey())).toBeNull()
+  })
+
   it("ignores non-positive ids and is idempotent", () => {
     useConversationUnreadStore.getState().noteActivity(-3)
     useConversationUnreadStore.getState().noteActivity(0)

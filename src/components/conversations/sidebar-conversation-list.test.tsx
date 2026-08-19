@@ -297,18 +297,24 @@ function folder(
 // stable (so `useTranslations` returns a stable `t`) while the list re-renders
 // on each conversations change.
 const harness: { rerender: () => void } = { rerender: () => {} }
-function Harness() {
+function Harness({ onNavigate }: { onNavigate?: () => void }) {
   const [, setTick] = useState(0)
   useEffect(() => {
     harness.rerender = () => setTick((n) => n + 1)
   }, [])
-  return <SidebarConversationList showCompleted sortMode="created" />
+  return (
+    <SidebarConversationList
+      showCompleted
+      sortMode="created"
+      onNavigate={onNavigate}
+    />
+  )
 }
 
-function tree() {
+function tree(onNavigate?: () => void) {
   return (
     <NextIntlClientProvider locale="en" messages={enMessages}>
-      <Harness />
+      <Harness onNavigate={onNavigate} />
     </NextIntlClientProvider>
   )
 }
@@ -565,13 +571,15 @@ describe("SidebarConversationList — folder expand/collapse", () => {
   })
 
   it("opens a new conversation from the folder header button", () => {
-    render(tree())
+    const onNavigate = vi.fn()
+    render(tree(onNavigate))
     const toggle = document.querySelector('[data-folder-id="1"]')
     const newConversation = toggle?.parentElement?.querySelector(
       'button[aria-label="New Conversation"]'
     )
     if (!newConversation) throw new Error("new-conversation button not found")
     fireEvent.click(newConversation)
+    expect(onNavigate).toHaveBeenCalledOnce()
     expect(stableTabFns.openNewConversationTab).toHaveBeenCalledWith(1, "/p/1")
   })
 

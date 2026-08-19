@@ -1,8 +1,10 @@
 "use client"
 
-import { useLayoutEffect } from "react"
+import { useEffect, useLayoutEffect, useMemo } from "react"
+import { useIsMac } from "@/hooks/use-is-mac"
 import { collectViewedConversationIds } from "@/lib/conversation-unread"
 import { useWorkbenchRoute } from "@/contexts/workbench-route-context"
+import { getCurrentWindow, isLocalDesktop } from "@/lib/platform"
 import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
 import { useTabStore } from "@/stores/tab-store"
 
@@ -15,6 +17,16 @@ import { useTabStore } from "@/stores/tab-store"
  */
 export function ConversationUnreadSync() {
   const { isConversations } = useWorkbenchRoute()
+  const isMac = useIsMac()
+  const unreadIds = useConversationUnreadStore((s) => s.unreadIds)
+  const visibleIds = useConversationUnreadStore((s) => s.visibleIds)
+  const unreadCount = useMemo(() => {
+    let count = 0
+    for (const id of unreadIds) {
+      if (visibleIds.has(id)) count += 1
+    }
+    return count
+  }, [unreadIds, visibleIds])
 
   useLayoutEffect(() => {
     const syncViewed = () => {
@@ -34,6 +46,28 @@ export function ConversationUnreadSync() {
     syncViewed()
     return useTabStore.subscribe(syncViewed)
   }, [isConversations])
+
+  useEffect(() => {
+    if (!isMac || !isLocalDesktop()) return
+
+    let cancelled = false
+    void (async () => {
+      const window = await getCurrentWindow()
+      if (cancelled || window == null) return
+      try {
+        await window.setBadgeCount(unreadCount > 0 ? unreadCount : undefined)
+      } catch (error) {
+        console.error(
+          "[ConversationUnread] failed to update Dock badge:",
+          error
+        )
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isMac, unreadCount])
 
   return null
 }

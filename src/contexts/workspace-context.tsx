@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { useActiveFolder } from "@/contexts/active-folder-context"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
 import { buildFileTabId } from "@/lib/file-tab-id"
@@ -43,6 +44,8 @@ import {
   languageFromPath,
 } from "@/lib/language-detect"
 import { toErrorMessage } from "@/lib/app-error"
+import { isLocalDesktop, openPath } from "@/lib/platform"
+import { shouldOpenWithSystemApp } from "@/lib/language-detect"
 import {
   HIDDEN_TAB_CONTENT_BUDGET_CHARS,
   selectTabsToUnload,
@@ -1116,6 +1119,24 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     ) => {
       const absPath = await resolveOpenAbsolutePath(rawPath, options?.folderId)
       if (!absPath) return
+      // A binary artifact — an installer, app bundle, archive, or media file
+      // the in-app preview cannot render — is handed to the OS default
+      // application instead (the "double-click it in the file manager"
+      // outcome: a .dmg mounts, an .app launches). This is the choke point
+      // every open entry shares (file tree, git panels, search results,
+      // breadcrumbs, transcript badges), so each of them routes artifacts
+      // uniformly. Web/remote mode has no system opener and keeps the
+      // (doomed) preview attempt below.
+      if (shouldOpenWithSystemApp(absPath) && isLocalDesktop()) {
+        try {
+          await openPath(absPath)
+        } catch (error) {
+          toast.error(t("openArtifactFailed"), {
+            description: toErrorMessage(error),
+          })
+        }
+        return
+      }
       const io = splitAbsPath(absPath)
       if (!io) return
       const requestedLine =

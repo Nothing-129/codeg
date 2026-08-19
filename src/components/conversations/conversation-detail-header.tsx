@@ -23,6 +23,7 @@ import {
 import { formatConversationTitle } from "@/lib/conversation-title"
 import { ConversationHeaderFolderPicker } from "@/components/chat/conversation-context-bar"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
+import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
 import { useTabActions } from "@/contexts/tab-context"
 import { getRuntimeSession } from "@/stores/conversation-runtime-store"
 import type { ConversationStatus } from "@/lib/types"
@@ -195,6 +196,9 @@ export const ConversationDetailHeader = memo(function ConversationDetailHeader({
       if (conversationId == null) return
       // Optimistic local patch, then persist (mirrors sidebar handleStatusChange).
       updateConversationLocal(conversationId, { status: next })
+      if (next === "completed") {
+        useConversationUnreadStore.getState().markRead(conversationId)
+      }
       updateConversationStatus(conversationId, next).catch((err) => {
         console.error("[ConversationDetailHeader] status change:", err)
       })

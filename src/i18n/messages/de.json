@@ -2568,6 +2568,7 @@
       "confirmCloseAllDirtyTabs": "Alle Tabs mit ungespeicherten Änderungen schließen?",
       "unableLoadContent": "Inhalt konnte nicht geladen werden.\n\n{message}",
       "previewRequestTimedOut": "Vorschauanfrage hat das Zeitlimit überschritten",
+      "openArtifactFailed": "Öffnen mit System-App fehlgeschlagen",
       "diffRequestTimedOut": "Diff-Anfrage hat das Zeitlimit überschritten",
       "branchCompareRequestTimedOut": "Branch-Vergleichsanfrage hat das Zeitlimit überschritten",
       "commitDiffRequestTimedOut": "Commit-Diff-Anfrage hat das Zeitlimit überschritten",

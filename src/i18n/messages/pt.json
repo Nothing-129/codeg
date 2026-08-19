@@ -2568,6 +2568,7 @@
       "confirmCloseAllDirtyTabs": "Fechar todas as abas com alterações não salvas?",
       "unableLoadContent": "Não foi possível carregar o conteúdo.\n\n{message}",
       "previewRequestTimedOut": "A solicitação de preview expirou",
+      "openArtifactFailed": "Falha ao abrir com o aplicativo do sistema",
       "diffRequestTimedOut": "A solicitação de Diff expirou",
       "branchCompareRequestTimedOut": "A solicitação de comparação de branch expirou",
       "commitDiffRequestTimedOut": "A solicitação de Diff de commit expirou",

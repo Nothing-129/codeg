@@ -2568,6 +2568,7 @@
       "confirmCloseAllDirtyTabs": "¿Cerrar todas las pestañas con cambios sin guardar?",
       "unableLoadContent": "No se puede cargar el contenido.\n\n{message}",
       "previewRequestTimedOut": "La solicitud de vista previa agotó el tiempo",
+      "openArtifactFailed": "No se pudo abrir con la aplicación del sistema",
       "diffRequestTimedOut": "La solicitud de Diff agotó el tiempo",
       "branchCompareRequestTimedOut": "La solicitud de comparación de ramas agotó el tiempo",
       "commitDiffRequestTimedOut": "La solicitud de Diff de commit agotó el tiempo",
