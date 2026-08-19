@@ -39,6 +39,7 @@ import {
 } from "lucide-react"
 import { useActiveFolder } from "@/contexts/active-folder-context"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
+import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
 import { useTabActions, useTabStore } from "@/contexts/tab-context"
 import { useWorkbenchRoute } from "@/contexts/workbench-route-context"
 import { useTerminalContext } from "@/contexts/terminal-context"
@@ -773,6 +774,7 @@ export interface SidebarConversationListProps {
   showCompleted?: boolean
   sortMode?: SidebarSortMode
   sectionOrder?: SidebarSectionOrder
+  onNavigate?: () => void
   /** When on, each repo's worktree child folders render as indented sub-groups
    *  instead of being merged flat into the parent group. Defaults to off. */
   showWorktrees?: boolean
@@ -789,6 +791,7 @@ export function SidebarConversationList({
   sectionOrder = DEFAULT_SECTION_ORDER,
   showWorktrees = false,
   showRecent = false,
+  onNavigate,
 }: SidebarConversationListProps & {
   ref?: Ref<SidebarConversationListHandle>
 }) {
@@ -1319,6 +1322,18 @@ export function SidebarConversationList({
   const rowsRef = useRef<SidebarRow[]>(rows)
   rowsRef.current = rows
 
+  const visibleConversationIds = useMemo(
+    () =>
+      rows
+        .filter((row) => row.kind === "conversation")
+        .map((row) => row.conversation.id),
+    [rows]
+  )
+
+  useEffect(() => {
+    useConversationUnreadStore.getState().setVisible(visibleConversationIds)
+  }, [visibleConversationIds])
+
   // Sticky-overlay lookup tables, rebuilt only when the flat rows change
   // (folder add/remove/expand, not status events). Consumed exclusively by the
   // imperative scroll handler via refs — never passed to a memoized child — so
@@ -1832,6 +1847,9 @@ export function SidebarConversationList({
   const handleStatusChange = useCallback(
     async (id: number, status: ConversationStatus) => {
       updateConversationLocal(id, { status })
+      if (status === "completed") {
+        useConversationUnreadStore.getState().markRead(id)
+      }
       await updateConversationStatus(id, status)
     },
     [updateConversationLocal]
@@ -1871,12 +1889,13 @@ export function SidebarConversationList({
     (folderId: number) => {
       const folder = folderIndex.get(folderId)
       if (!folder) return
+      onNavigate?.()
       // Starting a conversation returns to the conversation workspace if a
       // workbench route (e.g. Automations) was taking over the content region.
       openConversations()
       openNewConversationTab(folderId, folder.path)
     },
-    [folderIndex, openNewConversationTab, openConversations]
+    [folderIndex, onNavigate, openNewConversationTab, openConversations]
   )
 
   // "Import local sessions" now lives in a dedicated picker window (scan →

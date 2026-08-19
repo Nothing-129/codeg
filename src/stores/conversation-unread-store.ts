@@ -17,9 +17,11 @@ function sameIdSet(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
 export interface ConversationUnreadState {
   unreadIds: ReadonlySet<number>
   viewedIds: ReadonlySet<number>
+  visibleIds: ReadonlySet<number>
   noteActivity: (conversationId: number) => void
   markRead: (conversationId: number) => void
   setViewed: (conversationIds: Iterable<number>) => void
+  setVisible: (conversationIds: Iterable<number>) => void
   clear: (conversationId: number) => void
 }
 
@@ -31,6 +33,7 @@ export const useConversationUnreadStore = create<ConversationUnreadState>(
   (set, get) => ({
     unreadIds: new Set(loadUnreadConversationIds()),
     viewedIds: new Set(),
+    visibleIds: new Set(),
 
     noteActivity: (conversationId) => {
       if (conversationId <= 0) return
@@ -76,6 +79,15 @@ export const useConversationUnreadStore = create<ConversationUnreadState>(
       set({ viewedIds, unreadIds: nextUnread })
     },
 
+    setVisible: (conversationIds) => {
+      const visibleIds = new Set<number>()
+      for (const id of conversationIds) {
+        if (id > 0) visibleIds.add(id)
+      }
+      if (sameIdSet(get().visibleIds, visibleIds)) return
+      set({ visibleIds })
+    },
+
     clear: (conversationId) => {
       if (conversationId <= 0) return
       const { unreadIds, viewedIds } = get()
@@ -106,6 +118,7 @@ export function resetConversationUnreadStore() {
     {
       unreadIds: new Set(),
       viewedIds: new Set(),
+      visibleIds: new Set(),
     },
     false
   )

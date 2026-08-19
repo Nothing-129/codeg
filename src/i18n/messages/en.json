@@ -2568,6 +2568,7 @@
       "confirmCloseAllDirtyTabs": "Close all tabs with unsaved changes?",
       "unableLoadContent": "Unable to load content.\n\n{message}",
       "previewRequestTimedOut": "Preview request timed out",
+      "openArtifactFailed": "Failed to open with system app",
       "diffRequestTimedOut": "Diff request timed out",
       "branchCompareRequestTimedOut": "Branch compare request timed out",
       "commitDiffRequestTimedOut": "Commit diff request timed out",

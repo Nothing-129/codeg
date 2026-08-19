@@ -2568,6 +2568,7 @@
       "confirmCloseAllDirtyTabs": "未保存の変更があるすべてのタブを閉じますか？",
       "unableLoadContent": "内容を読み込めません。\n\n{message}",
       "previewRequestTimedOut": "プレビュー要求がタイムアウトしました",
+      "openArtifactFailed": "システムアプリで開けませんでした",
       "diffRequestTimedOut": "Diff 要求がタイムアウトしました",
       "branchCompareRequestTimedOut": "ブランチ比較要求がタイムアウトしました",
       "commitDiffRequestTimedOut": "コミット Diff 要求がタイムアウトしました",

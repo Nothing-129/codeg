@@ -2568,6 +2568,7 @@
       "confirmCloseAllDirtyTabs": "Fermer tous les onglets avec des modifications non enregistrées ?",
       "unableLoadContent": "Impossible de charger le contenu.\n\n{message}",
       "previewRequestTimedOut": "La requête de prévisualisation a expiré",
+      "openArtifactFailed": "Échec de l'ouverture avec l'application système",
       "diffRequestTimedOut": "La requête Diff a expiré",
       "branchCompareRequestTimedOut": "La requête de comparaison de branches a expiré",
       "commitDiffRequestTimedOut": "La requête de Diff de commit a expiré",

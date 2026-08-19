@@ -565,6 +565,7 @@ export function Sidebar() {
           showRecent={showRecent}
           sortMode={sortMode}
           sectionOrder={sectionOrder}
+          onNavigate={collapseOnNavigate ? toggle : undefined}
         />
       </div>
     </aside>

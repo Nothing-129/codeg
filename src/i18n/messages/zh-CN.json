@@ -2568,6 +2568,7 @@
       "confirmCloseAllDirtyTabs": "存在未保存更改，确定关闭全部标签页吗？",
       "unableLoadContent": "无法加载内容。\n\n{message}",
       "previewRequestTimedOut": "预览请求超时",
+      "openArtifactFailed": "用系统应用打开失败",
       "diffRequestTimedOut": "Diff 请求超时",
       "branchCompareRequestTimedOut": "分支比较请求超时",
       "commitDiffRequestTimedOut": "提交差异请求超时",

@@ -83,6 +83,7 @@ import {
 } from "@/components/shared/folder-select"
 import { FolderAliasLabel } from "@/components/conversations/folder-alias-label"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
+import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
 import { useTabActions } from "@/contexts/tab-context"
 import {
   deleteConversation,
@@ -525,6 +526,9 @@ export function ConversationManageDialog({
   const refreshConversations = useAppWorkspaceStore(
     (s) => s.refreshConversations
   )
+  const updateConversationLocal = useAppWorkspaceStore(
+    (s) => s.updateConversationLocal
+  )
   const allFolders = useAppWorkspaceStore((s) => s.allFolders)
   const { closeConversationTab } = useTabActions()
 
@@ -793,6 +797,12 @@ export function ConversationManageDialog({
       if (selectedConversations.length === 0) return
       setPending(true)
       try {
+        for (const conv of selectedConversations) {
+          updateConversationLocal(conv.id, { status })
+          if (status === "completed") {
+            useConversationUnreadStore.getState().markRead(conv.id)
+          }
+        }
         await Promise.all(
           selectedConversations.map((conv) =>
             updateConversationStatus(conv.id, status)
@@ -812,7 +822,7 @@ export function ConversationManageDialog({
         setPending(false)
       }
     },
-    [selectedConversations, t, afterBulkOp]
+    [selectedConversations, t, afterBulkOp, updateConversationLocal]
   )
 
   const anyFacetNarrows =

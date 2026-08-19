@@ -21,6 +21,7 @@ const spies = vi.hoisted(() => ({
   setSearchOpen: vi.fn(),
   setRoute: vi.fn(),
   openConversations: vi.fn(),
+  toggleSidebar: vi.fn(),
   // Latest props the (stubbed) conversation list was rendered with, so tests can
   // assert what the sidebar threads down (e.g. showWorktrees / showCompleted).
   listProps: null as {
@@ -28,10 +29,12 @@ const spies = vi.hoisted(() => ({
     showCompleted?: boolean
     showRecent?: boolean
     sectionOrder?: readonly string[]
+    onNavigate?: () => void
   } | null,
 }))
 const mockState = vi.hoisted(() => ({
   activeFolder: { id: 7, path: "/x" } as { id: number; path: string } | null,
+  isMobile: false,
 }))
 
 // The conversation list is irrelevant here — stub it so the test exercises only
@@ -42,13 +45,14 @@ vi.mock("@/components/conversations/sidebar-conversation-list", () => ({
     showCompleted?: boolean
     showRecent?: boolean
     sectionOrder?: readonly string[]
+    onNavigate?: () => void
   }) => {
     spies.listProps = props
-    return null
+    return <button onClick={props.onNavigate}>Open folder conversation</button>
   },
 }))
 vi.mock("@/contexts/sidebar-context", () => ({
-  useSidebarContext: () => ({ isOpen: true, toggle: vi.fn() }),
+  useSidebarContext: () => ({ isOpen: true, toggle: spies.toggleSidebar }),
 }))
 vi.mock("@/contexts/active-folder-context", () => ({
   useActiveFolder: () => ({ activeFolder: mockState.activeFolder }),
@@ -90,7 +94,9 @@ vi.mock("@/hooks/use-shortcut-settings", () => ({
     shortcuts: { toggle_search: "mod+k", new_conversation: "mod+t" },
   }),
 }))
-vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }))
+vi.mock("@/hooks/use-mobile", () => ({
+  useIsMobile: () => mockState.isMobile,
+}))
 vi.mock("@/hooks/use-appearance", () => ({
   useZoomLevel: () => ({ zoomLevel: 100, setZoomLevel: () => {} }),
 }))
@@ -119,7 +125,9 @@ describe("Sidebar — fixed New chat / Search region", () => {
     spies.setSearchOpen.mockClear()
     spies.setRoute.mockClear()
     spies.openConversations.mockClear()
+    spies.toggleSidebar.mockClear()
     mockState.activeFolder = { id: 7, path: "/x" }
+    mockState.isMobile = false
   })
 
   it("renders the app name above New chat", () => {
@@ -173,6 +181,15 @@ describe("Sidebar — fixed New chat / Search region", () => {
     fireEvent.click(btn)
     expect(spies.openChatModeTab).toHaveBeenCalled()
     expect(spies.openNewConversationTab).not.toHaveBeenCalled()
+  })
+
+  it("closes the mobile sidebar when the conversation list navigates", () => {
+    mockState.isMobile = true
+    renderSidebar()
+
+    fireEvent.click(screen.getByText("Open folder conversation"))
+
+    expect(spies.toggleSidebar).toHaveBeenCalledOnce()
   })
 })
 

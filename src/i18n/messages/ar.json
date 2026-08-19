@@ -2568,6 +2568,7 @@
       "confirmCloseAllDirtyTabs": "إغلاق جميع التبويبات التي تحتوي تغييرات غير محفوظة؟",
       "unableLoadContent": "تعذر تحميل المحتوى.\n\n{message}",
       "previewRequestTimedOut": "انتهت مهلة طلب المعاينة",
+      "openArtifactFailed": "فشل الفتح باستخدام تطبيق النظام",
       "diffRequestTimedOut": "انتهت مهلة طلب Diff",
       "branchCompareRequestTimedOut": "انتهت مهلة طلب مقارنة الفروع",
       "commitDiffRequestTimedOut": "انتهت مهلة طلب Diff للالتزام",
