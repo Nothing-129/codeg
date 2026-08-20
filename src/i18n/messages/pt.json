@@ -795,6 +795,24 @@
       "modelsNeedAuth": "Faça login para carregar a lista de modelos.",
       "modelDefaultBadge": "padrão"
     },
+    "qoder": {
+      "configDescription": "Faça login no Qoder aqui. Todo o resto que a CLI lê fica em um único arquivo — $QODER_CONFIG_DIR/settings.json (padrão ~/.qoder), compartilhado com a CLI do qoder — e é editado literalmente abaixo. Modelo e esforço de raciocínio não ficam aqui: o Qoder os anuncia via ACP, então os seletores do compositor decidem por sessão.",
+      "authTitle": "Conta",
+      "authChecking": "Verificando…",
+      "authNotInstalled": "qoder não está instalado",
+      "authUnknown": "Status indisponível",
+      "authLoggedIn": "Conectado",
+      "authNotLoggedIn": "Não conectado",
+      "loginHint": "Execute isto num terminal para entrar com sua conta Qoder (abre o navegador) e depois clique em atualizar:",
+      "authMethodLabel": "Método de autenticação",
+      "tokenLabel": "Token de acesso pessoal",
+      "tokenPlaceholder": "para máquinas headless / servidores",
+      "tokenHint": "QODER_PERSONAL_ACCESS_TOKEN — credencial não interativa para máquinas onde o login pelo navegador não roda. Deixe vazio para usar o login da conta qoder.",
+      "saveToken": "Salvar token",
+      "advancedToggle": "Avançado: settings.json bruto",
+      "advancedHint": "O settings.json completo. Salvar grava o arquivo literalmente — e é também a única forma de apagar uma chave.",
+      "saveRawConfig": "Salvar arquivo"
+    },
     "deepseek": {
       "configManagement": "Configuração do DeepSeek Harness",
       "configDescription": "O endpoint e a chave são variáveis de ambiente que o deepseek-acp lê ao iniciar. O modelo e o nível de raciocínio são seletores por sessão — escolha-os no campo de mensagem.",
@@ -1242,7 +1260,9 @@
       "piBinaryInstallFailed": "Falha ao instalar o pi",
       "piBinaryUninstalled": "pi desinstalado",
       "piBinaryUninstallFailed": "Falha ao desinstalar o pi",
-      "savePiTrustFailed": "Falha ao salvar a confiança do espaço de trabalho"
+      "savePiTrustFailed": "Falha ao salvar a confiança do espaço de trabalho",
+      "qoderSaved": "Configuração do Qoder salva",
+      "saveQoderConfigFailed": "Falha ao salvar a configuração do Qoder"
     },
     "version": {
       "statusLabel": "Status da versão",
@@ -1414,7 +1434,11 @@
   "GeneralSettings": {
     "loading": "Carregando...",
     "sectionTitle": "Geral",
-    "sectionDescription": "Preferências centralizadas para o terminal padrão, aceleração de renderização e delegação multi-agente.",
+    "sectionDescription": "Preferências centralizadas para o início automático ao fazer login, o terminal padrão, aceleração de renderização e delegação multi-agente.",
+    "autostartTitle": "Iniciar ao fazer login",
+    "autostartDescription": "Abre o codeg automaticamente depois de você entrar neste computador.",
+    "autostartSaveFailed": "Falha ao salvar as configurações de início automático: {message}",
+    "autostartUnavailable": "Este sistema não informou o registro de inicialização do codeg: {message}",
     "terminalTitle": "Terminal padrão",
     "terminalDescription": "Escolha o shell usado ao abrir novas abas de terminal pela barra de terminal ou pela árvore de arquivos. Os agentes também o usam quando pedem ao codeg para executar uma linha de comando inteira.",
     "terminalSystemDefault": "Padrão do sistema",
@@ -1751,6 +1775,7 @@
     "conversationCard": {
       "untitledConversation": "Conversa sem título",
       "newConversation": "Nova conversa",
+      "attachToCurrentSession": "Adicionar à sessão",
       "rename": "Renomear",
       "status": "Status",
       "delete": "Excluir",
@@ -2707,6 +2732,7 @@
         "slashCommands": "Comandos de barra",
         "slashSearchPlaceholder": "Buscar comandos...",
         "slashSearchEmpty": "Nenhum comando correspondente",
+        "slashLoading": "Carregando comandos…",
         "experts": "Especialistas",
         "office": "Escritório",
         "research": "Pesquisa",

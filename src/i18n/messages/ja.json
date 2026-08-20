@@ -795,6 +795,24 @@
       "modelsNeedAuth": "サインインするとモデル一覧を読み込みます。",
       "modelDefaultBadge": "既定"
     },
+    "qoder": {
+      "configDescription": "ここで Qoder にサインインします。CLI が読む残りの設定はすべて 1 つのファイル、$QODER_CONFIG_DIR/settings.json（既定は ~/.qoder、qoder CLI と共有）にあり、下でそのまま編集します。モデルと推論強度はここにはありません。Qoder が ACP 経由で通知するため、入力欄のセレクターがセッションごとに決めます。",
+      "authTitle": "アカウント",
+      "authChecking": "確認中…",
+      "authNotInstalled": "qoder がインストールされていません",
+      "authUnknown": "状態を取得できません",
+      "authLoggedIn": "サインイン済み",
+      "authNotLoggedIn": "未サインイン",
+      "loginHint": "ターミナルで次を実行して Qoder アカウントにサインインし（ブラウザーが開きます）、更新を押してください：",
+      "authMethodLabel": "認証方式",
+      "tokenLabel": "パーソナルアクセストークン",
+      "tokenPlaceholder": "ヘッドレス / サーバー環境向け",
+      "tokenHint": "QODER_PERSONAL_ACCESS_TOKEN — ブラウザーサインインが使えない環境向けの非対話的な資格情報。空欄なら qoder アカウントのログインを使います。",
+      "saveToken": "トークンを保存",
+      "advancedToggle": "詳細：生の settings.json",
+      "advancedHint": "settings.json 全体です。保存するとそのまま書き込まれ、キーを削除できる唯一の手段でもあります。",
+      "saveRawConfig": "ファイルを保存"
+    },
     "deepseek": {
       "configManagement": "DeepSeek Harness の設定",
       "configDescription": "エンドポイントと API キーは deepseek-acp が起動時に読み込む環境変数です。モデルと推論レベルはセッションごとのセレクターなので、入力欄で切り替えます。",
@@ -1242,7 +1260,9 @@
       "piBinaryInstallFailed": "pi のインストールに失敗しました",
       "piBinaryUninstalled": "pi をアンインストールしました",
       "piBinaryUninstallFailed": "pi のアンインストールに失敗しました",
-      "savePiTrustFailed": "ワークスペースの信頼設定の保存に失敗しました"
+      "savePiTrustFailed": "ワークスペースの信頼設定の保存に失敗しました",
+      "qoderSaved": "Qoder の設定を保存しました",
+      "saveQoderConfigFailed": "Qoder の設定の保存に失敗しました"
     },
     "version": {
       "statusLabel": "バージョン状態",
@@ -1414,7 +1434,11 @@
   "GeneralSettings": {
     "loading": "読み込み中...",
     "sectionTitle": "一般",
-    "sectionDescription": "デフォルトターミナル、レンダリング高速化、マルチエージェント委譲などの共通設定をここで一括管理します。",
+    "sectionDescription": "ログイン時の起動、デフォルトターミナル、レンダリング高速化、マルチエージェント委譲などの共通設定をここで一括管理します。",
+    "autostartTitle": "ログイン時に起動",
+    "autostartDescription": "このコンピューターにサインインしたあと、codeg を自動的に起動します。",
+    "autostartSaveFailed": "ログイン時に起動する設定の保存に失敗しました: {message}",
+    "autostartUnavailable": "このシステムからログイン項目の登録状態を取得できませんでした: {message}",
     "terminalTitle": "デフォルトターミナル",
     "terminalDescription": "ターミナルバーやファイルツリーから新しいターミナルタブを開くときに使用するシェルを選択します。エージェントが codeg にコマンドライン全体の実行を依頼するときにも使われます。",
     "terminalSystemDefault": "システムデフォルト",
@@ -1751,6 +1775,7 @@
     "conversationCard": {
       "untitledConversation": "無題の会話",
       "newConversation": "新しい会話",
+      "attachToCurrentSession": "セッションに追加",
       "rename": "名前を変更",
       "status": "ステータス",
       "delete": "削除",
@@ -2707,6 +2732,7 @@
         "slashCommands": "スラッシュコマンド",
         "slashSearchPlaceholder": "コマンドを検索...",
         "slashSearchEmpty": "一致するコマンドがありません",
+        "slashLoading": "コマンドを読み込み中…",
         "experts": "エキスパート",
         "office": "日常業務",
         "research": "科学研究",

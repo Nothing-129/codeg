@@ -47,6 +47,7 @@ import type {
   CursorStructuredConfig,
   CursorAuthStatus,
   CursorModelsResult,
+  QoderAuthStatus,
   CodexModelInfo,
   AgentSkillScope,
   AgentSkillLayout,
@@ -110,6 +111,7 @@ import type {
   SystemLanguageSettings,
   SystemProxySettings,
   SystemRenderingSettings,
+  SystemAutostartSettings,
   SystemTerminalSettings,
   LogSettings,
   LogSettingsView,
@@ -582,6 +584,17 @@ export async function acpUpdateAgentConfig(
     cursorCliConfigJson: params.cursor_cli_config_json ?? null,
     cursorStructured: params.cursor_structured ?? null,
   })
+}
+
+/**
+ * Probe `qoder status -o json` for the Qoder auth card. The optional live
+ * personal access token lets the probe report on the credential that is on
+ * screen rather than a stale saved one.
+ */
+export async function acpQoderAuthStatus(
+  personalAccessToken?: string
+): Promise<QoderAuthStatus> {
+  return getTransport().call("acp_qoder_auth_status", { personalAccessToken })
 }
 
 /**
@@ -1571,6 +1584,16 @@ export async function updateSystemRenderingSettings(
   settings: SystemRenderingSettings
 ): Promise<SystemRenderingSettings> {
   return getTransport().call("update_system_rendering_settings", { settings })
+}
+
+export async function getSystemAutostartSettings(): Promise<SystemAutostartSettings> {
+  return getTransport().call("get_system_autostart_settings")
+}
+
+export async function updateSystemAutostartSettings(
+  settings: SystemAutostartSettings
+): Promise<SystemAutostartSettings> {
+  return getTransport().call("update_system_autostart_settings", { settings })
 }
 
 // --- Logging ---

@@ -109,13 +109,9 @@ describe("remarkAutolinkLocalPaths — linkified forms", () => {
     ])
   })
 
-  it("slash-prefixes Windows drive paths (forward and back slashes)", () => {
-    expect(autolink("打开 C:\\Users\\a\\手册.docx").links).toEqual([
-      "/C:\\Users\\a\\手册.docx|C:\\Users\\a\\手册.docx",
-    ])
-    expect(autolink("open E:/Desktop/docs/G.docx").links).toEqual([
-      "/E:/Desktop/docs/G.docx|E:/Desktop/docs/G.docx",
-    ])
+  it("leaves Windows drive paths inert (forward and back slashes)", () => {
+    expect(autolink("打开 C:\\Users\\a\\手册.docx").links).toEqual([])
+    expect(autolink("open E:/Desktop/docs/G.docx").links).toEqual([])
   })
 })
 
@@ -159,10 +155,8 @@ describe("remarkAutolinkLocalPaths — glued CJK prose", () => {
     expect(text).toBe("产物在。收好")
   })
 
-  it("keeps interior CJK segments in a Chinese Windows path", () => {
-    expect(autolink("文件在 E:/桌面/使用手册/G手册.docx 处").links).toEqual([
-      "/E:/桌面/使用手册/G手册.docx|E:/桌面/使用手册/G手册.docx",
-    ])
+  it("keeps a Chinese Windows path inert", () => {
+    expect(autolink("文件在 E:/桌面/使用手册/G手册.docx 处").links).toEqual([])
   })
 })
 

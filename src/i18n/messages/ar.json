@@ -795,6 +795,24 @@
       "modelsNeedAuth": "سجّل الدخول لتحميل قائمة النماذج.",
       "modelDefaultBadge": "افتراضي"
     },
+    "qoder": {
+      "configDescription": "سجّل الدخول إلى Qoder من هنا. أما بقية ما تقرأه الواجهة فيوجد كله في ملف واحد هو $QODER_CONFIG_DIR/settings.json (الافتراضي ~/.qoder) المشترك مع واجهة qoder، ويُحرَّر حرفيًا في الأسفل. النموذج وقوة الاستدلال ليسا هنا: إذ يعلن عنهما Qoder عبر ACP، فتتولاهما محدِّدات مربع الإدخال لكل جلسة.",
+      "authTitle": "الحساب",
+      "authChecking": "جارٍ التحقق…",
+      "authNotInstalled": "qoder غير مثبّت",
+      "authUnknown": "الحالة غير متاحة",
+      "authLoggedIn": "تم تسجيل الدخول",
+      "authNotLoggedIn": "لم يتم تسجيل الدخول",
+      "loginHint": "نفِّذ هذا الأمر في الطرفية لتسجيل الدخول بحساب Qoder (سيُفتح المتصفح)، ثم اضغط تحديث:",
+      "authMethodLabel": "طريقة المصادقة",
+      "tokenLabel": "رمز الوصول الشخصي",
+      "tokenPlaceholder": "لأجهزة بلا واجهة أو الخوادم",
+      "tokenHint": "QODER_PERSONAL_ACCESS_TOKEN — بيانات اعتماد غير تفاعلية للأجهزة التي يتعذّر فيها تسجيل الدخول عبر المتصفح. اتركه فارغًا لاستخدام تسجيل دخول حساب qoder.",
+      "saveToken": "حفظ الرمز",
+      "advancedToggle": "متقدم: ملف settings.json الخام",
+      "advancedHint": "ملف settings.json كاملًا، ويُكتب حرفيًا عند الحفظ — وهو أيضًا السبيل الوحيد لحذف مفتاح.",
+      "saveRawConfig": "حفظ الملف"
+    },
     "deepseek": {
       "configManagement": "إعدادات DeepSeek Harness",
       "configDescription": "نقطة النهاية والمفتاح متغيّرا بيئة يقرأهما deepseek-acp عند الإقلاع. أما النموذج ومستوى الاستدلال فمحدِّدان على مستوى الجلسة، ويُختاران من حقل الإدخال.",
@@ -1242,7 +1260,9 @@
       "piBinaryInstallFailed": "فشل تثبيت pi",
       "piBinaryUninstalled": "تم إلغاء تثبيت pi",
       "piBinaryUninstallFailed": "فشل إلغاء تثبيت pi",
-      "savePiTrustFailed": "فشل حفظ الثقة بمساحة العمل"
+      "savePiTrustFailed": "فشل حفظ الثقة بمساحة العمل",
+      "qoderSaved": "تم حفظ إعدادات Qoder",
+      "saveQoderConfigFailed": "تعذّر حفظ إعدادات Qoder"
     },
     "version": {
       "statusLabel": "حالة الإصدار",
@@ -1414,7 +1434,11 @@
   "GeneralSettings": {
     "loading": "جارٍ التحميل...",
     "sectionTitle": "عام",
-    "sectionDescription": "تفضيلات موحّدة للطرفية الافتراضية وتسريع العرض وتفويض الوكلاء المتعدّدين.",
+    "sectionDescription": "تفضيلات موحّدة للتشغيل عند تسجيل الدخول والطرفية الافتراضية وتسريع العرض وتفويض الوكلاء المتعدّدين.",
+    "autostartTitle": "التشغيل عند تسجيل الدخول",
+    "autostartDescription": "تشغيل codeg تلقائيًا بعد تسجيل الدخول إلى هذا الجهاز.",
+    "autostartSaveFailed": "فشل حفظ إعدادات التشغيل عند تسجيل الدخول: {message}",
+    "autostartUnavailable": "لم يُبلِّغ هذا النظام عن إدخال بدء تشغيل codeg: {message}",
     "terminalTitle": "الطرفية الافتراضية",
     "terminalDescription": "اختر الصدفة المستخدمة عند فتح علامات تبويب طرفية جديدة من شريط الطرفية أو شجرة الملفات. تستخدمها الوكلاء أيضًا عندما تطلب من codeg تنفيذ سطر أوامر كامل نيابةً عنها.",
     "terminalSystemDefault": "افتراضي النظام",
@@ -1751,6 +1775,7 @@
     "conversationCard": {
       "untitledConversation": "محادثة بدون عنوان",
       "newConversation": "محادثة جديدة",
+      "attachToCurrentSession": "إضافة إلى الجلسة",
       "rename": "إعادة تسمية",
       "status": "الحالة",
       "delete": "حذف",
@@ -2707,6 +2732,7 @@
         "slashCommands": "أوامر الشرطة المائلة",
         "slashSearchPlaceholder": "البحث عن الأوامر...",
         "slashSearchEmpty": "لا توجد أوامر مطابقة",
+        "slashLoading": "جارٍ تحميل الأوامر…",
         "experts": "الخبراء",
         "office": "الأعمال المكتبية",
         "research": "البحث العلمي",

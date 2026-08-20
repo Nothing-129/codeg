@@ -15,8 +15,9 @@
 // downstream sanitize/harden gauntlet (see remark-file-uri-links):
 //   - POSIX-absolute (`/var/log/x.log`) is emitted as-is — a leading `/`
 //     keeps the href through rehype-harden and classifies as a local file;
-//   - Windows drive paths are emitted slash-prefixed (`/C:/…` / `/C:\…`) so
-//     `C:` stays out of protocol position for rehype-sanitize;
+//   - Windows drive paths stay plain text. `remarkRestoreWindowsPaths` repairs
+//     separators that CommonMark consumes, and must not create markup while
+//     doing so;
 //   - everything relative (`src/foo.ts`, `./x.ts`, `../a.js`, `~/notes.md`)
 //     cannot travel as a plain href: Streamdown re-resolves relatives against
 //     the webview origin (`./src/a.ts` → `/src/a.ts` — now a wrong absolute
@@ -137,13 +138,10 @@ function pathUrlFor(token: string): string | null {
   // UNC (and any other backslash-led form) — blocked downstream, stay plain.
   if (token.startsWith("\\")) return null
 
-  // Windows drive path — slash-prefix keeps `C:` out of protocol position for
-  // rehype-sanitize (mirrors remark-file-uri-links).
+  // Windows drive paths repaired from plain text stay inert. Explicit Markdown
+  // links still flow through remark-file-uri-links and remain clickable.
   if (DRIVE_PREFIX.test(token)) {
-    const segments = nonEmptySegments(token)
-    return segments.length >= 2 || FILE_EXTENSION.test(token)
-      ? `/${token}`
-      : null
+    return null
   }
 
   // A backslash outside a drive path is not a path we can speak for.

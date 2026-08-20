@@ -795,6 +795,24 @@
       "modelsNeedAuth": "登录后加载模型列表。",
       "modelDefaultBadge": "默认"
     },
+    "qoder": {
+      "configDescription": "在此登录 Qoder 账号。CLI 读取的其余配置全部集中在一个文件里——$QODER_CONFIG_DIR/settings.json（默认 ~/.qoder，与 qoder CLI 共享），请在下方按原文编辑。模型与推理强度不在这里：Qoder 通过 ACP 上报它们，由输入框的选择器按会话决定。",
+      "authTitle": "账号",
+      "authChecking": "检测中…",
+      "authNotInstalled": "qoder 未安装",
+      "authUnknown": "状态不可用",
+      "authLoggedIn": "已登录",
+      "authNotLoggedIn": "未登录",
+      "loginHint": "在终端运行以下命令登录 Qoder 账号（会打开浏览器），完成后点刷新：",
+      "authMethodLabel": "登录方式",
+      "tokenLabel": "个人访问令牌",
+      "tokenPlaceholder": "用于无头 / 服务器环境",
+      "tokenHint": "QODER_PERSONAL_ACCESS_TOKEN —— 浏览器登录跑不起来时使用的非交互凭据。留空则使用 qoder 账号登录。",
+      "saveToken": "保存令牌",
+      "advancedToggle": "高级：原始 settings.json",
+      "advancedHint": "完整的 settings.json，保存时按原文写入——这也是唯一能删除某个键的入口。",
+      "saveRawConfig": "保存文件"
+    },
     "deepseek": {
       "configManagement": "DeepSeek Harness 配置",
       "configDescription": "端点与密钥是 deepseek-acp 启动时读取的环境变量。模型和推理档位是会话级选择器，在输入框里切换。",
@@ -1242,7 +1260,9 @@
       "piBinaryInstallFailed": "pi 安装失败",
       "piBinaryUninstalled": "pi 已卸载",
       "piBinaryUninstallFailed": "pi 卸载失败",
-      "savePiTrustFailed": "保存工作区信任失败"
+      "savePiTrustFailed": "保存工作区信任失败",
+      "qoderSaved": "Qoder 配置已保存",
+      "saveQoderConfigFailed": "保存 Qoder 配置失败"
     },
     "version": {
       "statusLabel": "版本状态",
@@ -1414,7 +1434,11 @@
   "GeneralSettings": {
     "loading": "加载中...",
     "sectionTitle": "常规",
-    "sectionDescription": "集中管理默认终端、渲染加速以及多智能体协同等通用偏好。",
+    "sectionDescription": "集中管理开机自启、默认终端、渲染加速以及多智能体协同等通用偏好。",
+    "autostartTitle": "开机自启",
+    "autostartDescription": "登录这台电脑后自动启动 codeg。",
+    "autostartSaveFailed": "开机自启设置保存失败：{message}",
+    "autostartUnavailable": "无法读取本机的开机自启状态：{message}",
     "terminalTitle": "默认终端",
     "terminalDescription": "选择从终端栏或文件树打开新终端标签页时使用的 Shell。智能体请求 codeg 代为执行整条命令行时也会使用它。",
     "terminalSystemDefault": "系统默认",
@@ -1751,6 +1775,7 @@
     "conversationCard": {
       "untitledConversation": "未命名会话",
       "newConversation": "新建会话",
+      "attachToCurrentSession": "添加到会话",
       "rename": "重命名",
       "status": "状态",
       "delete": "删除",
@@ -2709,6 +2734,7 @@
         "slashCommands": "斜杠命令",
         "slashSearchPlaceholder": "搜索命令...",
         "slashSearchEmpty": "没有匹配的命令",
+        "slashLoading": "正在加载命令…",
         "experts": "专家",
         "office": "日常办公",
         "research": "科学研究",

@@ -795,6 +795,24 @@
       "modelsNeedAuth": "로그인하면 모델 목록을 불러옵니다.",
       "modelDefaultBadge": "기본값"
     },
+    "qoder": {
+      "configDescription": "여기에서 Qoder에 로그인합니다. CLI가 읽는 나머지 설정은 모두 한 파일, 즉 $QODER_CONFIG_DIR/settings.json(기본값 ~/.qoder, qoder CLI와 공유)에 있으며 아래에서 원문 그대로 편집합니다. 모델과 추론 강도는 여기 없습니다. Qoder가 ACP로 보고하므로 입력창의 선택기가 세션마다 결정합니다.",
+      "authTitle": "계정",
+      "authChecking": "확인 중…",
+      "authNotInstalled": "qoder가 설치되어 있지 않습니다",
+      "authUnknown": "상태를 확인할 수 없음",
+      "authLoggedIn": "로그인됨",
+      "authNotLoggedIn": "로그인되지 않음",
+      "loginHint": "터미널에서 다음을 실행해 Qoder 계정으로 로그인한 뒤(브라우저가 열립니다) 새로 고침을 누르세요:",
+      "authMethodLabel": "인증 방식",
+      "tokenLabel": "개인 액세스 토큰",
+      "tokenPlaceholder": "헤드리스 / 서버 환경용",
+      "tokenHint": "QODER_PERSONAL_ACCESS_TOKEN — 브라우저 로그인을 쓸 수 없는 환경을 위한 비대화식 자격 증명입니다. 비워 두면 qoder 계정 로그인을 사용합니다.",
+      "saveToken": "토큰 저장",
+      "advancedToggle": "고급: 원본 settings.json",
+      "advancedHint": "settings.json 전체입니다. 저장하면 그대로 기록되며, 키를 삭제할 수 있는 유일한 경로이기도 합니다.",
+      "saveRawConfig": "파일 저장"
+    },
     "deepseek": {
       "configManagement": "DeepSeek Harness 구성",
       "configDescription": "엔드포인트와 API 키는 deepseek-acp가 시작할 때 읽는 환경 변수입니다. 모델과 추론 강도는 세션별 선택기이므로 입력창에서 바꿉니다.",
@@ -1242,7 +1260,9 @@
       "piBinaryInstallFailed": "pi 설치 실패",
       "piBinaryUninstalled": "pi 제거됨",
       "piBinaryUninstallFailed": "pi 제거 실패",
-      "savePiTrustFailed": "작업 공간 신뢰 저장 실패"
+      "savePiTrustFailed": "작업 공간 신뢰 저장 실패",
+      "qoderSaved": "Qoder 설정을 저장했습니다",
+      "saveQoderConfigFailed": "Qoder 설정 저장에 실패했습니다"
     },
     "version": {
       "statusLabel": "버전 상태",
@@ -1414,7 +1434,11 @@
   "GeneralSettings": {
     "loading": "로딩 중...",
     "sectionTitle": "일반",
-    "sectionDescription": "기본 터미널, 렌더링 가속, 다중 에이전트 위임 등 공용 환경설정을 한곳에서 관리합니다.",
+    "sectionDescription": "로그인 시 실행, 기본 터미널, 렌더링 가속, 다중 에이전트 위임 등 공용 환경설정을 한곳에서 관리합니다.",
+    "autostartTitle": "로그인 시 실행",
+    "autostartDescription": "이 컴퓨터에 로그인한 뒤 codeg을 자동으로 실행합니다.",
+    "autostartSaveFailed": "로그인 시 실행 설정 저장 실패: {message}",
+    "autostartUnavailable": "이 시스템에서 시작 프로그램 등록 상태를 읽지 못했습니다: {message}",
     "terminalTitle": "기본 터미널",
     "terminalDescription": "터미널 바나 파일 트리에서 새 터미널 탭을 열 때 사용할 셸을 선택합니다. 에이전트가 codeg에 전체 명령줄 실행을 요청할 때도 사용됩니다.",
     "terminalSystemDefault": "시스템 기본값",
@@ -1751,6 +1775,7 @@
     "conversationCard": {
       "untitledConversation": "제목 없는 대화",
       "newConversation": "새 대화",
+      "attachToCurrentSession": "세션에 추가",
       "rename": "이름 변경",
       "status": "상태",
       "delete": "삭제",
@@ -2707,6 +2732,7 @@
         "slashCommands": "슬래시 명령",
         "slashSearchPlaceholder": "명령 검색...",
         "slashSearchEmpty": "일치하는 명령이 없습니다",
+        "slashLoading": "명령을 불러오는 중…",
         "experts": "전문가",
         "office": "일상 업무",
         "research": "과학 연구",

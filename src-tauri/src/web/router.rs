@@ -731,6 +731,10 @@ pub fn build_router(
             post(handlers::acp::acp_cursor_list_models),
         )
         .route(
+            "/acp_qoder_auth_status",
+            post(handlers::acp::acp_qoder_auth_status),
+        )
+        .route(
             "/acp_update_kimi_code_config",
             post(handlers::acp::acp_update_kimi_code_config),
         )

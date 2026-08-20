@@ -153,23 +153,15 @@ describe("MessageResponse — plain-text local paths autolink to file badges", (
     })
   })
 
-  it("autolinks a Windows drive path written in plain text", async () => {
+  it("keeps a Windows drive path written in plain text inert", async () => {
     const { container } = render(
       <MessageResponse>{"打开 C:\\Users\\a\\手册.docx 看看"}</MessageResponse>
     )
 
-    await waitFor(() => {
-      expect(fileBadges(container)).toHaveLength(1)
-    })
+    await waitFor(() => expect(container.textContent).toBeTruthy())
+    expect(fileBadges(container)).toHaveLength(0)
+    expect(container.textContent).toContain("C:\\Users\\a\\手册.docx")
     expect(container.textContent).not.toContain("[blocked]")
-
-    fireEvent.click(fileBadges(container)[0])
-    await waitFor(() => {
-      expect(mocks.openFilePreview).toHaveBeenCalledWith(
-        "C:/Users/a/手册.docx",
-        { line: undefined }
-      )
-    })
   })
 
   it("leaves prose slash-pairs and inline code alone", async () => {

@@ -37,7 +37,7 @@ pub use message::{
 pub use quick_message::QuickMessageInfo;
 pub use remote_workspace_connection::RemoteWorkspaceConnectionInfo;
 #[cfg(feature = "tauri-runtime")]
-pub use system::SystemRenderingSettings;
+pub use system::{SystemAutostartSettings, SystemRenderingSettings};
 pub use system::{
     AvailableTerminalShells, GitCredentials, GitDetectResult, GitHubAccountsSettings,
     GitHubTokenValidation, GitSettings, SystemLanguageSettings, SystemProxySettings,

@@ -795,6 +795,24 @@
       "modelsNeedAuth": "Melde dich an, um die Modellliste zu laden.",
       "modelDefaultBadge": "Standard"
     },
+    "qoder": {
+      "configDescription": "Hier bei Qoder anmelden. Alles Weitere, was die CLI liest, steht in einer einzigen Datei — $QODER_CONFIG_DIR/settings.json (Standard ~/.qoder), gemeinsam mit der qoder-CLI — und wird unten wortgetreu bearbeitet. Modell und Reasoning-Aufwand stehen nicht hier: Qoder meldet sie über ACP, also entscheiden die Auswahlfelder im Eingabefeld pro Sitzung.",
+      "authTitle": "Konto",
+      "authChecking": "Prüfe…",
+      "authNotInstalled": "qoder ist nicht installiert",
+      "authUnknown": "Status nicht verfügbar",
+      "authLoggedIn": "Angemeldet",
+      "authNotLoggedIn": "Nicht angemeldet",
+      "loginHint": "Führe dies im Terminal aus, um dich mit deinem Qoder-Konto anzumelden (ein Browser öffnet sich), und klicke dann auf Aktualisieren:",
+      "authMethodLabel": "Anmeldeverfahren",
+      "tokenLabel": "Persönliches Zugriffstoken",
+      "tokenPlaceholder": "für Headless-/Servermaschinen",
+      "tokenHint": "QODER_PERSONAL_ACCESS_TOKEN — nicht-interaktive Anmeldedaten für Maschinen, auf denen die Browser-Anmeldung nicht läuft. Leer lassen, um die qoder-Kontoanmeldung zu verwenden.",
+      "saveToken": "Token speichern",
+      "advancedToggle": "Erweitert: rohe settings.json",
+      "advancedHint": "Die vollständige settings.json. Speichern schreibt die Datei wortgetreu — zugleich der einzige Weg, einen Schlüssel zu löschen.",
+      "saveRawConfig": "Datei speichern"
+    },
     "deepseek": {
       "configManagement": "DeepSeek-Harness-Konfiguration",
       "configDescription": "Endpunkt und Schlüssel sind Umgebungsvariablen, die deepseek-acp beim Start liest. Modell und Denkstufe sind Auswahlfelder pro Sitzung — sie werden im Eingabefeld gewählt.",
@@ -1242,7 +1260,9 @@
       "piBinaryInstallFailed": "pi-Installation fehlgeschlagen",
       "piBinaryUninstalled": "pi deinstalliert",
       "piBinaryUninstallFailed": "pi-Deinstallation fehlgeschlagen",
-      "savePiTrustFailed": "Speichern des Arbeitsbereich-Vertrauens fehlgeschlagen"
+      "savePiTrustFailed": "Speichern des Arbeitsbereich-Vertrauens fehlgeschlagen",
+      "qoderSaved": "Qoder-Konfiguration gespeichert",
+      "saveQoderConfigFailed": "Qoder-Konfiguration konnte nicht gespeichert werden"
     },
     "version": {
       "statusLabel": "Versionsstatus",
@@ -1414,7 +1434,11 @@
   "GeneralSettings": {
     "loading": "Wird geladen...",
     "sectionTitle": "Allgemein",
-    "sectionDescription": "Zentrale Einstellungen für das Standardterminal, die Rendering-Beschleunigung und die Multi-Agent-Delegation.",
+    "sectionDescription": "Zentrale Einstellungen für den Autostart beim Anmelden, das Standardterminal, die Rendering-Beschleunigung und die Multi-Agent-Delegation.",
+    "autostartTitle": "Beim Anmelden starten",
+    "autostartDescription": "Startet codeg automatisch, nachdem Sie sich an diesem Computer angemeldet haben.",
+    "autostartSaveFailed": "Autostart-Einstellungen konnten nicht gespeichert werden: {message}",
+    "autostartUnavailable": "Dieses System hat den Autostart-Eintrag von codeg nicht gemeldet: {message}",
     "terminalTitle": "Standardterminal",
     "terminalDescription": "Wählen Sie die Shell, die beim Öffnen neuer Terminal-Tabs über die Terminalleiste oder den Dateibaum verwendet wird. Agenten nutzen sie ebenfalls, wenn sie codeg um die Ausführung einer vollständigen Befehlszeile bitten.",
     "terminalSystemDefault": "Systemstandard",
@@ -1751,6 +1775,7 @@
     "conversationCard": {
       "untitledConversation": "Unbenannte Konversation",
       "newConversation": "Neue Konversation",
+      "attachToCurrentSession": "Zur Sitzung hinzufügen",
       "rename": "Umbenennen",
       "status": "Zustand",
       "delete": "Löschen",
@@ -2707,6 +2732,7 @@
         "slashCommands": "Slash-Befehle",
         "slashSearchPlaceholder": "Befehle suchen...",
         "slashSearchEmpty": "Keine passenden Befehle",
+        "slashLoading": "Befehle werden geladen…",
         "experts": "Experten",
         "office": "Büroarbeit",
         "research": "Forschung",

@@ -79,6 +79,26 @@ pub struct SystemRenderingSettings {
     pub disable_hardware_acceleration: bool,
 }
 
+/// "Launch at login". The OS registration itself is the source of truth
+/// (registry Run value / LaunchAgent plist / XDG autostart entry), so there is
+/// no mirrored copy in the database — the toggle always reflects what the
+/// system would actually do, including changes made outside the app (e.g.
+/// Windows Task Manager's Startup tab).
+///
+/// Known limitation, inherited from `auto-launch` 0.5: on macOS and Linux
+/// `is_enabled()` only asks whether the file exists. macOS Ventura's Login
+/// Items and GNOME both disable an entry *in place*, leaving the file behind,
+/// so after one of those the toggle reads on while login will not start the
+/// app. Turning it off and on again in this UI rewrites the entry and restores
+/// agreement. Windows does not have the gap — its `is_enabled()` also consults
+/// the StartupApproved key that Task Manager writes.
+#[cfg(feature = "tauri-runtime")]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SystemAutostartSettings {
+    pub enabled: bool,
+}
+
 // --- Version Control ---
 
 /// Explicit credentials for a single git remote operation.

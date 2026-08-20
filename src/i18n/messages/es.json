@@ -795,6 +795,24 @@
       "modelsNeedAuth": "Inicia sesión para cargar la lista de modelos.",
       "modelDefaultBadge": "predeterminado"
     },
+    "qoder": {
+      "configDescription": "Inicia sesión en Qoder aquí. Todo lo demás que lee la CLI está en un único archivo, $QODER_CONFIG_DIR/settings.json (por defecto ~/.qoder), compartido con la CLI de qoder y editable tal cual más abajo. El modelo y el esfuerzo de razonamiento no están aquí: Qoder los anuncia por ACP, así que los selectores del compositor los deciden por sesión.",
+      "authTitle": "Cuenta",
+      "authChecking": "Comprobando…",
+      "authNotInstalled": "qoder no está instalado",
+      "authUnknown": "Estado no disponible",
+      "authLoggedIn": "Sesión iniciada",
+      "authNotLoggedIn": "Sin iniciar sesión",
+      "loginHint": "Ejecuta esto en una terminal para iniciar sesión con tu cuenta de Qoder (se abrirá el navegador) y luego pulsa actualizar:",
+      "authMethodLabel": "Método de autenticación",
+      "tokenLabel": "Token de acceso personal",
+      "tokenPlaceholder": "para equipos headless o servidores",
+      "tokenHint": "QODER_PERSONAL_ACCESS_TOKEN: credencial no interactiva para equipos donde no puede ejecutarse el inicio de sesión por navegador. Déjalo vacío para usar la cuenta de qoder.",
+      "saveToken": "Guardar token",
+      "advancedToggle": "Avanzado: settings.json en bruto",
+      "advancedHint": "El settings.json completo. Guardar escribe el archivo literalmente, y es además la única forma de borrar una clave.",
+      "saveRawConfig": "Guardar archivo"
+    },
     "deepseek": {
       "configManagement": "Configuración de DeepSeek Harness",
       "configDescription": "El endpoint y la clave son variables de entorno que deepseek-acp lee al arrancar. El modelo y el esfuerzo de razonamiento son selectores por sesión: se eligen en el campo de mensaje.",
@@ -1242,7 +1260,9 @@
       "piBinaryInstallFailed": "Error al instalar pi",
       "piBinaryUninstalled": "pi desinstalado",
       "piBinaryUninstallFailed": "Error al desinstalar pi",
-      "savePiTrustFailed": "Error al guardar la confianza del espacio de trabajo"
+      "savePiTrustFailed": "Error al guardar la confianza del espacio de trabajo",
+      "qoderSaved": "Configuración de Qoder guardada",
+      "saveQoderConfigFailed": "No se pudo guardar la configuración de Qoder"
     },
     "version": {
       "statusLabel": "Estado de versión",
@@ -1414,7 +1434,11 @@
   "GeneralSettings": {
     "loading": "Cargando...",
     "sectionTitle": "General",
-    "sectionDescription": "Preferencias centralizadas para el terminal predeterminado, la aceleración de renderizado y la delegación entre agentes.",
+    "sectionDescription": "Preferencias centralizadas para el inicio al iniciar sesión, el terminal predeterminado, la aceleración de renderizado y la delegación entre agentes.",
+    "autostartTitle": "Iniciar al iniciar sesión",
+    "autostartDescription": "Abre codeg automáticamente después de iniciar sesión en este equipo.",
+    "autostartSaveFailed": "No se pudo guardar la configuración de inicio automático: {message}",
+    "autostartUnavailable": "Este sistema no informó del registro de inicio de codeg: {message}",
     "terminalTitle": "Terminal predeterminada",
     "terminalDescription": "Elige el shell que se usa al abrir nuevas pestañas de terminal desde la barra de terminal o el árbol de archivos. Los agentes también lo usan cuando piden a codeg que ejecute una línea de comandos completa.",
     "terminalSystemDefault": "Predeterminado del sistema",
@@ -1751,6 +1775,7 @@
     "conversationCard": {
       "untitledConversation": "Conversación sin título",
       "newConversation": "Nueva conversación",
+      "attachToCurrentSession": "Agregar a la sesión",
       "rename": "Renombrar",
       "status": "Estado",
       "delete": "Eliminar",
@@ -2707,6 +2732,7 @@
         "slashCommands": "Comandos de barra",
         "slashSearchPlaceholder": "Buscar comandos...",
         "slashSearchEmpty": "Sin comandos coincidentes",
+        "slashLoading": "Cargando comandos…",
         "experts": "Expertos",
         "office": "Ofimática",
         "research": "Investigación",

@@ -29,10 +29,12 @@ import {
   defaultRemarkPlugins,
 } from "streamdown"
 import { markdownLinkComponents } from "./markdown-link"
+import { maskLiteralSpans } from "./markdown-mask"
 import { rehypePluginsAllowingCodeg } from "./rehype-allow-codeg"
 import { remarkAutolinkLocalPaths } from "./remark-autolink-local-paths"
 import { remarkTrimCjkAutolinkTail } from "./remark-cjk-autolink-tail"
 import { remarkRewriteFileUriLinks } from "./remark-file-uri-links"
+import { remarkRestoreWindowsPaths } from "./remark-windows-paths"
 import { MATH_FENCE_PAD, useStreamdownPlugins } from "./streamdown-plugins"
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -377,15 +379,7 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>
 // avoid it — 4 spaces means "indented code" at top level but "content column"
 // inside a nested list, and a prefix scan cannot tell those apart.
 export function normalizeMathDelimiters(text: string): string {
-  const saved: string[] = []
-  const placeholder = (m: string) => {
-    saved.push(m)
-    return `\0CBLK${saved.length - 1}\0`
-  }
-  const masked = text.replace(
-    /`{3,}[\s\S]*?`{3,}|~{3,}[\s\S]*?~{3,}|`[^`\n]+`/g,
-    placeholder
-  )
+  const { masked, restore } = maskLiteralSpans(text)
   // Fold line endings only after masking, so the offsets and line scans below
   // match what remark-parse sees while masked code keeps its own bytes.
   const source = masked.replace(/\r\n|\r/g, "\n")
@@ -399,10 +393,7 @@ export function normalizeMathDelimiters(text: string): string {
       const open = atContentStart ? MATH_FENCE_PAD : ""
       return `${open}$$${inner}${MATH_FENCE_PAD}$$`
     })
-  return normalized.replace(
-    /\0CBLK(\d+)\0/g,
-    (_m, i: string) => saved[Number(i)]
-  )
+  return restore(normalized)
 }
 
 function isSpaceOrTab(code: number): boolean {
@@ -474,6 +465,8 @@ function containerPrefixEnd(
 
 const remarkPlugins = [
   ...Object.values(defaultRemarkPlugins),
+  // Before remarkRewriteFileUriLinks, which reshapes a drive path's url.
+  remarkRestoreWindowsPaths,
   remarkRewriteFileUriLinks,
   remarkAutolinkLocalPaths,
   remarkTrimCjkAutolinkTail,

@@ -795,6 +795,24 @@
       "modelsNeedAuth": "Connectez-vous pour charger la liste des modèles.",
       "modelDefaultBadge": "par défaut"
     },
+    "qoder": {
+      "configDescription": "Connectez-vous à Qoder ici. Tout le reste de ce que lit la CLI tient dans un seul fichier — $QODER_CONFIG_DIR/settings.json (par défaut ~/.qoder), partagé avec la CLI qoder — et s'édite tel quel ci-dessous. Le modèle et l'effort de raisonnement ne sont pas ici : Qoder les annonce via ACP, donc les sélecteurs du champ de saisie les décident par session.",
+      "authTitle": "Compte",
+      "authChecking": "Vérification…",
+      "authNotInstalled": "qoder n'est pas installé",
+      "authUnknown": "État indisponible",
+      "authLoggedIn": "Connecté",
+      "authNotLoggedIn": "Non connecté",
+      "loginHint": "Exécutez ceci dans un terminal pour vous connecter avec votre compte Qoder (une fenêtre de navigateur s'ouvre), puis actualisez :",
+      "authMethodLabel": "Méthode d'authentification",
+      "tokenLabel": "Jeton d'accès personnel",
+      "tokenPlaceholder": "pour machines headless / serveurs",
+      "tokenHint": "QODER_PERSONAL_ACCESS_TOKEN — identifiant non interactif pour les machines où la connexion par navigateur ne peut pas s'exécuter. Laissez vide pour utiliser la connexion au compte qoder.",
+      "saveToken": "Enregistrer le jeton",
+      "advancedToggle": "Avancé : settings.json brut",
+      "advancedHint": "Le settings.json complet. L'enregistrement écrit le fichier tel quel — c'est aussi le seul moyen de supprimer une clé.",
+      "saveRawConfig": "Enregistrer le fichier"
+    },
     "deepseek": {
       "configManagement": "Configuration de DeepSeek Harness",
       "configDescription": "Le point de terminaison et la clé sont des variables d'environnement que deepseek-acp lit au démarrage. Le modèle et le niveau de raisonnement sont des sélecteurs par session : ils se choisissent dans le champ de saisie.",
@@ -1242,7 +1260,9 @@
       "piBinaryInstallFailed": "Échec de l'installation de pi",
       "piBinaryUninstalled": "pi désinstallé",
       "piBinaryUninstallFailed": "Échec de la désinstallation de pi",
-      "savePiTrustFailed": "Échec de l'enregistrement de la confiance de l'espace de travail"
+      "savePiTrustFailed": "Échec de l'enregistrement de la confiance de l'espace de travail",
+      "qoderSaved": "Configuration Qoder enregistrée",
+      "saveQoderConfigFailed": "Échec de l'enregistrement de la configuration Qoder"
     },
     "version": {
       "statusLabel": "Statut de version",
@@ -1414,7 +1434,11 @@
   "GeneralSettings": {
     "loading": "Chargement...",
     "sectionTitle": "Général",
-    "sectionDescription": "Préférences centralisées pour le terminal par défaut, l'accélération du rendu et la délégation multi-agents.",
+    "sectionDescription": "Préférences centralisées pour le lancement à l’ouverture de session, le terminal par défaut, l’accélération du rendu et la délégation multi-agents.",
+    "autostartTitle": "Lancer à l’ouverture de session",
+    "autostartDescription": "Démarre codeg automatiquement après votre connexion à cet ordinateur.",
+    "autostartSaveFailed": "Échec de l’enregistrement des paramètres de lancement au démarrage : {message}",
+    "autostartUnavailable": "Ce système n’a pas signalé l’entrée de démarrage de codeg : {message}",
     "terminalTitle": "Terminal par défaut",
     "terminalDescription": "Choisissez le shell utilisé à l'ouverture de nouveaux onglets de terminal depuis la barre de terminal ou l'arborescence des fichiers. Les agents l'utilisent aussi lorsqu'ils demandent à codeg d'exécuter une ligne de commande complète.",
     "terminalSystemDefault": "Par défaut système",
@@ -1751,6 +1775,7 @@
     "conversationCard": {
       "untitledConversation": "Conversation sans titre",
       "newConversation": "Nouvelle conversation",
+      "attachToCurrentSession": "Ajouter à la session",
       "rename": "Renommer",
       "status": "Statut",
       "delete": "Supprimer",
@@ -2707,6 +2732,7 @@
         "slashCommands": "Commandes slash",
         "slashSearchPlaceholder": "Rechercher des commandes...",
         "slashSearchEmpty": "Aucune commande correspondante",
+        "slashLoading": "Chargement des commandes…",
         "experts": "Experts",
         "office": "Bureautique",
         "research": "Recherche",

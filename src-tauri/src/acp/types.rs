@@ -1165,6 +1165,33 @@ pub struct CursorModelsResult {
     pub error: Option<String>,
 }
 
+/// Result of probing `qoder status -o json` for the Qoder settings panel's
+/// auth card. The CLI prints a flat object:
+/// `{logged_in, version, allow_byok, username, email, avatar_url, user_type}`.
+/// Parsed defensively — a shape change degrades to `error` rather than making
+/// the card claim the account is signed out.
+#[derive(Debug, Clone, Serialize)]
+pub struct QoderAuthStatus {
+    /// A launchable `qoder` binary was found (managed cache or system install).
+    pub installed: bool,
+    pub logged_in: bool,
+    pub username: Option<String>,
+    pub email: Option<String>,
+    /// Account tier, e.g. `personal_standard`.
+    pub user_type: Option<String>,
+    /// CLI version the probe reported — the one that would actually launch,
+    /// which is not necessarily the version codeg's registry pins.
+    pub version: Option<String>,
+    /// Whether the account may bring its own model provider key.
+    pub allow_byok: Option<bool>,
+    /// Probe failure detail (spawn error / timeout / non-JSON output).
+    pub error: Option<String>,
+    /// Absolute path to the `qoder` binary codeg would launch. The panel builds
+    /// a copy-pasteable `"<binary_path>" login` command from it, because a
+    /// managed binary lives in codeg's cache and is NOT on the user's PATH.
+    pub binary_path: Option<String>,
+}
+
 /// Lightweight status info for a single agent, used by connect() pre-check.
 #[derive(Debug, Clone, Serialize)]
 pub struct AcpAgentStatus {
