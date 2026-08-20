@@ -1731,15 +1731,6 @@ export interface BackgroundSettledInfo {
   summary?: string | null
   tool_use_id?: string | null
   result?: string | null
-  /**
-   * True when this task's reply is/was rendered live on the ACP wire as the
-   * tail of a #870-held turn (the backend derives this from its launched-id
-   * set, which outlives the turn's own status flip). The handler uses it to
-   * skip arming the "Syncing background results…" hint for such a settle — the
-   * reply is already on screen, so there's no gap to bridge. Absent/false for a
-   * genuinely out-of-turn settle (reply arrives later as its own overlay turn).
-   */
-  wire_visible?: boolean
 }
 
 export type AcpEvent =
@@ -1947,7 +1938,7 @@ export type AcpEvent =
    * `turns` are UPSERTs keyed by `MessageTurn.id` into the conversation
    * runtime store's background overlay; `settled` entries each raise one OS
    * notification; `outstanding` mirrors into the connection for the idle-sweep
-   * exemption and the "background tasks running" chip.
+   * exemption (nothing renders the count).
    */
   | {
       type: "background_activity"

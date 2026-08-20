@@ -532,18 +532,6 @@ pub struct BackgroundSettledInfo {
     /// parse.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<String>,
-    /// Whether this task's reply is/was rendered on the ACP wire as the tail of
-    /// a turn `#870` (claude-agent-acp v0.59.0) held open for it — i.e. the
-    /// settling task's id was still in `current_turn_launched_ids` when the
-    /// watcher read the notification. The frontend uses this to decide whether
-    /// to arm the "syncing results" hint: for a wire-visible settle the reply
-    /// is already on screen (no gap to bridge), whereas a genuinely out-of-turn
-    /// settle's reply arrives later as a separate overlay turn. Derived from the
-    /// backend set (which persists until the next turn's rising edge), NOT from
-    /// the connection's current status — so it's correct even when the watcher
-    /// reads the settlement AFTER the turn already fell back to `Connected`.
-    #[serde(default)]
-    pub wire_visible: bool,
 }
 
 /// Which settings surface drifted, so the frontend can word the

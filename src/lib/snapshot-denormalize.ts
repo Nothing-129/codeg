@@ -68,9 +68,9 @@ export interface SnapshotPatch {
   configStale: boolean
   configStaleKind: ConfigStaleKind | null
   /** Launched-but-unresolved background tasks carried by the snapshot, so a
-   *  client attaching mid-episode recovers the sweep exemption + chip count
-   *  the one-shot `background_activity` events won't replay. `0` when the
-   *  server omitted the field. */
+   *  client attaching mid-episode recovers the sweep exemption the one-shot
+   *  `background_activity` events won't replay. `0` when the server omitted
+   *  the field. */
   backgroundOutstanding: number
   /** AIR typed session failure table carried by the snapshot — resolved
    *  entries and their revision watermarks included. MERGED into the in-memory

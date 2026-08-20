@@ -10299,9 +10299,6 @@ fn map_grok_subagent_notification_inner(
                     summary: None,
                     tool_use_id: Some(call_id),
                     result,
-                    // The settle itself flips the card in-memory; no later
-                    // overlay content follows, so the syncing hint would dangle.
-                    wire_visible: true,
                 }],
                 watermark: 0,
             }])
@@ -13358,7 +13355,6 @@ mod tests {
                 assert_eq!(s.status, "completed");
                 assert_eq!(s.tool_use_id.as_deref(), Some("call-1"));
                 assert_eq!(s.result.as_deref(), Some("## Findings"));
-                assert!(s.wire_visible, "settle flips the card in-memory — no syncing hint");
             }
             other => panic!("expected BackgroundActivity, got {other:?}"),
         }
