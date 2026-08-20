@@ -496,6 +496,9 @@ describe("SidebarConversationList — folder expand/collapse", () => {
   })
 
   afterEach(() => {
+    // A committed drag installs a one-shot capture click guard whose rAF cleanup
+    // does not advance under fake timers. Drain it before the next test.
+    window.dispatchEvent(new MouseEvent("click", { bubbles: true }))
     vi.useRealTimers()
   })
 
@@ -585,32 +588,130 @@ describe("SidebarConversationList — folder expand/collapse", () => {
     expect(stableTabFns.openNewConversationTab).toHaveBeenCalledWith(1, "/p/1")
   })
 
-  it("reorders folders by dragging the grip onto another folder", async () => {
-    render(tree())
-    const grip = document.querySelector('[data-folder-grip="1"]') as HTMLElement
-    const targetToggle = document.querySelector(
-      '[data-folder-id="3"]'
-    ) as HTMLElement
-    const targetRow = targetToggle.parentElement?.parentElement
-    if (!grip || !targetRow) throw new Error("folder drag controls not found")
+  function firePointer(
+    target: EventTarget,
+    type: string,
+    props: {
+      clientX?: number
+      clientY?: number
+      pointerId?: number
+      button?: number
+    } = {}
+  ) {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    Object.assign(event, {
+      pointerId: 1,
+      button: 0,
+      clientX: 0,
+      clientY: 0,
+      ...props,
+    })
+    target.dispatchEvent(event)
+  }
 
-    const dataTransfer = {
-      effectAllowed: "none",
-      dropEffect: "none",
-      setData: vi.fn(),
+  function folderGrip(folderId: number): HTMLElement {
+    const grip = document.querySelector(
+      `[data-folder-grip="${folderId}"]`
+    ) as HTMLElement | null
+    if (!grip) throw new Error(`folder ${folderId} grip not found`)
+    return grip
+  }
+
+  it("commits a pointer-driven reorder without relying on a DOM drop event", async () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        top: 0,
+        bottom: 600,
+        left: 0,
+        right: 200,
+        width: 200,
+        height: 600,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+    try {
+      render(tree())
+      act(() => firePointer(folderGrip(1), "pointerdown", { clientY: 100 }))
+      // Cross the trackpad-safe threshold; the collapsed surface mounts here.
+      act(() => firePointer(window, "pointermove", { clientY: 120 }))
+      // Move over slot 1 and release. Tauri desktop never emits a DOM `drop`.
+      act(() => firePointer(window, "pointermove", { clientY: 40 }))
+      await act(async () => {
+        firePointer(window, "pointerup", { clientY: 40 })
+      })
+      expect(stableWorkspaceFns.reorderFolders).toHaveBeenCalledWith([2, 1, 3])
+    } finally {
+      rectSpy.mockRestore()
     }
-    await act(async () => {
-      fireEvent.dragStart(grip, { dataTransfer })
-    })
-    await act(async () => {
-      fireEvent.dragEnter(targetRow, { dataTransfer })
-      fireEvent.dragOver(targetRow, { dataTransfer })
-      fireEvent.drop(targetRow, { dataTransfer })
-    })
+  })
 
-    await vi.waitFor(() => {
-      expect(stableWorkspaceFns.reorderFolders).toHaveBeenCalledWith([2, 3, 1])
+  it("does not mistake a small trackpad settle for a drag", async () => {
+    render(tree())
+    act(() => firePointer(folderGrip(1), "pointerdown", { clientY: 100 }))
+    act(() => firePointer(window, "pointermove", { clientY: 108 }))
+    await act(async () => {
+      firePointer(window, "pointerup", { clientY: 108 })
     })
+    expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
+    expect(document.body.textContent).toContain("conv-11")
+  })
+
+  it("cancels the collapsed drag surface when pointer capture is lost", () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        top: 0,
+        bottom: 600,
+        left: 0,
+        right: 200,
+        width: 200,
+        height: 600,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+    try {
+      render(tree())
+      act(() => firePointer(folderGrip(1), "pointerdown", { clientY: 100 }))
+      act(() => firePointer(window, "pointermove", { clientY: 120 }))
+      expect(
+        document.querySelector("[data-folder-drag-surface]")
+      ).not.toBeNull()
+      act(() => firePointer(window, "lostpointercapture"))
+      expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
+      expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+    } finally {
+      rectSpy.mockRestore()
+    }
+  })
+
+  it("cancels a trackpad drag when the window loses focus", () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        top: 0,
+        bottom: 600,
+        left: 0,
+        right: 200,
+        width: 200,
+        height: 600,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+    try {
+      render(tree())
+      act(() => firePointer(folderGrip(1), "pointerdown", { clientY: 100 }))
+      act(() => firePointer(window, "pointermove", { clientY: 120 }))
+      act(() => window.dispatchEvent(new Event("blur")))
+      expect(document.querySelector("[data-folder-drag-surface]")).toBeNull()
+      expect(stableWorkspaceFns.reorderFolders).not.toHaveBeenCalled()
+    } finally {
+      rectSpy.mockRestore()
+    }
   })
 })
 

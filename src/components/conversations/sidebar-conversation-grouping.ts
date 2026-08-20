@@ -1109,6 +1109,19 @@ export function computeStickyState(args: {
   return { visible, translateY }
 }
 
+/** Map a pointer Y over the fixed-height collapsed drag surface to a slot. */
+export function pointerYToTargetIndex(
+  pointerY: number,
+  surfaceTop: number,
+  scrollTop: number,
+  rowHeight: number,
+  count: number
+): number {
+  if (count <= 0 || rowHeight <= 0) return 0
+  const raw = Math.floor((pointerY - surfaceTop + scrollTop) / rowHeight)
+  return Math.max(0, Math.min(count - 1, raw))
+}
+
 /** Move one item to another item's slot, preserving the other items' order. */
 export function applyReorder<T>(
   order: readonly T[],
