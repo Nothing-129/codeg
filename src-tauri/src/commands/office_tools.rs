@@ -363,7 +363,7 @@ fn officecli_runtime_dependency_hint(stderr: &str) -> Option<String> {
             "officecli could not start: the server is missing the ICU library its \
              embedded .NET runtime needs. Install it in the runtime image and restart \
              (Debian/Ubuntu: `apt-get install -y libicu72`; Alpine: `apk add icu-libs`), \
-             or upgrade to a codeg image that already includes it."
+             or upgrade to a MaxCode image that already includes it."
                 .to_string(),
         );
     }

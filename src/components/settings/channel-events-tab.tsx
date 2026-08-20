@@ -133,7 +133,7 @@ const PAYLOAD_EXAMPLES: Record<(typeof ALL_EVENT_TYPES)[number]["id"], string> =
   "event": "question_request",
   "level": "warning",
   "title": "Agent Question",
-  "body": "An agent is asking a question. Answer it in Codeg.",
+  "body": "An agent is asking a question. Answer it in MaxCode.",
   "fields": [{ "label": "Approach", "value": "Which approach should we take?\\n• MVP first\\n• Risk first" }],
   "connection_id": "conn-abc",
   "source": "codeg"

@@ -53,6 +53,7 @@ const stableWorkspaceFns = vi.hoisted(() => ({
   refreshConversations: async () => {},
   updateConversationLocal: () => {},
   removeFolderFromWorkspace: async () => {},
+  reorderFolders: vi.fn(async () => {}),
   openFolder: async () => ({}) as FolderDetail,
   refreshFolder: async () => {},
 }))
@@ -336,6 +337,7 @@ beforeEach(() => {
   virtuaCtl.onScroll = null
   virtuaCtl.scrollToIndex.mockClear()
   stableTabFns.openNewConversationTab.mockClear()
+  stableWorkspaceFns.reorderFolders.mockClear()
 })
 
 describe("SidebarConversationList — single status event re-render scope", () => {
@@ -583,9 +585,32 @@ describe("SidebarConversationList — folder expand/collapse", () => {
     expect(stableTabFns.openNewConversationTab).toHaveBeenCalledWith(1, "/p/1")
   })
 
-  it("does not render a folder reorder grip", () => {
+  it("reorders folders by dragging the grip onto another folder", async () => {
     render(tree())
-    expect(document.querySelector("[data-folder-grip]")).toBeNull()
+    const grip = document.querySelector('[data-folder-grip="1"]') as HTMLElement
+    const targetToggle = document.querySelector(
+      '[data-folder-id="3"]'
+    ) as HTMLElement
+    const targetRow = targetToggle.parentElement?.parentElement
+    if (!grip || !targetRow) throw new Error("folder drag controls not found")
+
+    const dataTransfer = {
+      effectAllowed: "none",
+      dropEffect: "none",
+      setData: vi.fn(),
+    }
+    await act(async () => {
+      fireEvent.dragStart(grip, { dataTransfer })
+    })
+    await act(async () => {
+      fireEvent.dragEnter(targetRow, { dataTransfer })
+      fireEvent.dragOver(targetRow, { dataTransfer })
+      fireEvent.drop(targetRow, { dataTransfer })
+    })
+
+    await vi.waitFor(() => {
+      expect(stableWorkspaceFns.reorderFolders).toHaveBeenCalledWith([2, 3, 1])
+    })
   })
 })
 

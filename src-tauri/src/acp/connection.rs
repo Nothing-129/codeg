@@ -5614,7 +5614,7 @@ fn refuse_unadvertised_channel<T: sacp::JsonRpcResponse>(
 /// of the refusal a unit test can pin; the wiring itself is covered end-to-end.
 fn unadvertised_channel_error(method: &str) -> sacp::Error {
     sacp::Error::method_not_found().data(format!(
-        "codeg does not host {method} for this agent ({HOST_TOOLS_ENV}=agent)"
+        "MaxCode does not host {method} for this agent ({HOST_TOOLS_ENV}=agent)"
     ))
 }
 
@@ -7062,7 +7062,7 @@ impl EmptyTurnCause {
                 format!("{agent_type} ended the turn without producing any response.")
             }
             EmptyTurnCause::ProtocolMismatch => format!(
-                "{agent_type} produced output that codeg could not parse — \
+                "{agent_type} produced output that MaxCode could not parse — \
                  the agent version may not match the protocol."
             ),
             EmptyTurnCause::MetadataOnly => format!(
@@ -12274,7 +12274,7 @@ mod tests {
         ] {
             assert!(
                 !recovers_load_failure_locally(builtin, Some("session_unavailable")),
-                "{builtin:?} has no codeg-side transcript to fall back on"
+            "{builtin:?} has no MaxCode-side transcript to fall back on"
             );
         }
     }

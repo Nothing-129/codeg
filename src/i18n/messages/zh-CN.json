@@ -131,7 +131,7 @@
       },
       "css": {
         "dialogTitle": "自定义 CSS",
-        "dialogDescription": "对所有 codeg 窗口生效。修改会实时预览，点击「应用」才会保存。",
+        "dialogDescription": "对所有 MaxCode 窗口生效。修改会实时预览，点击「应用」才会保存。",
         "size": "{used} KB / {max} KB",
         "ruleCount": "{count} 条规则",
         "errorTooLarge": "内容过大，无法保存，请精简到上限以内。",
@@ -622,7 +622,7 @@
     "envVars": "环境变量",
     "hostTools": {
       "label": "由 Agent 自行处理文件与命令",
-      "description": "codeg 不再代为提供文件访问和终端命令，改由 Agent 在自己的进程中执行——只有这样它自带的沙箱与权限规则才会生效。同时会关闭向其他 Agent 委托，否则同样的操作又会绕回 codeg 执行。codeg 本身不提供沙箱，因此请仅在 Agent 已配置沙箱时开启。"
+      "description": "MaxCode 不再代为提供文件访问和终端命令，改由 Agent 在自己的进程中执行——只有这样它自带的沙箱与权限规则才会生效。同时会关闭向其他 Agent 委托，否则同样的操作又会绕回 MaxCode 执行。MaxCode 本身不提供沙箱，因此请仅在 Agent 已配置沙箱时开启。"
     },
     "nativeJsonConfig": "原生 JSON 配置",
     "modelHintDefault": "留空则使用系统默认模型。",
@@ -735,7 +735,7 @@
       "configTomlHint": "按原样整体写入 ~/.grok/config.toml。非法 TOML 会被拒绝，绝不因笔误截断文件。",
       "configTomlPlaceholder": "# 上面控件之外的键，例如\n# [mcp_servers.*]、[cli]、[permission] 规则。",
       "customModelTitle": "自定义模型（自带端点）",
-      "customModelHint": "让 Grok 指向自定义或自托管端点。codeg 会写入按模型的 `[model.*]` 块并将其设为默认模型。清空模型 ID 即可移除。",
+      "customModelHint": "让 Grok 指向自定义或自托管端点。MaxCode 会写入按模型的 `[model.*]` 块并将其设为默认模型。清空模型 ID 即可移除。",
       "customModelIdLabel": "模型 ID",
       "customModelIdPlaceholder": "grok-4.5",
       "customModelIdHint": "注册为 `[model.*]` 块，并作为模型名发送给 API；同时设为 `[models].default`。",
@@ -753,7 +753,7 @@
       "autoCompactHint": "当上下文使用率达到该百分比时压缩对话（Grok 默认 85）。写入 `[session]`。"
     },
     "cursor": {
-      "configDescription": "在此配置 Cursor。先选择认证方式——官网订阅（浏览器登录）或用于无头/服务器的 Cursor API 密钥——然后选择模型并编辑 CLI 的权限规则与沙箱。codeg 会写入 ~/.cursor/cli-config.json，与 cursor-agent CLI 共享。",
+      "configDescription": "在此配置 Cursor。先选择认证方式——官网订阅（浏览器登录）或用于无头/服务器的 Cursor API 密钥——然后选择模型并编辑 CLI 的权限规则与沙箱。MaxCode 会写入 ~/.cursor/cli-config.json，与 cursor-agent CLI 共享。",
       "authTitle": "鉴权",
       "authChecking": "检测中…",
       "authNotInstalled": "cursor-agent 未安装",
@@ -847,7 +847,7 @@
       "approvalPolicy_untrusted": "仅信任只读 — 只有已知安全的只读命令免批准",
       "approvalPolicy_never": "从不询问 — 完全不弹审批",
       "approvalPolicy_granular": "精细控制 — 按提示类型分别设置",
-      "approvalPolicyUntrustedAcpWarning": "ACP 适配器只有三种审批预设，untrusted 无对应项，codeg 会话会退回「按需询问」——此时由模型自行决定何时询问，沙箱本就允许的命令不再询问。请改用下方的沙箱模式收紧。",
+      "approvalPolicyUntrustedAcpWarning": "ACP 适配器只有三种审批预设，untrusted 无对应项，MaxCode 会话会退回「按需询问」——此时由模型自行决定何时询问，沙箱本就允许的命令不再询问。请改用下方的沙箱模式收紧。",
       "granularHint": "关闭表示该类请求被自动拒绝，而不是弹给你确认。",
       "granular_sandbox_approval": "Shell 命令越权申请",
       "granular_rules": "Execpolicy 规则提示",
@@ -860,7 +860,7 @@
       "sandboxMode_workspace-write": "可写工作区",
       "sandboxMode_danger-full-access": "完全放开（无沙箱）",
       "sandboxModeHint": "在 Windows 上，未开启 codex 的实验性 Windows 沙箱时，可写工作区会被降级为只读。",
-      "sandboxModeSeedsPresetHint": "codeg 还会用它推导会话的初始审批预设，因此与审批策略不同，它对普通提问同样生效。输入框中选择的预设仍会覆盖它。",
+      "sandboxModeSeedsPresetHint": "MaxCode 还会用它推导会话的初始审批预设，因此与审批策略不同，它对普通提问同样生效。输入框中选择的预设仍会覆盖它。",
       "writableRootsLabel": "额外可写目录",
       "writableRootsHint": "每行一个绝对路径，作为工作目录之外的额外可写位置。",
       "sandboxRootsRelativeError": "必须是绝对路径 — codex 会把相对路径解析到 ~/.codex 下：{path}",
@@ -1029,7 +1029,7 @@
     },
     "hermes": {
       "configManagement": "Hermes 配置",
-      "configDescription": "Hermes 在 ~/.hermes/.env 中管理自己的凭据，在 ~/.hermes/config.yaml 中管理设置。选择一个供应商，然后设置 API 密钥和模型——codeg 会替你写入这两个文件。",
+      "configDescription": "Hermes 在 ~/.hermes/.env 中管理自己的凭据，在 ~/.hermes/config.yaml 中管理设置。选择一个供应商，然后设置 API 密钥和模型——MaxCode 会替你写入这两个文件。",
       "providerLabel": "供应商",
       "providerHint": "供应商决定 Hermes 使用哪个 API 密钥变量和 model.provider。OAuth 供应商通过下方的终端设置进行配置。",
       "groupApiKey": "API 密钥提供商",
@@ -1071,7 +1071,7 @@
     },
     "kimiCode": {
       "configManagement": "Kimi Code 配置",
-      "configDescription": "`kimi acp` 只认已存储的登录令牌，所以 codeg 会在 ~/.kimi-code/config.toml 写入受管供应商，并在本地播种一个门控令牌——推理仍然走你自己的 Key。",
+      "configDescription": "`kimi acp` 只认已存储的登录令牌，所以 MaxCode 会在 ~/.kimi-code/config.toml 写入受管供应商，并在本地播种一个门控令牌——推理仍然走你自己的 Key。",
       "statusUnconfigured": "尚未配置",
       "statusDirty": "有未保存的修改",
       "summaryLabel": "生效配置",
@@ -1083,7 +1083,7 @@
       "authModeApiKey": "API Key",
       "authModeLogin": "Kimi 账号登录（订阅）",
       "authModeApiKeyHint": "在 config.toml 写入受管供应商，并播种门控令牌以便会话能够打开。",
-      "loginHint": "在终端运行 `kimi login`，用 Kimi 订阅账号登录。codeg 不存储任何凭据，复用 Kimi 自己的登录。在此保存会移除 codeg 的 API Key 门控令牌。",
+      "loginHint": "在终端运行 `kimi login`，用 Kimi 订阅账号登录。MaxCode 不存储任何凭据，复用 Kimi 自己的登录。在此保存会移除 MaxCode 的 API Key 门控令牌。",
       "credentialTitle": "凭据",
       "interfaceTypeLabel": "供应商类型",
       "interfaceTypeHint": "Kimi 使用的供应商协议（config.toml 的 `type`）。Moonshot / platform.kimi.com 的 Key 请选「Kimi / Moonshot」。",
@@ -1112,7 +1112,7 @@
       "modelNotInList": "该模型不在你的 Key 可访问列表中，Kimi 会报「模型不存在」。",
       "reasoningTitle": "推理",
       "reasoningEnableLabel": "启用",
-      "reasoningDescription": "只有当模型声明了推理能力，Kimi 才会在输入框显示「Thinking」选择器，所以这里由 codeg 写入该声明。对新建会话生效。",
+      "reasoningDescription": "只有当模型声明了推理能力，Kimi 才会在输入框显示「Thinking」选择器，所以这里由 MaxCode 写入该声明。对新建会话生效。",
       "effortsLabel": "可选档位",
       "effortsHint": "这些会成为输入框「Thinking」选择器里的档位。Kimi 会把档位原样透传给供应商，请选你的模型能接受的值。",
       "effortsEmptyHint": "一个档位都不选时，输入框只会退化成 Off / On 两档开关。",
@@ -1281,12 +1281,12 @@
     "adapter": {
       "label": "ACP 适配器",
       "badge": "ACP 适配器",
-      "badgeHint": "Codeg 为该智能体安装的是 ACP 适配器包，而不是厂商 CLI —— 两者互相独立，配置共享。",
+      "badgeHint": "MaxCode 为该智能体安装的是 ACP 适配器包，而不是厂商 CLI —— 两者互相独立，配置共享。",
       "learnMore": "了解详情",
-      "missingWithNative": "已检测到你本地的 {nativeLabel}：{nativePath}。Codeg 通过 ACP 协议驱动智能体，而该 CLI 本身不支持 ACP，所以 Codeg 需要单独的适配器包 {adapterPackage}（由 Agent Client Protocol 项目维护，最初由 Zed 团队发起）。它自带运行时，不会修改或替换你的 {nativeCmd} 命令，读取的也是同一个 {configDir} —— 已有的登录和配置直接沿用。点击下方安装即可。",
-      "missing": "Codeg 通过 ACP 协议驱动智能体，而 {nativeLabel} 本身不支持 ACP，所以 Codeg 需要单独的适配器包 {adapterPackage}（由 Agent Client Protocol 项目维护，最初由 Zed 团队发起）。它自带运行时，因此不必先装 {nativeCmd} CLI；如果你已经装了，两者可以共存，并共用 {configDir} 里的登录和配置。点击下方安装即可。",
-      "readyWithNative": "适配器 {adapterCmd} 已安装 —— Codeg 启动的是它，而不是你本地的 {nativeCmd}（{nativePath}）。两者是各自独立的包，可以共存，且都读取 {configDir}，登录和配置共享。",
-      "ready": "适配器 {adapterCmd} 已安装 —— Codeg 启动的就是它。它自带运行时，所以不需要另外安装 {nativeLabel}；即便以后你装了，两者也能共存并共用 {configDir}。"
+      "missingWithNative": "已检测到你本地的 {nativeLabel}：{nativePath}。MaxCode 通过 ACP 协议驱动智能体，而该 CLI 本身不支持 ACP，所以 MaxCode 需要单独的适配器包 {adapterPackage}（由 Agent Client Protocol 项目维护，最初由 Zed 团队发起）。它自带运行时，不会修改或替换你的 {nativeCmd} 命令，读取的也是同一个 {configDir} —— 已有的登录和配置直接沿用。点击下方安装即可。",
+      "missing": "MaxCode 通过 ACP 协议驱动智能体，而 {nativeLabel} 本身不支持 ACP，所以 MaxCode 需要单独的适配器包 {adapterPackage}（由 Agent Client Protocol 项目维护，最初由 Zed 团队发起）。它自带运行时，因此不必先装 {nativeCmd} CLI；如果你已经装了，两者可以共存，并共用 {configDir} 里的登录和配置。点击下方安装即可。",
+      "readyWithNative": "适配器 {adapterCmd} 已安装 —— MaxCode 启动的是它，而不是你本地的 {nativeCmd}（{nativePath}）。两者是各自独立的包，可以共存，且都读取 {configDir}，登录和配置共享。",
+      "ready": "适配器 {adapterCmd} 已安装 —— MaxCode 启动的就是它。它自带运行时，所以不需要另外安装 {nativeLabel}；即便以后你装了，两者也能共存并共用 {configDir}。"
     },
     "cline": {
       "configDescription": "配置 Cline API 提供商和凭证。设置将保存到 ~/.cline/data/。"
@@ -1417,7 +1417,7 @@
     "customAgentSkillsDirLabel": "专属技能目录",
     "customAgentSkillsDirHint": "该智能体自身加载技能的目录绝对路径 —— 可与共享目录并存，也可单独使用。~ 会展开为主目录；链接技能时优先放入此目录。",
     "customAgentMcpLabel": "MCP 支持",
-    "customAgentMcpHint": "会话建立时向该智能体注入 codeg 内置的 codeg-mcp 伴生进程 —— 委托、实时反馈与任务工具都依赖它。若该智能体不支持 MCP、连接时报错，请关闭此项；设置在下次连接时生效。",
+    "customAgentMcpHint": "会话建立时向该智能体注入 MaxCode 内置的 codeg-mcp 伴生进程 —— 委托、实时反馈与任务工具都依赖它。若该智能体不支持 MCP、连接时报错，请关闭此项；设置在下次连接时生效。",
     "customAgentIconNotAnImage": "请选择图片文件。",
     "customAgentIconTooLarge": "图标需小于 {limit} KB。",
     "customAgentIconReadFailed": "无法读取该图片。",
@@ -1436,11 +1436,11 @@
     "sectionTitle": "常规",
     "sectionDescription": "集中管理开机自启、默认终端、渲染加速以及多智能体协同等通用偏好。",
     "autostartTitle": "开机自启",
-    "autostartDescription": "登录这台电脑后自动启动 codeg。",
+    "autostartDescription": "登录这台电脑后自动启动 MaxCode。",
     "autostartSaveFailed": "开机自启设置保存失败：{message}",
     "autostartUnavailable": "无法读取本机的开机自启状态：{message}",
     "terminalTitle": "默认终端",
-    "terminalDescription": "选择从终端栏或文件树打开新终端标签页时使用的 Shell。智能体请求 codeg 代为执行整条命令行时也会使用它。",
+    "terminalDescription": "选择从终端栏或文件树打开新终端标签页时使用的 Shell。智能体请求 MaxCode 代为执行整条命令行时也会使用它。",
     "terminalSystemDefault": "系统默认",
     "terminalPowerShell7": "PowerShell 7 (pwsh)",
     "terminalWindowsPowerShell": "Windows PowerShell",
@@ -1463,8 +1463,8 @@
     "loadFailed": "加载失败：{message}"
   },
   "LoginPage": {
-    "documentTitle": "登录 - codeg",
-    "brand": "Codeg",
+    "documentTitle": "登录 - MaxCode",
+    "brand": "MaxCode",
     "subtitle": "输入访问 Token 以连接到桌面端",
     "tokenPlaceholder": "Access Token",
     "connect": "连接",
@@ -1582,7 +1582,7 @@
     },
     "sidebar": {
       "title": "会话",
-      "brand": "Codeg",
+      "brand": "MaxCode",
       "locateActiveConversation": "定位当前会话",
       "expandAllGroups": "展开全部分组",
       "collapseAllGroups": "折叠全部分组",
@@ -1610,11 +1610,13 @@
         "folderRemoved": "已移除文件夹 {name}",
         "openFolderFailed": "打开文件夹失败",
         "removeFolderFailed": "移除文件夹失败：{message}",
+        "reorderFoldersFailed": "重新排序文件夹失败：{message}",
         "changeFolderColorFailed": "修改颜色失败：{message}",
         "setFolderAliasFailed": "设置别名失败：{message}",
         "changeFolderDefaultAgentFailed": "设置默认智能体失败：{message}"
       },
       "statsLabel": "{folders} 个文件夹 · {convos} 个会话",
+      "reorderHandle": "拖拽排序",
       "openFolder": "打开文件夹",
       "searchPlaceholder": "搜索会话...",
       "viewOptions": "显示选项",
@@ -2632,7 +2634,7 @@
         },
         "backendErrors": {
           "initializeTimeout": "{agent} 连接握手超时（60 秒未响应），请前往设置页面检查智能体和网络配置。",
-          "mcpRejectedByAgent": "附带 codeg 的 MCP 伴生进程时，{agent} 拒绝了本次会话：{message} 如果该智能体不支持 MCP，请在设置中关闭它的“MCP 支持”后重新连接。",
+          "mcpRejectedByAgent": "附带 MaxCode 的 MCP 伴生进程时，{agent} 拒绝了本次会话：{message} 如果该智能体不支持 MCP，请在设置中关闭它的“MCP 支持”后重新连接。",
           "processExited": "{agent} 进程意外退出。",
           "spawnFailed": "启动 {agent} 失败：{message}",
           "downloadFailed": "{agent} 下载失败：{message}",
@@ -2644,7 +2646,7 @@
           "turnFailedUnknown": "{agent} 以未知的停止原因结束了本轮回复。",
           "grokModelSwitchIncompatibleAgent": "{agent} 无法在已有对话中切换到该模型，请新建会话以使用它。",
           "turnFailedEmpty": "{agent} 本轮没有产生任何回复就结束了。",
-          "turnFailedEmptyProtocol": "{agent} 本轮的输出 codeg 无法解析，可能是代理版本与协议不匹配。",
+          "turnFailedEmptyProtocol": "{agent} 本轮的输出 MaxCode 无法解析，可能是代理版本与协议不匹配。",
           "turnFailedEmptyMetadata": "{agent} 本轮只收到状态更新（计划 / 模式 / 用量），没有收到任何回复。",
           "detailsInAlerts": "在状态栏的「告警」中展开详情，可查看代理输出。"
         },
@@ -2788,7 +2790,7 @@
           "shortcutsAuxPanel": "<shortcut>{toggleAuxPanel}</shortcut> 切换右侧面板，查看本次会话改动的文件与 Git 变更",
           "shortcutsTerminalSidebar": "<shortcut>{toggleTerminal}</shortcut> 打开内置终端，<shortcut>{toggleSidebar}</shortcut> 切换侧边栏",
           "customShortcuts": "所有快捷键都可在「设置 → 快捷键」中自定义",
-          "webService": "开启「设置 → Web 服务」后，团队成员可从浏览器接入同一台 codeg",
+          "webService": "开启「设置 → Web 服务」后，团队成员可从浏览器接入同一台 MaxCode",
           "fusionMode": "打开文件或差异后，会自动与会话并排显示",
           "quickMessages": "点输入框旁的 + 按钮选择「快捷消息」，可一键插入预存片段（在「设置 → 快捷消息」中管理）",
           "experts": "通过 + 按钮里的「专家技能」可一键加载预设角色（调试 / 规划等）",
@@ -2798,7 +2800,7 @@
           "mentionTargets": "@ 不只能引用文件：还能 @ 另一个智能体把子任务交给它，或引用历史会话、某次提交、某个技能。",
           "splitGroups": "右键点击标签选择「向右拆分」或「向下拆分」，两个会话各占一个分栏同时开着。",
           "worktrees": "点开分支按钮选「新建工作树」，多个智能体就能在同一个仓库并行干活，互不覆盖彼此的文件。",
-          "importSessions": "之前在终端里跑过的会话，用文件夹右键菜单的「导入本地会话」就能把那段历史接进 codeg。",
+          "importSessions": "之前在终端里跑过的会话，用文件夹右键菜单的「导入本地会话」就能把那段历史接进 MaxCode。",
           "subSessions": "智能体委派出去的子会话会嵌套显示在侧边栏的父会话下面，展开就能跟踪每一个子会话做了什么。",
           "liveFeedback": "「+」菜单里的「实时反馈」能把一条便条塞进智能体正在跑的这一轮，不用打断它。",
           "skillPacks": "设置 → 技能包 里打包了编程专家、科研和办公三类技能，可以按智能体分别开关。",
@@ -3332,7 +3334,7 @@
         "grantDescription": "pi 会加载该仓库自带的 .pi 文件。请查看这意味着什么。",
         "grantInheritedDescription": "某个上级目录已被信任，因此 pi 会加载该仓库自带的 .pi 文件。请查看这意味着什么。",
         "grantDialogTitle": "该项目的 pi 资源已被信任",
-        "grantDialogDescription": "pi 被允许加载该仓库自带的 .pi 文件。旧版本 codeg 会在你打开目录时自动授予该权限，因此你可能从未被询问过。",
+        "grantDialogDescription": "pi 被允许加载该仓库自带的 .pi 文件。旧版本 MaxCode 会在你打开目录时自动授予该权限，因此你可能从未被询问过。",
         "grantExecutionWarning": "扩展就是代码。仓库中的扩展会在 pi 启动时以你的权限执行——早于你发送任何消息。",
         "inheritedFrom": "信任来自",
         "revoke": "撤销信任",
@@ -3519,11 +3521,11 @@
   "WebServiceSettings": {
     "addressSwitchHint": "切换只改变这里显示和打开的地址；服务监听所有网卡，每个地址都可访问。",
     "sectionTitle": "Web 服务",
-    "sectionDescription": "启用后可通过浏览器远程访问 Codeg",
+    "sectionDescription": "启用后可通过浏览器远程访问 MaxCode",
     "port": "端口",
     "status": "状态",
     "autoStart": "自动启动",
-    "autoStartHint": "Codeg 启动时自动开启 Web 服务",
+    "autoStartHint": "MaxCode 启动时自动开启 Web 服务",
     "running": "运行中",
     "stopped": "已停止",
     "processing": "处理中...",
@@ -3538,7 +3540,7 @@
     "copy": "复制",
     "qrcode": "二维码",
     "qrcodeTitle": "扫码打开",
-    "qrcodeHint": "用手机扫描，在浏览器中打开 Codeg",
+    "qrcodeHint": "用手机扫描，在浏览器中打开 MaxCode",
     "addressLabel": "访问地址",
     "tokenLabel": "访问 Token",
     "tokenHint": "Web 客户端首次访问时需输入此 Token",
@@ -3546,7 +3548,7 @@
     "regenerate": "重新生成",
     "stalePortOccupiedTitle": "端口 {port} 已被其他进程占用",
     "stalePortUnknownTitle": "端口 {port} 状态未知",
-    "stalePortHint": "在端口释放前 Codeg 无法绑定。可以更换上方的端口，或结束占用该端口的进程。",
+    "stalePortHint": "在端口释放前 MaxCode 无法绑定。可以更换上方的端口，或结束占用该端口的进程。",
     "errors": {
       "alreadyRunning": "Web 服务已在运行",
       "invalidAddress": "主机或端口格式无效",
@@ -3597,7 +3599,7 @@
     "tokenRequired": "请输入 Token。",
     "chatIdRequired": "请输入 Chat ID。",
     "topicMode": "话题群模式",
-    "topicModeHint": "将 Telegram forum topics 路由为独立 Codeg 会话。Bot 必须加入 forum supergroup，并拥有管理 topics 权限。",
+    "topicModeHint": "将 Telegram forum topics 路由为独立 MaxCode 会话。Bot 必须加入 forum supergroup，并拥有管理 topics 权限。",
     "loadFailed": "加载渠道失败。",
     "saveFailed": "保存失败。",
     "connectSuccess": "渠道已连接。",
@@ -3794,7 +3796,7 @@
     },
     "confirm": {
       "disableTitle": "禁用这些链接？",
-      "disableBody": "这将移除 {count} 个由 codeg 管理的技能链接。占用自定义目录的技能不受影响。你可以随时重新启用。",
+      "disableBody": "这将移除 {count} 个由 MaxCode 管理的技能链接。占用自定义目录的技能不受影响。你可以随时重新启用。",
       "cancel": "取消",
       "confirm": "禁用"
     },
@@ -3815,7 +3817,7 @@
   },
   "ExpertsSettings": {
     "title": "专家技能",
-    "description": "为 AI 编码代理启用精心挑选、经过实战验证的技能工作流。每个专家都是 superpowers 项目中的独立技能 —— codeg 维护中央副本，并将其软链接到你选择的代理目录。",
+    "description": "为 AI 编码代理启用精心挑选、经过实战验证的技能工作流。每个专家都是 superpowers 项目中的独立技能 —— MaxCode 维护中央副本，并将其软链接到你选择的代理目录。",
     "loading": "正在加载专家列表…",
     "loadingContent": "正在加载内容…",
     "emptyExperts": "当前没有可用的专家，请查看应用日志。",
@@ -3824,7 +3826,7 @@
     "searchPlaceholder": "按名称、ID 或描述搜索专家",
     "enableForAgents": "为代理启用",
     "noAgents": "未检测到 ACP 代理。",
-    "copyModeWarning": "已复制(非软链接)。codeg 更新后需要重新启用以获取最新版本。",
+    "copyModeWarning": "已复制(非软链接)。MaxCode 更新后需要重新启用以获取最新版本。",
     "previewTitle": "SKILL.md 预览",
     "categories": {
       "discovery": "发现与设计",
@@ -3860,7 +3862,7 @@
   },
   "ScienceSettings": {
     "title": "科学研究技能",
-    "description": "为你的 AI 编码智能体启用精选的科学研究技能：假设生成、实验设计、统计、可视化、批判性评估与文献检索。codeg 管理中央副本，并将每个技能链接到你选择的智能体。",
+    "description": "为你的 AI 编码智能体启用精选的科学研究技能：假设生成、实验设计、统计、可视化、批判性评估与文献检索。MaxCode 管理中央副本，并将每个技能链接到你选择的智能体。",
     "loading": "正在加载科学研究技能…",
     "emptySkills": "没有可用的科学研究技能。请检查应用日志。",
     "searchPlaceholder": "按名称、ID 或描述搜索科学研究技能",
@@ -3954,7 +3956,7 @@
   },
   "SkillPacksSettings": {
     "title": "技能包",
-    "description": "由 codeg 集中管理、并链接到各 AI 智能体的成套技能——编码专家、科学研究与办公文档工具。可在下方按智能体分别启用。",
+    "description": "由 MaxCode 集中管理、并链接到各 AI 智能体的成套技能——编码专家、科学研究与办公文档工具。可在下方按智能体分别启用。",
     "tabs": {
       "experts": "专家",
       "science": "科学研究",
@@ -4164,7 +4166,7 @@
   },
   "BackupSettings": {
     "title": "备份与恢复",
-    "description": "导出一份可移植的 codeg 数据备份，或从备份中恢复。",
+    "description": "导出一份可移植的 MaxCode 数据备份，或从备份中恢复。",
     "tabs": {
       "backup": "备份",
       "restore": "恢复"
@@ -4194,9 +4196,9 @@
         "incompatible": "不兼容",
         "createdAt": "创建时间：{value}",
         "appVersion": "应用版本：{value}",
-        "incompatibleHint": "该备份由更新版本的 codeg 创建，无法恢复。"
+        "incompatibleHint": "该备份由更新版本的 MaxCode 创建，无法恢复。"
       },
-      "replaceWarning": "恢复将替换当前全部 codeg 数据（数据库与上传文件）。当前数据会先做快照以便回退。",
+      "replaceWarning": "恢复将替换当前全部 MaxCode 数据（数据库与上传文件）。当前数据会先做快照以便回退。",
       "keyringNote": "桌面端的 GitHub/聊天 token 存于系统钥匙串，不包含在备份中；恢复后需重新填写。",
       "button": "恢复",
       "staging": "正在准备恢复…",
@@ -4205,7 +4207,7 @@
       "restartTimeout": "服务未能及时恢复。待其启动后请刷新页面。",
       "externalSideLocation": "会话记录已恢复到 {path}",
       "confirmTitle": "替换全部数据？",
-      "confirmBody": "这将用备份替换当前的 codeg 数据库与上传文件，然后重启。当前数据会先做快照。",
+      "confirmBody": "这将用备份替换当前的 MaxCode 数据库与上传文件，然后重启。当前数据会先做快照。",
       "cancel": "取消",
       "confirmAction": "替换并重启",
       "external": {
@@ -4223,15 +4225,15 @@
       },
       "restartFailed": "恢复已就绪，但服务未能重启。请手动重启以应用此次恢复。"
     },
-    "remoteUnsupported": "备份与恢复作用于运行 codeg 的那台机器上的数据。你当前连接的是远程工作区——请直接在该服务器上管理其备份。"
+    "remoteUnsupported": "备份与恢复作用于运行 MaxCode 的那台机器上的数据。你当前连接的是远程工作区——请直接在该服务器上管理其备份。"
   },
   "backup": {
     "restore": {
       "error": {
         "badPassphrase": "口令错误或备份已损坏。",
         "corrupted": "备份归档已损坏。",
-        "unknownFormat": "该文件不是可识别的 codeg 备份。",
-        "newerVersion": "该备份由 codeg {backupVersion} 创建，比当前版本（{appVersion}）更新。",
+        "unknownFormat": "该文件不是可识别的 MaxCode 备份。",
+        "newerVersion": "该备份由 MaxCode {backupVersion} 创建，比当前版本（{appVersion}）更新。",
         "alreadyPending": "已有一个恢复在等待生效。请先重启应用它，再暂存新的恢复。"
       }
     },
@@ -4269,7 +4271,7 @@
   },
   "AgentToolsSettings": {
     "title": "会话内工具",
-    "description": "codeg 在会话中额外提供给智能体的工具。工具在智能体启动时注入，改动只对之后启动的智能体生效。",
+    "description": "MaxCode 在会话中额外提供给智能体的工具。工具在智能体启动时注入，改动只对之后启动的智能体生效。",
     "feedbackLabel": "实时反馈",
     "feedbackHint": "在智能体工作时向它发送备注与纠偏。支持即时插入的智能体会立刻在当前回合中看到你的备注；其他智能体则通过检查反馈的工具读取——这类智能体通常只有在提示词里提到时才会检查，例如在消息中加上“定期检查我的实时反馈”。",
     "questionLabel": "向用户提问",
@@ -4294,7 +4296,7 @@
     "preview": "试听",
     "previewEvent": "试听「{event}」提示音",
     "onlyWhenUnfocused": "仅在窗口未聚焦时播放",
-    "onlyWhenUnfocusedHint": "正在查看 Codeg 时保持静音。",
+    "onlyWhenUnfocusedHint": "正在查看 MaxCode 时保持静音。",
     "eventsTitle": "事件",
     "eventsHint": "为每个事件选择一种音效，选择「静音」则不播放。同一事件在数秒内重复触发时只播放一次。",
     "toneNone": "静音",
@@ -4811,7 +4813,7 @@
     }
   },
   "CodexModelEditor": {
-    "customizedNotice": "你已自定义模型列表，codeg 将接管 codex 的完整模型表。codex 日后新增的官方模型不会自动出现——点击下方刷新并重新保存即可同步。清空全部自定义即可交回 codex 自动更新。",
+    "customizedNotice": "你已自定义模型列表，MaxCode 将接管 codex 的完整模型表。codex 日后新增的官方模型不会自动出现——点击下方刷新并重新保存即可同步。清空全部自定义即可交回 codex 自动更新。",
     "officialsTitle": "官方模型",
     "officialsHint": "自动纳入你启动的 codex 的官方模型；可删除不需要的。",
     "officialsEmpty": "暂无官方模型。",
@@ -4864,8 +4866,8 @@
       "terminal_only_path": "该命令在你的终端能解析，但在应用中不能——这是 GUI PATH 差异。请从终端启动应用，或在智能体设置中重新安装。",
       "npm_prefix_timeout": "npm prefix -g 太慢（超过 1.5 秒），已跳过回退检测。请重启应用后重试。",
       "node_too_old": "当前 Node.js 版本低于该智能体的要求。请升级 Node.js。",
-      "adapter_missing_native_present": "你本地的 {agent} CLI 确实装了，但 Codeg 启动的是另一个 ACP 适配器包，而它还没装。到「智能体设置」里安装即可 —— 它不会动你的 CLI，登录状态也是共享的。",
-      "adapter_missing": "Codeg 为 {agent} 启动的是单独的 ACP 适配器包，目前尚未安装。请到「智能体设置」里安装 —— 只装厂商 CLI 是不够的。"
+      "adapter_missing_native_present": "你本地的 {agent} CLI 确实装了，但 MaxCode 启动的是另一个 ACP 适配器包，而它还没装。到「智能体设置」里安装即可 —— 它不会动你的 CLI，登录状态也是共享的。",
+      "adapter_missing": "MaxCode 为 {agent} 启动的是单独的 ACP 适配器包，目前尚未安装。请到「智能体设置」里安装 —— 只装厂商 CLI 是不够的。"
     }
   },
   "TokenUsage": {
@@ -4899,7 +4901,7 @@
     "resetFilters": "重置筛选",
     "refresh": "刷新数据",
     "rebuild": "全量重建",
-    "rebuildHint": "丢弃已统计的数据并重新解析全部会话记录。会话被 codeg 之外的 CLI 追加过时用它。",
+    "rebuildHint": "丢弃已统计的数据并重新解析全部会话记录。会话被 MaxCode 之外的 CLI 追加过时用它。",
     "syncing": "正在统计会话…",
     "syncProgress": "{done} / {total}",
     "syncDone": "已统计 {synced} 个会话",
@@ -4978,7 +4980,7 @@
     "cardHeading": "我的 AI 编码战绩",
     "cardRangeAll": "全部时间",
     "cardTotalLabel": "累计 Token",
-    "cardFooter": "由 codeg 生成",
+    "cardFooter": "由 MaxCode 生成",
     "cardTopModels": "常用模型",
     "cardTopProjects": "主力项目",
     "archetypeNightOwl": "深夜码农",
@@ -5000,7 +5002,7 @@
     "archetypeSteady": "稳定输出",
     "archetypeSteadyDesc": "累计 {days} 天在写代码。",
     "emptyTitle": "还没有可统计的数据",
-    "emptyHint": "codeg 直接从各智能体自己的会话记录里读取 Token 数。点一下刷新，把本机已有的会话统计进来。",
+    "emptyHint": "MaxCode 直接从各智能体自己的会话记录里读取 Token 数。点一下刷新，把本机已有的会话统计进来。",
     "emptyAction": "统计我的会话",
     "loadFailed": "用量加载失败",
     "truncatedNotice": "该范围过大 —— 下面的数字只覆盖了其中最近的一段。"

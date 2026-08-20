@@ -143,7 +143,7 @@ fn configure_shell_command(cmd: &mut CommandBuilder, shell: &str, initial_comman
                         "-NoProfile",
                         "-NoExit",
                         "-Command",
-                        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $host.UI.RawUI.WindowTitle = 'codeg'",
+                        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $host.UI.RawUI.WindowTitle = 'MaxCode'",
                     ]);
                 }
             }

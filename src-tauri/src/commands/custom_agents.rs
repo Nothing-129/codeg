@@ -193,7 +193,7 @@ pub async fn acp_add_registry_agent_core(
         .any(|a| registry::registry_id_for(a) == registry_id)
     {
         return Err(AcpError::protocol(format!(
-            "{registry_id} is already built into codeg"
+            "{registry_id} is already built into MaxCode"
         )));
     }
     let catalog = acp_fetch_registry_catalog_core(db).await?;

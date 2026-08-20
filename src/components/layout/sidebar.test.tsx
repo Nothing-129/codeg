@@ -132,7 +132,7 @@ describe("Sidebar — fixed New chat / Search region", () => {
 
   it("renders the app name above New chat", () => {
     const { getByText } = renderSidebar()
-    const brand = getByText("Codeg")
+    const brand = getByText("MaxCode")
     const newChat = getByText("New chat")
     expect(brand.compareDocumentPosition(newChat)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING

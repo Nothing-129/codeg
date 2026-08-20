@@ -1239,13 +1239,13 @@ fn compute_verdict(inp: &DiagInputs) -> DiagnosticsVerdict {
                     diag_verdict(
                         DiagLevel::Info,
                         "adapter_missing_native_present",
-                        "Your own vendor CLI is installed, but codeg launches a separate ACP adapter, which is not.",
+                        "Your own vendor CLI is installed, but MaxCode launches a separate ACP adapter, which is not.",
                     )
                 } else {
                     diag_verdict(
                         DiagLevel::Info,
                         "adapter_missing",
-                        "codeg launches a separate ACP adapter for this agent, which is not installed.",
+                        "MaxCode launches a separate ACP adapter for this agent, which is not installed.",
                     )
                 };
             }
@@ -1489,7 +1489,7 @@ fn build_report(
                 },
                 DiagLevel::Info,
                 Some(
-                    "codeg never launches this — it launches the ACP adapter above, \
+                    "MaxCode never launches this — it launches the ACP adapter above, \
                      a separate package that shares the same config dir",
                 ),
             ));
@@ -1614,7 +1614,7 @@ fn render_plain_text(
         DiagLevel::Info => "--  ",
     };
     let mut out = String::new();
-    out.push_str("===== Codeg environment diagnostics =====\n");
+    out.push_str("===== MaxCode environment diagnostics =====\n");
     out.push_str(&format!("generated: {generated_at}\n"));
     if let Some(at) = agent_type {
         out.push_str(&format!("agent: {at:?}\n"));
@@ -1957,7 +1957,7 @@ mod diagnostics_tests {
         let inp = base_inputs();
         let r = build_report(&inp, "FIXED-TS".to_string(), None);
         assert_eq!(r.generated_at, "FIXED-TS");
-        assert!(r.plain_text.contains("Codeg environment diagnostics"));
+        assert!(r.plain_text.contains("MaxCode environment diagnostics"));
         assert!(r.plain_text.contains("verdict [ok]"));
         assert!(!r.sections.is_empty());
     }
@@ -11819,7 +11819,7 @@ pub(crate) async fn acp_prepare_npx_agent_core(
                         "{} installed, but its runtime did not bootstrap (`{cmd} --version` \
                          does not answer). If your npm config sets ignore-scripts, allow \
                          scripts for this package and reinstall; otherwise retry, or use \
-                         the official installer and codeg will pick up the PATH `{cmd}`.",
+                         the official installer and MaxCode will pick up the PATH `{cmd}`.",
                         meta.name
                     )));
                 }

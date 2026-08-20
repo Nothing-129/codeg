@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { DbConversationSummary } from "@/lib/types"
 import {
+  applyReorder,
   buildOwnerHeaderIndex,
   buildRows,
   computeStickyState,
@@ -1573,6 +1574,18 @@ describe("flatIndexOfConversation", () => {
       },
     ]
     expect(flatIndexOfConversation(recentOnly, 1, "claude_code")).toBe(2)
+  })
+})
+
+describe("applyReorder", () => {
+  it("moves a folder to the target slot", () => {
+    expect(applyReorder([1, 2, 3, 4], 0, 2)).toEqual([2, 3, 1, 4])
+    expect(applyReorder([1, 2, 3, 4], 3, 1)).toEqual([1, 4, 2, 3])
+  })
+
+  it("keeps the order unchanged for invalid and no-op moves", () => {
+    expect(applyReorder([1, 2, 3], 5, 0)).toEqual([1, 2, 3])
+    expect(applyReorder([1, 2, 3], 1, 1)).toEqual([1, 2, 3])
   })
 })
 

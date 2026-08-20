@@ -230,7 +230,7 @@ describe("OpenCodePermissionsSection", () => {
     setup(JSON.stringify({ permission: { bash: 1 } }))
     expect(
       screen.getByText(
-        "The permission block has a shape codeg does not recognize. Edit it in the native JSON below, or use Reset to start over."
+        "The permission block has a shape MaxCode does not recognize. Edit it in the native JSON below, or use Reset to start over."
       )
     ).toBeInTheDocument()
     expect(screen.getByRole("switch", { name: autoAcceptName })).toBeDisabled()

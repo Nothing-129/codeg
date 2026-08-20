@@ -104,7 +104,7 @@ impl HostToolsPolicy {
     /// One-line summary for the connection log.
     pub fn describe(self) -> &'static str {
         match self {
-            Self::Default => "codeg (fs + terminal advertised)",
+            Self::Default => "MaxCode (fs + terminal advertised)",
             Self::Agent => "agent (fs + terminal withheld; the agent's own sandbox applies)",
         }
     }

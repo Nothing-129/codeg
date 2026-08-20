@@ -39,7 +39,7 @@
   },
   {
     "name": "get_delegation_status",
-    "description": "Collect delegated task results — or check on them — by the task_ids from delegate_to_agent. Pass a single id in the array to poll one task, or many at once to poll a whole fan-out in a single call. The response is ALWAYS a JSON object {\"tasks\":[...]} with one entry per id, in the order you asked — one entry for a single id, several for a fan-out; every entry carries that task's task_id and status, so you can always tell which task it is and where it stands. The wait_ms argument picks the mode: omit it for a non-blocking snapshot (poll), or pass wait_ms to wait — wait_ms>0 blocks up to that many ms (capped at 60000; re-call to keep waiting), wait_ms=0 blocks with no timeout for as long as the sub-agent runs. When polling several, the wait returns as soon as ANY requested task reaches a terminal state, so re-call to keep collecting the rest. When you just need the results, prefer blocking over repeated polling. Each task reports its current state — running, or a terminal completed / failed / canceled (or unknown if the id isn't recognized); a finished task includes its full result text. A wait ALSO returns early when a sub-agent becomes blocked on the user: that entry stays status \"running\" but carries blocked_on, meaning the sub-agent is parked on a permission / question / plan approval in Codeg and will not progress until a human answers. Tell the user about it — that is the one case where speaking up mid-wait is right — then wait again; each distinct prompt wakes the wait exactly once, so re-calling is safe and will not spin. While tasks are still running and you are simply waiting, do NOT emit any user-facing message between calls — just call again silently. Skip status narration like \"still running\", \"not returned yet\", or \"continuing to wait\"; it fragments the conversation. Speak to the user only when there is a terminal result to report, a task is blocked_on them, or something genuinely needs their input.",
+    "description": "Collect delegated task results — or check on them — by the task_ids from delegate_to_agent. Pass a single id in the array to poll one task, or many at once to poll a whole fan-out in a single call. The response is ALWAYS a JSON object {\"tasks\":[...]} with one entry per id, in the order you asked — one entry for a single id, several for a fan-out; every entry carries that task's task_id and status, so you can always tell which task it is and where it stands. The wait_ms argument picks the mode: omit it for a non-blocking snapshot (poll), or pass wait_ms to wait — wait_ms>0 blocks up to that many ms (capped at 60000; re-call to keep waiting), wait_ms=0 blocks with no timeout for as long as the sub-agent runs. When polling several, the wait returns as soon as ANY requested task reaches a terminal state, so re-call to keep collecting the rest. When you just need the results, prefer blocking over repeated polling. Each task reports its current state — running, or a terminal completed / failed / canceled (or unknown if the id isn't recognized); a finished task includes its full result text. A wait ALSO returns early when a sub-agent becomes blocked on the user: that entry stays status \"running\" but carries blocked_on, meaning the sub-agent is parked on a permission / question / plan approval in MaxCode and will not progress until a human answers. Tell the user about it — that is the one case where speaking up mid-wait is right — then wait again; each distinct prompt wakes the wait exactly once, so re-calling is safe and will not spin. While tasks are still running and you are simply waiting, do NOT emit any user-facing message between calls — just call again silently. Skip status narration like \"still running\", \"not returned yet\", or \"continuing to wait\"; it fragments the conversation. Speak to the user only when there is a terminal result to report, a task is blocked_on them, or something genuinely needs their input.",
     "inputSchema": {
       "type": "object",
       "required": ["task_ids"],
@@ -137,14 +137,14 @@
   },
   {
     "name": "get_session_info",
-    "description": "Look up a session/conversation the user referenced in their message and return what it is: its title, which agent ran it, its status, workspace folder, git branch, model, message count, and token-usage stats — and, on request, a compact view of its most recent messages. RECOGNIZING A MENTIONED SESSION: the user can @-mention a past session directly in their message — it appears as a Markdown link `[Session title](codeg://session/<number>)`, whose text is that session's title and whose `<number>` is codeg's internal conversation id (e.g. `[Fix auth](codeg://session/214)` is the session titled 'Fix auth'). Such a mention IS the user explicitly pointing you at that session, even when they never name this tool — call it whenever what that session is about or what happened in it matters to the request (e.g. to continue its work, build on its results, answer questions about it, or summarize it). If the message mentions several sessions, make one call per session. Pass the NUMBER from the reference as `session_id` (it is codeg's internal conversation id, NOT the agent's own session id). The result is read-only and never modifies the session. A session that no longer exists returns a `found: false` result you can act on — it is not an error.",
+    "description": "Look up a session/conversation the user referenced in their message and return what it is: its title, which agent ran it, its status, workspace folder, git branch, model, message count, and token-usage stats — and, on request, a compact view of its most recent messages. RECOGNIZING A MENTIONED SESSION: the user can @-mention a past session directly in their message — it appears as a Markdown link `[Session title](codeg://session/<number>)`, whose text is that session's title and whose `<number>` is MaxCode's internal conversation id (e.g. `[Fix auth](codeg://session/214)` is the session titled 'Fix auth'). Such a mention IS the user explicitly pointing you at that session, even when they never name this tool — call it whenever what that session is about or what happened in it matters to the request (e.g. to continue its work, build on its results, answer questions about it, or summarize it). If the message mentions several sessions, make one call per session. Pass the NUMBER from the reference as `session_id` (it is MaxCode's internal conversation id, NOT the agent's own session id). The result is read-only and never modifies the session. A session that no longer exists returns a `found: false` result you can act on — it is not an error.",
     "inputSchema": {
       "type": "object",
       "required": ["session_id"],
       "properties": {
         "session_id": {
           "type": "integer",
-          "description": "The number in the mentioned session's `codeg://session/<number>` link (codeg's internal conversation id). For example, given the mention `[Fix auth](codeg://session/214)`, pass 214."
+          "description": "The number in the mentioned session's `codeg://session/<number>` link (MaxCode's internal conversation id). For example, given the mention `[Fix auth](codeg://session/214)`, pass 214."
         },
         "max_messages": {
           "type": "integer",
@@ -156,7 +156,7 @@
   },
   {
     "name": "create_automation",
-    "description": "Save a codeg Automation: a reusable job — a prompt plus a target project — that codeg runs on a cron schedule (or on demand) without anyone present. Use it when the user asks for work that should REPEAT or happen at a TIME rather than right now: 'every morning', 'each Monday', 'nightly', 'every 30 minutes', 'before standup', 'set up a recurring …'. Do NOT use it for work the user wants done in this conversation — just do that work. Each run starts a fresh headless session in its own worktree with no memory of this chat, so `prompt` must be completely self-contained: state the goal, the relevant paths, and what a finished run looks like. Creating an automation does not run it now; the tool returns the id and the next fire time so you can tell the user when it will first go off. The user can edit, disable, run, or delete it on the Automations page.",
+    "description": "Save a MaxCode Automation: a reusable job — a prompt plus a target project — that MaxCode runs on a cron schedule (or on demand) without anyone present. Use it when the user asks for work that should REPEAT or happen at a TIME rather than right now: 'every morning', 'each Monday', 'nightly', 'every 30 minutes', 'before standup', 'set up a recurring …'. Do NOT use it for work the user wants done in this conversation — just do that work. Each run starts a fresh headless session in its own worktree with no memory of this chat, so `prompt` must be completely self-contained: state the goal, the relevant paths, and what a finished run looks like. Creating an automation does not run it now; the tool returns the id and the next fire time so you can tell the user when it will first go off. The user can edit, disable, run, or delete it on the Automations page.",
     "inputSchema": {
       "type": "object",
       "required": ["name", "prompt"],
@@ -188,7 +188,7 @@
         },
         "folder_path": {
           "type": "string",
-          "description": "Absolute path of the target project. Defaults to the project this conversation is in; pass it only to target a different project already open in codeg."
+          "description": "Absolute path of the target project. Defaults to the project this conversation is in; pass it only to target a different project already open in MaxCode."
         },
         "enabled": {
           "type": "boolean",
@@ -199,7 +199,7 @@
   },
   {
     "name": "create_work_task",
-    "description": "Queue a card on codeg's to-dos. A task is a unit of work an agent later executes on its own branch/worktree, then hands back for the user to review and merge. Use it when the user wants work PARKED rather than done now — 'add a task to…', 'put this on the board', 'we should also fix X later' — or when you are splitting a large request into reviewable pieces and the user asked for that. Do NOT use it to do the thing the user just asked you to do in this conversation, and do NOT queue a task per trivial step. The executing agent starts cold with no view of this chat, so `prompt` must carry the full briefing. The tool returns the task id; the user tracks it in their to-dos.",
+    "description": "Queue a card on MaxCode's to-dos. A task is a unit of work an agent later executes on its own branch/worktree, then hands back for the user to review and merge. Use it when the user wants work PARKED rather than done now — 'add a task to…', 'put this on the board', 'we should also fix X later' — or when you are splitting a large request into reviewable pieces and the user asked for that. Do NOT use it to do the thing the user just asked you to do in this conversation, and do NOT queue a task per trivial step. The executing agent starts cold with no view of this chat, so `prompt` must carry the full briefing. The tool returns the task id; the user tracks it in their to-dos.",
     "inputSchema": {
       "type": "object",
       "required": ["title", "prompt"],
@@ -218,7 +218,7 @@
         },
         "folder_path": {
           "type": "string",
-          "description": "Absolute path of the target project. Defaults to the project this conversation is in; pass it only to target a different project already open in codeg."
+          "description": "Absolute path of the target project. Defaults to the project this conversation is in; pass it only to target a different project already open in MaxCode."
         }
       }
     }

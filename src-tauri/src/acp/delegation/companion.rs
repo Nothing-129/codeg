@@ -2694,7 +2694,7 @@ mod tests {
     fn render_session_result_not_found_is_soft_with_note_text() {
         let outcome = json!({
             "found": false, "session_id": 9,
-            "note": "No session matches id 9. It may have been deleted, or never imported into codeg."
+            "note": "No session matches id 9. It may have been deleted, or never imported into MaxCode."
         });
         let rendered = render_session_result(&outcome);
         assert_eq!(rendered["isError"], false);

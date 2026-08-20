@@ -1108,3 +1108,18 @@ export function computeStickyState(args: {
   }
   return { visible, translateY }
 }
+
+/** Move one item to another item's slot, preserving the other items' order. */
+export function applyReorder<T>(
+  order: readonly T[],
+  from: number,
+  to: number
+): T[] {
+  const next = order.slice()
+  if (from < 0 || from >= next.length) return next
+  const clampedTo = Math.max(0, Math.min(next.length - 1, to))
+  if (from === clampedTo) return next
+  const [moved] = next.splice(from, 1)
+  next.splice(clampedTo, 0, moved)
+  return next
+}

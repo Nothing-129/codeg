@@ -30,7 +30,7 @@ function ImportSessionsPageInner() {
   }, [])
 
   useEffect(() => {
-    document.title = `${t("title")} - codeg`
+    document.title = `${t("title")} - MaxCode`
   }, [t])
 
   return (

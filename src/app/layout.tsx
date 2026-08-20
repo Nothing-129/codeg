@@ -26,7 +26,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: "codeg",
+  title: "MaxCode",
   description: "AI Coding Agent Conversation Manager",
   icons: {
     icon: [{ url: "/icon-32x32.png?v=13", sizes: "32x32", type: "image/png" }],

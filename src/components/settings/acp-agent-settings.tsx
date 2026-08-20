@@ -3685,7 +3685,7 @@ export function buildAcpAdapterCheck(
   // The English fallbacks mirror the four i18n messages one-for-one (they are
   // what renders if no translator is mounted), so each state keeps the detail
   // that state is about — above all, the path we found the vendor CLI at.
-  const split = `Codeg drives agents over ACP and the ${adapter.native_label} does not speak ACP, so Codeg needs a separate adapter package, ${adapter.adapter_package}.`
+  const split = `MaxCode drives agents over ACP and the ${adapter.native_label} does not speak ACP, so MaxCode needs a separate adapter package, ${adapter.adapter_package}.`
   const coexist = `It ships its own runtime, never modifies or replaces your ${adapter.native_cmd} command, and reads the same ${adapter.shared_config_dir} — your existing sign-in and settings carry over.`
   const [key, fallback] = installed
     ? sawNative
@@ -3695,7 +3695,7 @@ export function buildAcpAdapterCheck(
         ]
       : [
           "adapter.ready",
-          `Adapter ${adapter.adapter_cmd} is installed — that is what Codeg launches. It ships its own runtime, so the ${adapter.native_label} is not required.`,
+          `Adapter ${adapter.adapter_cmd} is installed — that is what MaxCode launches. It ships its own runtime, so the ${adapter.native_label} is not required.`,
         ]
     : sawNative
       ? [

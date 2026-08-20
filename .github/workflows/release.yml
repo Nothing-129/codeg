@@ -265,13 +265,16 @@ jobs:
           fi
           ls -la "$file"
 
-      - name: Prepare unsigned desktop bundle config
+      - name: Prepare desktop bundle config
         shell: bash
         run: |
           cat > src-tauri/ci-release.conf.json <<'EOF'
           {
             "bundle": {
-              "createUpdaterArtifacts": false
+              "createUpdaterArtifacts": false,
+              "macOS": {
+                "signingIdentity": "-"
+              }
             }
           }
           EOF
@@ -326,7 +329,7 @@ jobs:
           includeUpdaterJson: false
           retryAttempts: 2
 
-      - name: Build and upload unsigned app to draft release (macOS)
+      - name: Build and upload ad-hoc signed app to draft release (macOS)
         if: contains(matrix.target, 'apple-darwin')
         uses: tauri-apps/tauri-action@v0.6.1
         env:
@@ -344,10 +347,19 @@ jobs:
           tauriScript: pnpm tauri
           args: >-
             --target ${{ matrix.target }}
-            --no-sign
             --config src-tauri/ci-release.conf.json
           includeUpdaterJson: false
           retryAttempts: 2
+
+      - name: Verify macOS app signature
+        if: contains(matrix.target, 'apple-darwin')
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="src-tauri/target/${{ matrix.target }}/release/bundle/macos/MaxCode.app"
+          test -d "$app"
+          test -f "$app/Contents/_CodeSignature/CodeResources"
+          codesign --verify --deep --strict --verbose=2 "$app"
 
   build-server:
     needs: create-draft-release

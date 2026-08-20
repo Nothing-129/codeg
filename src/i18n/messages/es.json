@@ -131,7 +131,7 @@
       },
       "css": {
         "dialogTitle": "CSS personalizado",
-        "dialogDescription": "Se aplica a todas las ventanas de codeg. Los cambios se previsualizan en vivo; pulsa Aplicar para guardar.",
+        "dialogDescription": "Se aplica a todas las ventanas de MaxCode. Los cambios se previsualizan en vivo; pulsa Aplicar para guardar.",
         "size": "{used} KB / {max} KB",
         "ruleCount": "{count} reglas",
         "errorTooLarge": "Demasiado grande para guardar. Redúcelo por debajo del límite.",
@@ -622,7 +622,7 @@
     "envVars": "Variables de entorno",
     "hostTools": {
       "label": "Dejar que el agente gestione archivos y comandos",
-      "description": "codeg deja de atender el acceso a archivos y los comandos de terminal, de modo que el agente los ejecuta en su propio proceso, donde sí se aplican su sandbox y sus reglas de permisos. También se desactiva la delegación a otros agentes, ya que devolvería ese mismo trabajo a codeg. codeg no añade ningún sandbox propio, así que actívalo solo si el agente tiene uno configurado."
+      "description": "MaxCode deja de atender el acceso a archivos y los comandos de terminal, de modo que el agente los ejecuta en su propio proceso, donde sí se aplican su sandbox y sus reglas de permisos. También se desactiva la delegación a otros agentes, ya que devolvería ese mismo trabajo a MaxCode. MaxCode no añade ningún sandbox propio, así que actívalo solo si el agente tiene uno configurado."
     },
     "nativeJsonConfig": "Configuración JSON nativa",
     "modelHintDefault": "Déjalo vacío para usar el modelo predeterminado del sistema.",
@@ -735,7 +735,7 @@
       "configTomlHint": "Se guarda literalmente como todo el ~/.grok/config.toml. El TOML no válido se rechaza para que una errata no trunque tu archivo.",
       "configTomlPlaceholder": "# Claves distintas de los controles de arriba, p. ej.\n# [mcp_servers.*], [cli], reglas [permission].",
       "customModelTitle": "Modelo personalizado (endpoint propio)",
-      "customModelHint": "Apunta Grok a un endpoint personalizado o autoalojado. codeg escribe un bloque `[model.*]` por modelo y lo establece como predeterminado. Deja el ID de modelo vacío para eliminarlo.",
+      "customModelHint": "Apunta Grok a un endpoint personalizado o autoalojado. MaxCode escribe un bloque `[model.*]` por modelo y lo establece como predeterminado. Deja el ID de modelo vacío para eliminarlo.",
       "customModelIdLabel": "ID del modelo",
       "customModelIdPlaceholder": "grok-4.5",
       "customModelIdHint": "Se registra como un bloque `[model.*]` y se envía a la API como nombre del modelo; también se establece como `[models].default`.",
@@ -753,7 +753,7 @@
       "autoCompactHint": "Compacta la conversación cuando el uso del contexto alcanza este porcentaje (predeterminado de Grok: 85). Se escribe en `[session]`."
     },
     "cursor": {
-      "configDescription": "Configura Cursor aquí. Elige un método de autenticación —suscripción oficial (inicio de sesión en el navegador) o una clave API de Cursor para equipos sin interfaz o servidores— y luego elige un modelo y edita las reglas de permisos y el sandbox del CLI. codeg los escribe en ~/.cursor/cli-config.json, compartido con el CLI cursor-agent.",
+      "configDescription": "Configura Cursor aquí. Elige un método de autenticación —suscripción oficial (inicio de sesión en el navegador) o una clave API de Cursor para equipos sin interfaz o servidores— y luego elige un modelo y edita las reglas de permisos y el sandbox del CLI. MaxCode los escribe en ~/.cursor/cli-config.json, compartido con el CLI cursor-agent.",
       "authTitle": "Autenticación",
       "authChecking": "Comprobando…",
       "authNotInstalled": "cursor-agent no está instalado",
@@ -847,7 +847,7 @@
       "approvalPolicy_untrusted": "No confiable: solo se ejecutan sin supervisión los comandos de solo lectura seguros",
       "approvalPolicy_never": "Nunca: sin ninguna solicitud de aprobación",
       "approvalPolicy_granular": "Granular: elige por tipo de solicitud",
-      "approvalPolicyUntrustedAcpWarning": "Untrusted no tiene equivalente entre los tres ajustes de aprobación del adaptador ACP, así que las sesiones de codeg recurren a «a petición»: el modelo decide entonces cuándo preguntar y los comandos que la zona aislada ya permite dejan de pedir confirmación. Restringe mejor el modo de aislamiento de abajo.",
+      "approvalPolicyUntrustedAcpWarning": "Untrusted no tiene equivalente entre los tres ajustes de aprobación del adaptador ACP, así que las sesiones de MaxCode recurren a «a petición»: el modelo decide entonces cuándo preguntar y los comandos que la zona aislada ya permite dejan de pedir confirmación. Restringe mejor el modo de aislamiento de abajo.",
       "granularHint": "Desactivado significa que ese tipo de solicitud se rechaza automáticamente en vez de mostrártela.",
       "granular_sandbox_approval": "Escalados de comandos de shell",
       "granular_rules": "Avisos de reglas de execpolicy",
@@ -860,7 +860,7 @@
       "sandboxMode_workspace-write": "Escritura en el espacio de trabajo",
       "sandboxMode_danger-full-access": "Acceso total (sin sandbox)",
       "sandboxModeHint": "En Windows, la escritura en el espacio de trabajo baja a solo lectura salvo que actives el sandbox experimental de Windows de codex.",
-      "sandboxModeSeedsPresetHint": "codeg también lo traduce al ajuste de aprobación inicial de la sesión, así que —a diferencia de la política de aprobación— sí afecta a las peticiones normales. El ajuste elegido en el editor sigue teniendo prioridad.",
+      "sandboxModeSeedsPresetHint": "MaxCode también lo traduce al ajuste de aprobación inicial de la sesión, así que —a diferencia de la política de aprobación— sí afecta a las peticiones normales. El ajuste elegido en el editor sigue teniendo prioridad.",
       "writableRootsLabel": "Carpetas adicionales con escritura",
       "writableRootsHint": "Una ruta absoluta por línea, además del directorio de trabajo.",
       "sandboxRootsRelativeError": "Debe ser una ruta absoluta: codex resuelve las rutas relativas dentro de ~/.codex: {path}",
@@ -973,7 +973,7 @@
         "description": "Decide qué acciones se ejecutan solas, cuáles te preguntan primero y cuáles se bloquean. Se escribe en el bloque permission de opencode.json y se aplica al guardar abajo.",
         "docsLink": "Documentación de permisos",
         "unparsableConfig": "El JSON nativo de abajo no es válido, así que el editor visual está pausado. Corrige el JSON para continuar.",
-        "invalidBlock": "El bloque permission tiene una forma que codeg no reconoce. Edítalo en el JSON nativo de abajo o usa Restablecer para empezar de nuevo.",
+        "invalidBlock": "El bloque permission tiene una forma que MaxCode no reconoce. Edítalo en el JSON nativo de abajo o usa Restablecer para empezar de nuevo.",
         "orderingUnsafe": "Hay una regla comodín escrita después de herramientas concretas, así que OpenCode también se la aplica a ellas: las filas de abajo no son lo que está en vigor. Corregir orden solo devuelve cada comodín al principio de su ámbito, sin cambiar ningún valor.",
         "orderingUnsafeManual": "Una regla queda tapada por un patrón posterior más general, así que OpenCode nunca la aplica: las filas de abajo no son lo que está en vigor. Dos patrones que se solapan no tienen un único orden correcto; reordénalos en el JSON nativo para que el más general vaya primero.",
         "fixOrder": "Corregir orden",
@@ -1029,7 +1029,7 @@
     },
     "hermes": {
       "configManagement": "Configuración de Hermes",
-      "configDescription": "Hermes gestiona sus propias credenciales en ~/.hermes/.env y los ajustes en ~/.hermes/config.yaml. Elige un proveedor y luego establece la clave de API y el modelo: codeg escribe ambos archivos por ti.",
+      "configDescription": "Hermes gestiona sus propias credenciales en ~/.hermes/.env y los ajustes en ~/.hermes/config.yaml. Elige un proveedor y luego establece la clave de API y el modelo: MaxCode escribe ambos archivos por ti.",
       "providerLabel": "Proveedor",
       "providerHint": "El proveedor determina qué variable de clave de API y qué model.provider usa Hermes. Los proveedores de OAuth se configuran mediante la configuración del terminal que aparece a continuación.",
       "groupApiKey": "Proveedores con clave API",
@@ -1071,7 +1071,7 @@
     },
     "kimiCode": {
       "configManagement": "Configuración de Kimi Code",
-      "configDescription": "`kimi acp` solo acepta un token de sesión almacenado, así que codeg escribe un proveedor gestionado en ~/.kimi-code/config.toml y siembra un token de acceso local: la inferencia sigue usando tu propia clave.",
+      "configDescription": "`kimi acp` solo acepta un token de sesión almacenado, así que MaxCode escribe un proveedor gestionado en ~/.kimi-code/config.toml y siembra un token de acceso local: la inferencia sigue usando tu propia clave.",
       "statusUnconfigured": "Sin configurar",
       "statusDirty": "Cambios sin guardar",
       "summaryLabel": "En vigor",
@@ -1083,7 +1083,7 @@
       "authModeApiKey": "Clave de API",
       "authModeLogin": "Inicio de sesión de Kimi (suscripción)",
       "authModeApiKeyHint": "Escribe un proveedor gestionado en config.toml y siembra el token de acceso para que las sesiones puedan abrirse.",
-      "loginHint": "Ejecuta `kimi login` en una terminal para iniciar sesión con una cuenta de suscripción de Kimi. codeg no guarda nada y reutiliza el inicio de sesión de Kimi. Guardar aquí elimina el token de acceso por clave de API de codeg.",
+      "loginHint": "Ejecuta `kimi login` en una terminal para iniciar sesión con una cuenta de suscripción de Kimi. MaxCode no guarda nada y reutiliza el inicio de sesión de Kimi. Guardar aquí elimina el token de acceso por clave de API de MaxCode.",
       "credentialTitle": "Credencial",
       "interfaceTypeLabel": "Tipo de proveedor",
       "interfaceTypeHint": "El protocolo de proveedor que habla Kimi (el `type` de config.toml). Usa Kimi / Moonshot para una clave de Moonshot / platform.kimi.com.",
@@ -1112,7 +1112,7 @@
       "modelNotInList": "Este modelo no está en la lista a la que tu clave puede acceder: Kimi fallará con «modelo no encontrado».",
       "reasoningTitle": "Razonamiento",
       "reasoningEnableLabel": "Activar",
-      "reasoningDescription": "Kimi solo muestra el selector «Thinking» en el cuadro de mensaje cuando el modelo declara una capacidad de razonamiento, así que codeg la escribe aquí. Se aplica a las sesiones nuevas.",
+      "reasoningDescription": "Kimi solo muestra el selector «Thinking» en el cuadro de mensaje cuando el modelo declara una capacidad de razonamiento, así que MaxCode la escribe aquí. Se aplica a las sesiones nuevas.",
       "effortsLabel": "Niveles ofrecidos",
       "effortsHint": "Estos son los niveles que aparecerán en el selector «Thinking». Kimi los reenvía al proveedor tal cual, así que elige los que acepte tu modelo.",
       "effortsEmptyHint": "Sin ningún nivel elegido, el cuadro de mensaje se reduce a un simple interruptor Off / On.",
@@ -1281,12 +1281,12 @@
     "adapter": {
       "label": "Adaptador ACP",
       "badge": "Adaptador ACP",
-      "badgeHint": "Para este agente Codeg instala un paquete adaptador ACP, no la CLI del proveedor. Son independientes y comparten la misma configuración.",
+      "badgeHint": "Para este agente MaxCode instala un paquete adaptador ACP, no la CLI del proveedor. Son independientes y comparten la misma configuración.",
       "learnMore": "Más información",
-      "missingWithNative": "Se encontró tu {nativeLabel} en {nativePath}. Codeg habla con los agentes mediante ACP y esa CLI no habla ACP, así que Codeg necesita un paquete adaptador aparte, {adapterPackage}, mantenido por el proyecto Agent Client Protocol (originalmente Zed). Incluye su propio runtime, nunca modifica ni reemplaza tu comando {nativeCmd} y lee el mismo {configDir}: tu sesión y tus ajustes actuales se conservan. Instálalo abajo.",
-      "missing": "Codeg habla con los agentes mediante ACP y la {nativeLabel} no habla ACP, así que Codeg necesita un paquete adaptador aparte, {adapterPackage}, mantenido por el proyecto Agent Client Protocol (originalmente Zed). Incluye su propio runtime, por lo que no hace falta instalar antes la CLI {nativeCmd}; si ya la tienes, ambas conviven y comparten la sesión y los ajustes de {configDir}. Instálalo abajo.",
-      "readyWithNative": "El adaptador {adapterCmd} está instalado: es lo que Codeg ejecuta, no tu propio {nativeCmd} en {nativePath}. Son paquetes distintos que conviven y ambos leen {configDir}, así que la sesión y los ajustes son compartidos.",
-      "ready": "El adaptador {adapterCmd} está instalado: es lo que Codeg ejecuta. Incluye su propio runtime, así que la {nativeLabel} no es necesaria; si la instalas después, ambas conviven y comparten {configDir}."
+      "missingWithNative": "Se encontró tu {nativeLabel} en {nativePath}. MaxCode habla con los agentes mediante ACP y esa CLI no habla ACP, así que MaxCode necesita un paquete adaptador aparte, {adapterPackage}, mantenido por el proyecto Agent Client Protocol (originalmente Zed). Incluye su propio runtime, nunca modifica ni reemplaza tu comando {nativeCmd} y lee el mismo {configDir}: tu sesión y tus ajustes actuales se conservan. Instálalo abajo.",
+      "missing": "MaxCode habla con los agentes mediante ACP y la {nativeLabel} no habla ACP, así que MaxCode necesita un paquete adaptador aparte, {adapterPackage}, mantenido por el proyecto Agent Client Protocol (originalmente Zed). Incluye su propio runtime, por lo que no hace falta instalar antes la CLI {nativeCmd}; si ya la tienes, ambas conviven y comparten la sesión y los ajustes de {configDir}. Instálalo abajo.",
+      "readyWithNative": "El adaptador {adapterCmd} está instalado: es lo que MaxCode ejecuta, no tu propio {nativeCmd} en {nativePath}. Son paquetes distintos que conviven y ambos leen {configDir}, así que la sesión y los ajustes son compartidos.",
+      "ready": "El adaptador {adapterCmd} está instalado: es lo que MaxCode ejecuta. Incluye su propio runtime, así que la {nativeLabel} no es necesaria; si la instalas después, ambas conviven y comparten {configDir}."
     },
     "cline": {
       "configDescription": "Configure el proveedor de API y las credenciales de Cline. La configuración se guarda en ~/.cline/data/."
@@ -1404,7 +1404,7 @@
     "customAgentEditNotFound": "No se encontró el agente personalizado {id}",
     "customAgentSaved": "{name} guardado",
     "customAgentVersionProbeLabel": "Comando de consulta de versión (opcional)",
-    "customAgentVersionProbeHint": "Comando que imprime la versión instalada localmente. Si se deja vacío, codeg ejecuta el comando del agente con --version.",
+    "customAgentVersionProbeHint": "Comando que imprime la versión instalada localmente. Si se deja vacío, MaxCode ejecuta el comando del agente con --version.",
     "customAgentRemove": "Eliminar agente",
     "customAgentRemoveHint": "Elimina la definición del agente. Las conversaciones existentes conservan su historial; el agente simplemente ya no se puede iniciar.",
     "customAgentIconLabel": "Icono (opcional)",
@@ -1417,7 +1417,7 @@
     "customAgentSkillsDirLabel": "Directorio de skills dedicado",
     "customAgentSkillsDirHint": "Ruta absoluta del directorio desde el que este agente carga skills: su propio almacén, además del compartido o en su lugar. ~ se expande al directorio personal; las skills vinculadas se colocan aquí primero.",
     "customAgentMcpLabel": "Compatibilidad con MCP",
-    "customAgentMcpHint": "Envía el complemento MCP integrado de codeg a este agente al iniciar la sesión: es el canal de la delegación, los comentarios en vivo y las herramientas de tareas. Desactívalo para un agente que rechaza servidores MCP y no llega a conectarse; el cambio se aplica en la próxima conexión.",
+    "customAgentMcpHint": "Envía el complemento MCP integrado de MaxCode a este agente al iniciar la sesión: es el canal de la delegación, los comentarios en vivo y las herramientas de tareas. Desactívalo para un agente que rechaza servidores MCP y no llega a conectarse; el cambio se aplica en la próxima conexión.",
     "customAgentIconNotAnImage": "Selecciona un archivo de imagen.",
     "customAgentIconTooLarge": "El icono debe pesar menos de {limit} KB.",
     "customAgentIconReadFailed": "No se pudo leer esa imagen.",
@@ -1436,11 +1436,11 @@
     "sectionTitle": "General",
     "sectionDescription": "Preferencias centralizadas para el inicio al iniciar sesión, el terminal predeterminado, la aceleración de renderizado y la delegación entre agentes.",
     "autostartTitle": "Iniciar al iniciar sesión",
-    "autostartDescription": "Abre codeg automáticamente después de iniciar sesión en este equipo.",
+    "autostartDescription": "Abre MaxCode automáticamente después de iniciar sesión en este equipo.",
     "autostartSaveFailed": "No se pudo guardar la configuración de inicio automático: {message}",
-    "autostartUnavailable": "Este sistema no informó del registro de inicio de codeg: {message}",
+    "autostartUnavailable": "Este sistema no informó del registro de inicio de MaxCode: {message}",
     "terminalTitle": "Terminal predeterminada",
-    "terminalDescription": "Elige el shell que se usa al abrir nuevas pestañas de terminal desde la barra de terminal o el árbol de archivos. Los agentes también lo usan cuando piden a codeg que ejecute una línea de comandos completa.",
+    "terminalDescription": "Elige el shell que se usa al abrir nuevas pestañas de terminal desde la barra de terminal o el árbol de archivos. Los agentes también lo usan cuando piden a MaxCode que ejecute una línea de comandos completa.",
     "terminalSystemDefault": "Predeterminado del sistema",
     "terminalPowerShell7": "PowerShell 7 (pwsh)",
     "terminalWindowsPowerShell": "Windows PowerShell",
@@ -1463,8 +1463,8 @@
     "loadFailed": "Error al cargar: {message}"
   },
   "LoginPage": {
-    "documentTitle": "Iniciar sesión - codeg",
-    "brand": "Codeg",
+    "documentTitle": "Iniciar sesión - MaxCode",
+    "brand": "MaxCode",
     "subtitle": "Introduce tu token de acceso para conectarte a la aplicación de escritorio",
     "tokenPlaceholder": "Token de acceso",
     "connect": "Conectar",
@@ -1582,7 +1582,7 @@
     },
     "sidebar": {
       "title": "Conversaciones",
-      "brand": "Codeg",
+      "brand": "MaxCode",
       "locateActiveConversation": "Ubicar conversación activa",
       "expandAllGroups": "Expandir todos los grupos",
       "collapseAllGroups": "Colapsar todos los grupos",
@@ -1610,11 +1610,13 @@
         "folderRemoved": "Carpeta {name} eliminada",
         "openFolderFailed": "Error al abrir carpeta",
         "removeFolderFailed": "Error al eliminar carpeta: {message}",
+        "reorderFoldersFailed": "Error al reordenar carpetas: {message}",
         "changeFolderColorFailed": "Error al cambiar el color: {message}",
         "setFolderAliasFailed": "Error al establecer el alias: {message}",
         "changeFolderDefaultAgentFailed": "Error al establecer agente predeterminado: {message}"
       },
       "statsLabel": "{folders} carpetas · {convos} conversaciones",
+      "reorderHandle": "Arrastrar para reordenar",
       "openFolder": "Abrir carpeta",
       "searchPlaceholder": "Buscar conversaciones...",
       "viewOptions": "Opciones de visualización",
@@ -2632,7 +2634,7 @@
         },
         "backendErrors": {
           "initializeTimeout": "Se agotó el tiempo del handshake de conexión de {agent} (sin respuesta tras 60 segundos). Abre Ajustes para revisar la configuración del agente y de la red.",
-          "mcpRejectedByAgent": "{agent} rechazó la sesión con el complemento MCP de codeg adjunto: {message} Si este agente no admite MCP, desactiva «Compatibilidad con MCP» en Ajustes y vuelve a conectar.",
+          "mcpRejectedByAgent": "{agent} rechazó la sesión con el complemento MCP de MaxCode adjunto: {message} Si este agente no admite MCP, desactiva «Compatibilidad con MCP» en Ajustes y vuelve a conectar.",
           "processExited": "El proceso de {agent} terminó inesperadamente.",
           "spawnFailed": "No se pudo iniciar {agent}: {message}",
           "downloadFailed": "La descarga de {agent} falló: {message}",
@@ -2644,7 +2646,7 @@
           "turnFailedUnknown": "{agent} finalizó el turno con un motivo de parada no reconocido.",
           "grokModelSwitchIncompatibleAgent": "{agent} no puede cambiar a ese modelo en una conversación existente. Inicia una nueva sesión para usarlo.",
           "turnFailedEmpty": "{agent} finalizó el turno sin producir ninguna respuesta.",
-          "turnFailedEmptyProtocol": "{agent} produjo una salida que codeg no pudo analizar; la versión del agente podría no coincidir con el protocolo.",
+          "turnFailedEmptyProtocol": "{agent} produjo una salida que MaxCode no pudo analizar; la versión del agente podría no coincidir con el protocolo.",
           "turnFailedEmptyMetadata": "{agent} solo envió actualizaciones de estado en este turno (plan / modo / uso) y ninguna respuesta.",
           "detailsInAlerts": "Abre Alertas en la barra de estado y despliega los detalles para ver la salida del agente."
         },
@@ -2788,7 +2790,7 @@
           "shortcutsAuxPanel": "<shortcut>{toggleAuxPanel}</shortcut> alterna el panel derecho para ver los archivos tocados y los cambios de Git de esta sesión.",
           "shortcutsTerminalSidebar": "<shortcut>{toggleTerminal}</shortcut> abre la terminal integrada, <shortcut>{toggleSidebar}</shortcut> alterna la barra lateral.",
           "customShortcuts": "Todos los atajos se pueden reasignar en Ajustes → Atajos.",
-          "webService": "Activa Ajustes → Servicio web para que tu equipo acceda al mismo codeg desde un navegador.",
+          "webService": "Activa Ajustes → Servicio web para que tu equipo acceda al mismo MaxCode desde un navegador.",
           "fusionMode": "Abre un archivo o diff para mostrarlo automáticamente junto a la conversación.",
           "quickMessages": "Abre el botón + junto a la entrada y elige Mensajes rápidos para insertar un fragmento guardado (gestiónalos en Ajustes → Mensajes rápidos).",
           "experts": "El botón + tiene un menú Habilidades expertas: carga roles como Depuración o Planificación con un clic.",
@@ -2798,7 +2800,7 @@
           "mentionTargets": "@ no solo trae archivos: menciona a otro agente para delegarle una subtarea, o referencia una sesión anterior, un commit o una habilidad.",
           "splitGroups": "Haz clic derecho en una pestaña y elige Dividir a la derecha o Dividir abajo para mantener dos conversaciones en paneles propios.",
           "worktrees": "Abre el botón de rama y elige Nuevo worktree para que varios agentes trabajen en el mismo repositorio sin pisarse los archivos.",
-          "importSessions": "¿Ya ejecutaste sesiones en la terminal? El menú de una carpeta tiene Importar sesiones locales para traer ese historial a codeg.",
+          "importSessions": "¿Ya ejecutaste sesiones en la terminal? El menú de una carpeta tiene Importar sesiones locales para traer ese historial a MaxCode.",
           "subSessions": "Cuando un agente delega, la subsesión aparece anidada bajo él en la barra lateral: despliega la fila para seguir lo que hizo cada una.",
           "liveFeedback": "Comentarios en vivo, en el menú +, inserta una nota en el turno que el agente ya está ejecutando, sin interrumpirlo.",
           "skillPacks": "Configuración → Paquetes de habilidades reúne expertos de programación, investigación científica y ofimática; actívalos por agente.",
@@ -3332,7 +3334,7 @@
         "grantDescription": "pi carga los archivos .pi del propio repositorio. Revisa lo que eso permite.",
         "grantInheritedDescription": "Una carpeta superior es de confianza, así que pi carga los archivos .pi del propio repositorio. Revisa lo que eso permite.",
         "grantDialogTitle": "Los recursos de pi de este proyecto son de confianza",
-        "grantDialogDescription": "pi tiene permiso para cargar los archivos .pi del propio repositorio. Versiones anteriores de codeg lo concedían automáticamente al abrir una carpeta, así que puede que nunca te lo preguntaran.",
+        "grantDialogDescription": "pi tiene permiso para cargar los archivos .pi del propio repositorio. Versiones anteriores de MaxCode lo concedían automáticamente al abrir una carpeta, así que puede que nunca te lo preguntaran.",
         "grantExecutionWarning": "Las extensiones son código. El repositorio las ejecuta al iniciar pi con tus permisos, antes de que envíes ningún mensaje.",
         "inheritedFrom": "Confianza heredada de",
         "revoke": "Revocar confianza",
@@ -3519,11 +3521,11 @@
   "WebServiceSettings": {
     "addressSwitchHint": "Cambiar solo modifica la dirección que se muestra y se abre aquí; el servicio escucha en todas las interfaces y sigue accesible en cada dirección.",
     "sectionTitle": "Servicio Web",
-    "sectionDescription": "Habilitar para acceder a Codeg de forma remota a través del navegador",
+    "sectionDescription": "Habilitar para acceder a MaxCode de forma remota a través del navegador",
     "port": "Puerto",
     "status": "Estado",
     "autoStart": "Inicio automático",
-    "autoStartHint": "Iniciar el servicio web al abrir Codeg",
+    "autoStartHint": "Iniciar el servicio web al abrir MaxCode",
     "running": "En ejecución",
     "stopped": "Detenido",
     "processing": "Procesando...",
@@ -3538,7 +3540,7 @@
     "copy": "Copiar",
     "qrcode": "Código QR",
     "qrcodeTitle": "Escanear para abrir",
-    "qrcodeHint": "Escanea con tu teléfono para abrir Codeg en el navegador",
+    "qrcodeHint": "Escanea con tu teléfono para abrir MaxCode en el navegador",
     "addressLabel": "Dirección de acceso",
     "tokenLabel": "Token de acceso",
     "tokenHint": "Ingrese este token al acceder al cliente Web por primera vez",
@@ -3546,7 +3548,7 @@
     "regenerate": "Regenerar",
     "stalePortOccupiedTitle": "El puerto {port} está en uso por otro proceso",
     "stalePortUnknownTitle": "Estado del puerto {port} indeterminado",
-    "stalePortHint": "Codeg no puede vincularse hasta que se libere el puerto. Cambia el puerto arriba o cierra el proceso que lo retiene.",
+    "stalePortHint": "MaxCode no puede vincularse hasta que se libere el puerto. Cambia el puerto arriba o cierra el proceso que lo retiene.",
     "errors": {
       "alreadyRunning": "El servicio Web ya está en ejecución",
       "invalidAddress": "Formato de host o puerto no válido",
@@ -3585,7 +3587,7 @@
     "tokenRequired": "El token es obligatorio.",
     "chatIdRequired": "El Chat ID es obligatorio.",
     "topicMode": "Modo de grupo por temas",
-    "topicModeHint": "Enruta los temas de foros de Telegram como sesiones Codeg separadas. El bot debe estar en un supergrupo de foro y poder administrar temas.",
+    "topicModeHint": "Enruta los temas de foros de Telegram como sesiones MaxCode separadas. El bot debe estar en un supergrupo de foro y poder administrar temas.",
     "loadFailed": "Error al cargar los canales.",
     "saveFailed": "Error al guardar los cambios.",
     "connectSuccess": "Canal conectado.",
@@ -3782,7 +3784,7 @@
     },
     "confirm": {
       "disableTitle": "¿Desactivar estos enlaces?",
-      "disableBody": "Esto eliminará {count} enlaces de habilidades gestionados por codeg. Las habilidades que ocupan un directorio personalizado no se modifican. Puedes reactivarlas cuando quieras.",
+      "disableBody": "Esto eliminará {count} enlaces de habilidades gestionados por MaxCode. Las habilidades que ocupan un directorio personalizado no se modifican. Puedes reactivarlas cuando quieras.",
       "cancel": "Cancelar",
       "confirm": "Desactivar"
     },
@@ -3803,7 +3805,7 @@
   },
   "ExpertsSettings": {
     "title": "Habilidades de expertos",
-    "description": "Habilita flujos de trabajo de habilidades cuidadosamente seleccionadas y probadas en la práctica para tus agentes de codificación de IA. Cada experto es una habilidad independiente del proyecto superpowers — codeg gestiona la copia central y la vincula a los agentes que elijas.",
+    "description": "Habilita flujos de trabajo de habilidades cuidadosamente seleccionadas y probadas en la práctica para tus agentes de codificación de IA. Cada experto es una habilidad independiente del proyecto superpowers — MaxCode gestiona la copia central y la vincula a los agentes que elijas.",
     "loading": "Cargando expertos…",
     "loadingContent": "Cargando contenido…",
     "emptyExperts": "No hay expertos disponibles. Revisa los registros de la aplicación.",
@@ -3812,7 +3814,7 @@
     "searchPlaceholder": "Buscar expertos por nombre, ID o descripción",
     "enableForAgents": "Habilitar para agentes",
     "noAgents": "No se detectaron agentes ACP.",
-    "copyModeWarning": "Copiado (no vinculado). Vuelve a habilitarlo después de actualizar codeg para obtener la última versión.",
+    "copyModeWarning": "Copiado (no vinculado). Vuelve a habilitarlo después de actualizar MaxCode para obtener la última versión.",
     "previewTitle": "Vista previa de SKILL.md",
     "categories": {
       "discovery": "Descubrimiento y diseño",
@@ -3848,7 +3850,7 @@
   },
   "ScienceSettings": {
     "title": "Habilidades de investigación científica",
-    "description": "Habilita habilidades de investigación científica seleccionadas para tus agentes de código con IA: generación de hipótesis, diseño experimental, estadística, visualización, evaluación crítica y búsqueda bibliográfica. codeg gestiona una copia central y enlaza cada habilidad a los agentes que elijas.",
+    "description": "Habilita habilidades de investigación científica seleccionadas para tus agentes de código con IA: generación de hipótesis, diseño experimental, estadística, visualización, evaluación crítica y búsqueda bibliográfica. MaxCode gestiona una copia central y enlaza cada habilidad a los agentes que elijas.",
     "loading": "Cargando habilidades científicas…",
     "emptySkills": "No hay habilidades científicas disponibles. Revisa los registros de la aplicación.",
     "searchPlaceholder": "Buscar habilidades científicas por nombre, id o descripción",
@@ -3942,7 +3944,7 @@
   },
   "SkillPacksSettings": {
     "title": "Paquetes de habilidades",
-    "description": "Paquetes de habilidades seleccionados que codeg gestiona de forma centralizada y vincula a tus agentes de IA: expertos en programación, investigación científica y herramientas de documentos de oficina. Actívalos por agente abajo.",
+    "description": "Paquetes de habilidades seleccionados que MaxCode gestiona de forma centralizada y vincula a tus agentes de IA: expertos en programación, investigación científica y herramientas de documentos de oficina. Actívalos por agente abajo.",
     "tabs": {
       "experts": "Expertos",
       "science": "Ciencia",
@@ -4164,7 +4166,7 @@
   },
   "BackupSettings": {
     "title": "Copia de seguridad y restauración",
-    "description": "Exporta una copia de seguridad portátil de tus datos de codeg, o restaura desde una.",
+    "description": "Exporta una copia de seguridad portátil de tus datos de MaxCode, o restaura desde una.",
     "tabs": {
       "backup": "Copia de seguridad",
       "restore": "Restaurar"
@@ -4194,9 +4196,9 @@
         "incompatible": "Incompatible",
         "createdAt": "Creada: {value}",
         "appVersion": "Versión de la app: {value}",
-        "incompatibleHint": "Esta copia fue creada por una versión más reciente de codeg y no se puede restaurar."
+        "incompatibleHint": "Esta copia fue creada por una versión más reciente de MaxCode y no se puede restaurar."
       },
-      "replaceWarning": "Restaurar reemplaza todos los datos actuales de codeg (base de datos y subidas). Tus datos actuales se guardan primero en una instantánea para poder recuperarlos.",
+      "replaceWarning": "Restaurar reemplaza todos los datos actuales de MaxCode (base de datos y subidas). Tus datos actuales se guardan primero en una instantánea para poder recuperarlos.",
       "keyringNote": "Los tokens de GitHub/chat del escritorio están en el llavero del sistema y no se incluyen; vuelve a introducirlos tras restaurar.",
       "button": "Restaurar",
       "staging": "Preparando la restauración…",
@@ -4205,7 +4207,7 @@
       "restartTimeout": "El servidor no volvió a tiempo. Recarga la página cuando esté activo.",
       "externalSideLocation": "Las transcripciones de conversaciones se restauraron en {path}",
       "confirmTitle": "¿Reemplazar todos los datos?",
-      "confirmBody": "Esto reemplazará tu base de datos y subidas actuales de codeg con la copia y luego reiniciará. Tus datos actuales se guardan primero en una instantánea.",
+      "confirmBody": "Esto reemplazará tu base de datos y subidas actuales de MaxCode con la copia y luego reiniciará. Tus datos actuales se guardan primero en una instantánea.",
       "cancel": "Cancelar",
       "confirmAction": "Reemplazar y reiniciar",
       "external": {
@@ -4223,15 +4225,15 @@
       },
       "restartFailed": "La restauración quedó preparada, pero el servidor no pudo reiniciarse. Reinícialo manualmente para aplicarla."
     },
-    "remoteUnsupported": "La copia de seguridad y la restauración actúan sobre los datos de la máquina que ejecuta codeg. Estás conectado a un espacio de trabajo remoto: gestiona sus copias desde ese servidor directamente."
+    "remoteUnsupported": "La copia de seguridad y la restauración actúan sobre los datos de la máquina que ejecuta MaxCode. Estás conectado a un espacio de trabajo remoto: gestiona sus copias desde ese servidor directamente."
   },
   "backup": {
     "restore": {
       "error": {
         "badPassphrase": "Frase de contraseña incorrecta o copia dañada.",
         "corrupted": "El archivo de copia de seguridad está dañado.",
-        "unknownFormat": "Este archivo no es una copia de seguridad de codeg reconocida.",
-        "newerVersion": "Esta copia fue creada por codeg {backupVersion}, más reciente que esta versión ({appVersion}).",
+        "unknownFormat": "Este archivo no es una copia de seguridad de MaxCode reconocida.",
+        "newerVersion": "Esta copia fue creada por MaxCode {backupVersion}, más reciente que esta versión ({appVersion}).",
         "alreadyPending": "Ya hay una restauración preparada. Reinicia para aplicarla antes de preparar otra."
       }
     },
@@ -4269,7 +4271,7 @@
   },
   "AgentToolsSettings": {
     "title": "Herramientas en la conversación",
-    "description": "Herramientas adicionales que codeg entrega a un agente dentro de una conversación. Se inyectan al iniciar el agente, así que los cambios se aplican a los agentes iniciados después.",
+    "description": "Herramientas adicionales que MaxCode entrega a un agente dentro de una conversación. Se inyectan al iniciar el agente, así que los cambios se aplican a los agentes iniciados después.",
     "feedbackLabel": "Comentarios en vivo",
     "feedbackHint": "Envía notas y correcciones a un agente mientras trabaja. Si el agente admite la inserción instantánea, tu nota se inserta de inmediato en el turno en curso; de lo contrario, el agente recibe una herramienta para consultar tus comentarios — esos agentes suelen consultarla solo si lo mencionas en tu prompt, por ejemplo añade \"revisa mi feedback en vivo con regularidad\" a tu mensaje.",
     "questionLabel": "Preguntar al usuario",
@@ -4294,7 +4296,7 @@
     "preview": "Escuchar",
     "previewEvent": "Escuchar el sonido de {event}",
     "onlyWhenUnfocused": "Solo cuando la ventana no está enfocada",
-    "onlyWhenUnfocusedHint": "Permanece en silencio mientras estás mirando Codeg.",
+    "onlyWhenUnfocusedHint": "Permanece en silencio mientras estás mirando MaxCode.",
     "eventsTitle": "Eventos",
     "eventsHint": "Elige un tono para cada evento o «Silencio» para omitirlo. Si el mismo evento se repite en pocos segundos, solo suena una vez.",
     "toneNone": "Silencio",
@@ -4811,7 +4813,7 @@
     }
   },
   "CodexModelEditor": {
-    "customizedNotice": "Has personalizado la lista de modelos, así que ahora codeg gestiona toda la tabla de modelos de codex. Los modelos oficiales que codex añada después no aparecerán automáticamente: haz clic en el botón actualizar de abajo y guarda de nuevo para sincronizarlos. Borra tus personalizaciones para que codex vuelva a actualizarse automáticamente.",
+    "customizedNotice": "Has personalizado la lista de modelos, así que ahora MaxCode gestiona toda la tabla de modelos de codex. Los modelos oficiales que codex añada después no aparecerán automáticamente: haz clic en el botón actualizar de abajo y guarda de nuevo para sincronizarlos. Borra tus personalizaciones para que codex vuelva a actualizarse automáticamente.",
     "officialsTitle": "Modelos oficiales",
     "officialsHint": "Se incluyen automáticamente del codex que ejecutas; elimina los que no quieras.",
     "officialsEmpty": "No hay modelos oficiales disponibles.",
@@ -4864,8 +4866,8 @@
       "terminal_only_path": "El comando se resuelve en tu terminal pero no en la app: una diferencia de PATH de la GUI. Inicia la app desde una terminal o reinstala desde Ajustes de agentes.",
       "npm_prefix_timeout": "npm prefix -g fue demasiado lento (más de 1,5 s), por lo que se omitió la detección de reserva. Reinicia la app e inténtalo de nuevo.",
       "node_too_old": "Tu Node.js activo es más antiguo de lo que requiere este agente. Actualiza Node.js.",
-      "adapter_missing_native_present": "Tu CLI de {agent} sí está instalada, pero Codeg ejecuta un paquete adaptador ACP aparte, y ese todavía no lo está. Instálalo desde la configuración de agentes: no toca tu CLI y comparte la misma sesión.",
-      "adapter_missing": "Codeg ejecuta un paquete adaptador ACP aparte para {agent} y aún no está instalado. Instálalo desde la configuración de agentes: instalar solo la CLI del proveedor no basta."
+      "adapter_missing_native_present": "Tu CLI de {agent} sí está instalada, pero MaxCode ejecuta un paquete adaptador ACP aparte, y ese todavía no lo está. Instálalo desde la configuración de agentes: no toca tu CLI y comparte la misma sesión.",
+      "adapter_missing": "MaxCode ejecuta un paquete adaptador ACP aparte para {agent} y aún no está instalado. Instálalo desde la configuración de agentes: instalar solo la CLI del proveedor no basta."
     }
   },
   "TokenUsage": {
@@ -4899,7 +4901,7 @@
     "resetFilters": "Restablecer filtros",
     "refresh": "Actualizar",
     "rebuild": "Reconstruir todo",
-    "rebuildHint": "Descarta lo contabilizado y vuelve a leer todas las transcripciones. Útil si una sesión creció fuera de codeg.",
+    "rebuildHint": "Descarta lo contabilizado y vuelve a leer todas las transcripciones. Útil si una sesión creció fuera de MaxCode.",
     "syncing": "Contando sesiones…",
     "syncProgress": "{done} / {total}",
     "syncDone": "{synced} sesiones contabilizadas",
@@ -4978,7 +4980,7 @@
     "cardHeading": "Mis estadísticas de código con IA",
     "cardRangeAll": "Todo el tiempo",
     "cardTotalLabel": "Tokens usados",
-    "cardFooter": "Hecho con codeg",
+    "cardFooter": "Hecho con MaxCode",
     "cardTopModels": "Modelos principales",
     "cardTopProjects": "Proyectos principales",
     "archetypeNightOwl": "Ave nocturna",
@@ -5000,7 +5002,7 @@
     "archetypeSteady": "Constructor constante",
     "archetypeSteadyDesc": "{days} días entregando.",
     "emptyTitle": "Todavía no hay nada contabilizado",
-    "emptyHint": "Codeg lee los tokens directamente de la transcripción de cada agente. Actualiza para contabilizar lo que ya hay en esta máquina.",
+    "emptyHint": "MaxCode lee los tokens directamente de la transcripción de cada agente. Actualiza para contabilizar lo que ya hay en esta máquina.",
     "emptyAction": "Contabilizar mis sesiones",
     "loadFailed": "No se pudo cargar el uso",
     "truncatedNotice": "Este periodo es muy amplio: las cifras cubren solo su tramo más reciente."

@@ -131,7 +131,7 @@
       },
       "css": {
         "dialogTitle": "カスタム CSS",
-        "dialogDescription": "すべての codeg ウィンドウに適用されます。変更はリアルタイムでプレビューされ、「適用」で保存されます。",
+        "dialogDescription": "すべての MaxCode ウィンドウに適用されます。変更はリアルタイムでプレビューされ、「適用」で保存されます。",
         "size": "{used} KB / {max} KB",
         "ruleCount": "{count} 個のルール",
         "errorTooLarge": "サイズが大きすぎて保存できません。上限以下に減らしてください。",
@@ -622,7 +622,7 @@
     "envVars": "環境変数",
     "hostTools": {
       "label": "ファイルとコマンドをエージェント自身に処理させる",
-      "description": "codeg がファイルアクセスとターミナルコマンドを代行しなくなり、エージェントが自身のプロセスで実行します。そうすることで初めて、エージェント自身のサンドボックスと権限ルールが適用されます。他のエージェントへの委任も無効になります（同じ処理が codeg 経由に戻ってしまうため）。codeg 自体はサンドボックスを提供しないため、エージェント側でサンドボックスを設定済みの場合にのみ有効にしてください。"
+      "description": "MaxCode がファイルアクセスとターミナルコマンドを代行しなくなり、エージェントが自身のプロセスで実行します。そうすることで初めて、エージェント自身のサンドボックスと権限ルールが適用されます。他のエージェントへの委任も無効になります（同じ処理が MaxCode 経由に戻ってしまうため）。MaxCode 自体はサンドボックスを提供しないため、エージェント側でサンドボックスを設定済みの場合にのみ有効にしてください。"
     },
     "nativeJsonConfig": "ネイティブ JSON 設定",
     "modelHintDefault": "空欄の場合はシステム既定モデルを使用します。",
@@ -735,7 +735,7 @@
       "configTomlHint": "~/.grok/config.toml 全体としてそのまま書き込まれます。無効な TOML は拒否され、タイプミスでファイルが切り詰められることはありません。",
       "configTomlPlaceholder": "# 上のコントロール以外のキー。例:\n# [mcp_servers.*]、[cli]、[permission] ルール。",
       "customModelTitle": "カスタムモデル（独自エンドポイント）",
-      "customModelHint": "Grok をカスタムまたは自己ホストのエンドポイントに向けます。codeg はモデルごとの `[model.*]` ブロックを書き込み、既定モデルに設定します。モデル ID を空にすると削除されます。",
+      "customModelHint": "Grok をカスタムまたは自己ホストのエンドポイントに向けます。MaxCode はモデルごとの `[model.*]` ブロックを書き込み、既定モデルに設定します。モデル ID を空にすると削除されます。",
       "customModelIdLabel": "モデル ID",
       "customModelIdPlaceholder": "grok-4.5",
       "customModelIdHint": "`[model.*]` ブロックとして登録され、モデル名として API に送信されます。`[models].default` にも設定されます。",
@@ -753,7 +753,7 @@
       "autoCompactHint": "コンテキスト使用率がこの割合に達したら会話を圧縮します（Grok の既定は 85）。`[session]` に書き込まれます。"
     },
     "cursor": {
-      "configDescription": "ここで Cursor を設定します。まず認証方式を選択し——公式サブスクリプション（ブラウザログイン）またはヘッドレス/サーバー用の Cursor API キー——次にモデルを選び、CLI の権限ルールとサンドボックスを編集します。codeg はこれらを ~/.cursor/cli-config.json に書き込み、cursor-agent CLI と共有します。",
+      "configDescription": "ここで Cursor を設定します。まず認証方式を選択し——公式サブスクリプション（ブラウザログイン）またはヘッドレス/サーバー用の Cursor API キー——次にモデルを選び、CLI の権限ルールとサンドボックスを編集します。MaxCode はこれらを ~/.cursor/cli-config.json に書き込み、cursor-agent CLI と共有します。",
       "authTitle": "認証",
       "authChecking": "確認中…",
       "authNotInstalled": "cursor-agent が未インストールです",
@@ -847,7 +847,7 @@
       "approvalPolicy_untrusted": "未信頼 — 安全と分かっている読み取り専用コマンドのみ自動実行",
       "approvalPolicy_never": "確認しない — 承認プロンプトを一切出さない",
       "approvalPolicy_granular": "詳細設定 — プロンプト種別ごとに指定",
-      "approvalPolicyUntrustedAcpWarning": "ACP アダプターの 3 つの承認プリセットに untrusted に相当するものはないため、codeg のセッションは「要求時」にフォールバックします。その場合はモデルが尋ねるタイミングを決め、サンドボックスが既に許可しているコマンドは確認されなくなります。代わりに下のサンドボックスモードで制限してください。",
+      "approvalPolicyUntrustedAcpWarning": "ACP アダプターの 3 つの承認プリセットに untrusted に相当するものはないため、MaxCode のセッションは「要求時」にフォールバックします。その場合はモデルが尋ねるタイミングを決め、サンドボックスが既に許可しているコマンドは確認されなくなります。代わりに下のサンドボックスモードで制限してください。",
       "granularHint": "オフにすると、その種類の要求は表示されずに自動で拒否されます。",
       "granular_sandbox_approval": "シェルコマンドの権限昇格",
       "granular_rules": "Execpolicy ルールのプロンプト",
@@ -860,7 +860,7 @@
       "sandboxMode_workspace-write": "ワークスペース書き込み",
       "sandboxMode_danger-full-access": "フルアクセス（サンドボックスなし）",
       "sandboxModeHint": "Windows では、codex の実験的 Windows サンドボックスが無効な場合、ワークスペース書き込みは読み取り専用に降格されます。",
-      "sandboxModeSeedsPresetHint": "codeg はこれをセッションの初期承認プリセットにも反映するため、承認ポリシーとは異なり通常のプロンプトにも効きます。入力欄のプリセットが指定されている場合はそちらが優先されます。",
+      "sandboxModeSeedsPresetHint": "MaxCode はこれをセッションの初期承認プリセットにも反映するため、承認ポリシーとは異なり通常のプロンプトにも効きます。入力欄のプリセットが指定されている場合はそちらが優先されます。",
       "writableRootsLabel": "追加の書き込み可能フォルダ",
       "writableRootsHint": "作業ディレクトリに加えて許可する絶対パスを 1 行に 1 つ。",
       "sandboxRootsRelativeError": "絶対パスである必要があります — codex は相対パスを ~/.codex 基準で解決します: {path}",
@@ -1029,7 +1029,7 @@
     },
     "hermes": {
       "configManagement": "Hermes 設定",
-      "configDescription": "Hermes は認証情報を ~/.hermes/.env に、設定を ~/.hermes/config.yaml に独自に管理します。プロバイダーを選択し、API キーとモデルを設定してください。codeg が両方のファイルを書き込みます。",
+      "configDescription": "Hermes は認証情報を ~/.hermes/.env に、設定を ~/.hermes/config.yaml に独自に管理します。プロバイダーを選択し、API キーとモデルを設定してください。MaxCode が両方のファイルを書き込みます。",
       "providerLabel": "プロバイダー",
       "providerHint": "プロバイダーによって、Hermes が使用する API キー変数と model.provider が決まります。OAuth プロバイダーは下のターミナルセットアップから設定します。",
       "groupApiKey": "API キー プロバイダー",
@@ -1071,7 +1071,7 @@
     },
     "kimiCode": {
       "configManagement": "Kimi Code の設定",
-      "configDescription": "`kimi acp` は保存済みのログイントークンしか受け付けないため、codeg は ~/.kimi-code/config.toml に管理対象プロバイダーを書き込み、ローカルにゲートトークンを配置します。推論は引き続きご自身のキーで実行されます。",
+      "configDescription": "`kimi acp` は保存済みのログイントークンしか受け付けないため、MaxCode は ~/.kimi-code/config.toml に管理対象プロバイダーを書き込み、ローカルにゲートトークンを配置します。推論は引き続きご自身のキーで実行されます。",
       "statusUnconfigured": "未設定",
       "statusDirty": "未保存の変更あり",
       "summaryLabel": "有効な設定",
@@ -1083,7 +1083,7 @@
       "authModeApiKey": "API キー",
       "authModeLogin": "Kimi アカウントログイン（サブスクリプション）",
       "authModeApiKeyHint": "config.toml に管理対象プロバイダーを書き込み、セッションを開けるようゲートトークンを配置します。",
-      "loginHint": "ターミナルで `kimi login` を実行し、Kimi サブスクリプションアカウントでログインしてください。codeg は資格情報を保存せず、Kimi 自身のログインを再利用します。ここで保存すると codeg の API キー用ゲートトークンが削除されます。",
+      "loginHint": "ターミナルで `kimi login` を実行し、Kimi サブスクリプションアカウントでログインしてください。MaxCode は資格情報を保存せず、Kimi 自身のログインを再利用します。ここで保存すると MaxCode の API キー用ゲートトークンが削除されます。",
       "credentialTitle": "資格情報",
       "interfaceTypeLabel": "プロバイダー種別",
       "interfaceTypeHint": "Kimi が話すプロバイダープロトコル（config.toml の `type`）。Moonshot / platform.kimi.com のキーには「Kimi / Moonshot」を選びます。",
@@ -1112,7 +1112,7 @@
       "modelNotInList": "このモデルはキーがアクセスできる一覧に含まれていません。Kimi は「モデルが見つかりません」で失敗します。",
       "reasoningTitle": "推論",
       "reasoningEnableLabel": "有効にする",
-      "reasoningDescription": "モデルが推論機能を宣言している場合にのみ Kimi は入力欄に「Thinking」ピッカーを表示するため、その宣言を codeg がここで書き込みます。新しいセッションから有効になります。",
+      "reasoningDescription": "モデルが推論機能を宣言している場合にのみ Kimi は入力欄に「Thinking」ピッカーを表示するため、その宣言を MaxCode がここで書き込みます。新しいセッションから有効になります。",
       "effortsLabel": "選択できるレベル",
       "effortsHint": "ここで選んだ値が入力欄の「Thinking」ピッカーの項目になります。Kimi はレベルをそのままプロバイダーへ渡すので、モデルが受け付ける値を選んでください。",
       "effortsEmptyHint": "レベルを 1 つも選ばない場合、入力欄は Off / On の 2 段トグルに退化します。",
@@ -1281,12 +1281,12 @@
     "adapter": {
       "label": "ACP アダプター",
       "badge": "ACP アダプター",
-      "badgeHint": "このエージェントで Codeg がインストールするのはベンダー CLI ではなく ACP アダプターのパッケージです。両者は独立しており、設定は共有されます。",
+      "badgeHint": "このエージェントで MaxCode がインストールするのはベンダー CLI ではなく ACP アダプターのパッケージです。両者は独立しており、設定は共有されます。",
       "learnMore": "詳細",
-      "missingWithNative": "お使いの {nativeLabel} を {nativePath} で検出しました。Codeg はエージェントを ACP で駆動しますが、この CLI 自体は ACP に対応していないため、別パッケージのアダプター {adapterPackage}（Agent Client Protocol プロジェクトが保守。当初は Zed チーム）が必要です。独自のランタイムを同梱しており、既存の {nativeCmd} コマンドを変更も置き換えもしません。読み込む設定は同じ {configDir} なので、ログインと設定はそのまま引き継がれます。下のボタンからインストールしてください。",
-      "missing": "Codeg はエージェントを ACP で駆動しますが、{nativeLabel} 自体は ACP に対応していないため、別パッケージのアダプター {adapterPackage}（Agent Client Protocol プロジェクトが保守。当初は Zed チーム）が必要です。独自のランタイムを同梱しているので {nativeCmd} CLI を先に入れる必要はありません。すでにお持ちの場合も両者は共存し、{configDir} のログインと設定を共有します。下のボタンからインストールしてください。",
-      "readyWithNative": "アダプター {adapterCmd} はインストール済みです。Codeg が起動するのはこちらで、あなたの {nativeCmd}（{nativePath}）ではありません。両者は独立したパッケージとして共存し、どちらも {configDir} を読むためログインと設定は共有されます。",
-      "ready": "アダプター {adapterCmd} はインストール済みで、Codeg が起動するのはこれです。独自のランタイムを同梱しているため {nativeLabel} は不要です。後から入れても両者は共存し、{configDir} を共有します。"
+      "missingWithNative": "お使いの {nativeLabel} を {nativePath} で検出しました。MaxCode はエージェントを ACP で駆動しますが、この CLI 自体は ACP に対応していないため、別パッケージのアダプター {adapterPackage}（Agent Client Protocol プロジェクトが保守。当初は Zed チーム）が必要です。独自のランタイムを同梱しており、既存の {nativeCmd} コマンドを変更も置き換えもしません。読み込む設定は同じ {configDir} なので、ログインと設定はそのまま引き継がれます。下のボタンからインストールしてください。",
+      "missing": "MaxCode はエージェントを ACP で駆動しますが、{nativeLabel} 自体は ACP に対応していないため、別パッケージのアダプター {adapterPackage}（Agent Client Protocol プロジェクトが保守。当初は Zed チーム）が必要です。独自のランタイムを同梱しているので {nativeCmd} CLI を先に入れる必要はありません。すでにお持ちの場合も両者は共存し、{configDir} のログインと設定を共有します。下のボタンからインストールしてください。",
+      "readyWithNative": "アダプター {adapterCmd} はインストール済みです。MaxCode が起動するのはこちらで、あなたの {nativeCmd}（{nativePath}）ではありません。両者は独立したパッケージとして共存し、どちらも {configDir} を読むためログインと設定は共有されます。",
+      "ready": "アダプター {adapterCmd} はインストール済みで、MaxCode が起動するのはこれです。独自のランタイムを同梱しているため {nativeLabel} は不要です。後から入れても両者は共存し、{configDir} を共有します。"
     },
     "cline": {
       "configDescription": "Cline API プロバイダーと認証情報を設定します。設定は ~/.cline/data/ に保存されます。"
@@ -1417,7 +1417,7 @@
     "customAgentSkillsDirLabel": "専用スキルディレクトリ",
     "customAgentSkillsDirHint": "このエージェントがスキルを読み込むディレクトリの絶対パスです。共有ストアと併用も単独利用も可能です。~ はホームディレクトリに展開され、リンクしたスキルはまずここに配置されます。",
     "customAgentMcpLabel": "MCP サポート",
-    "customAgentMcpHint": "セッション開始時に codeg 内蔵の codeg-mcp コンパニオンをこのエージェントへ渡します。委任・リアルタイムフィードバック・タスクツールはこの経路を使います。MCP サーバーを受け付けず接続に失敗するエージェントではオフにしてください。設定は次回の接続から有効になります。",
+    "customAgentMcpHint": "セッション開始時に MaxCode 内蔵の codeg-mcp コンパニオンをこのエージェントへ渡します。委任・リアルタイムフィードバック・タスクツールはこの経路を使います。MCP サーバーを受け付けず接続に失敗するエージェントではオフにしてください。設定は次回の接続から有効になります。",
     "customAgentIconNotAnImage": "画像ファイルを選んでください。",
     "customAgentIconTooLarge": "アイコンは {limit} KB 未満にしてください。",
     "customAgentIconReadFailed": "その画像を読み込めませんでした。",
@@ -1436,11 +1436,11 @@
     "sectionTitle": "一般",
     "sectionDescription": "ログイン時の起動、デフォルトターミナル、レンダリング高速化、マルチエージェント委譲などの共通設定をここで一括管理します。",
     "autostartTitle": "ログイン時に起動",
-    "autostartDescription": "このコンピューターにサインインしたあと、codeg を自動的に起動します。",
+    "autostartDescription": "このコンピューターにサインインしたあと、MaxCode を自動的に起動します。",
     "autostartSaveFailed": "ログイン時に起動する設定の保存に失敗しました: {message}",
     "autostartUnavailable": "このシステムからログイン項目の登録状態を取得できませんでした: {message}",
     "terminalTitle": "デフォルトターミナル",
-    "terminalDescription": "ターミナルバーやファイルツリーから新しいターミナルタブを開くときに使用するシェルを選択します。エージェントが codeg にコマンドライン全体の実行を依頼するときにも使われます。",
+    "terminalDescription": "ターミナルバーやファイルツリーから新しいターミナルタブを開くときに使用するシェルを選択します。エージェントが MaxCode にコマンドライン全体の実行を依頼するときにも使われます。",
     "terminalSystemDefault": "システムデフォルト",
     "terminalPowerShell7": "PowerShell 7 (pwsh)",
     "terminalWindowsPowerShell": "Windows PowerShell",
@@ -1463,8 +1463,8 @@
     "loadFailed": "読み込みに失敗しました: {message}"
   },
   "LoginPage": {
-    "documentTitle": "ログイン - codeg",
-    "brand": "Codeg",
+    "documentTitle": "ログイン - MaxCode",
+    "brand": "MaxCode",
     "subtitle": "デスクトップアプリに接続するためのアクセストークンを入力してください",
     "tokenPlaceholder": "アクセストークン",
     "connect": "接続",
@@ -1582,7 +1582,7 @@
     },
     "sidebar": {
       "title": "会話",
-      "brand": "Codeg",
+      "brand": "MaxCode",
       "locateActiveConversation": "アクティブな会話を表示",
       "expandAllGroups": "すべてのグループを展開",
       "collapseAllGroups": "すべてのグループを折りたたむ",
@@ -1610,11 +1610,13 @@
         "folderRemoved": "フォルダ {name} を削除しました",
         "openFolderFailed": "フォルダを開けませんでした",
         "removeFolderFailed": "フォルダの削除に失敗しました: {message}",
+        "reorderFoldersFailed": "フォルダの並べ替えに失敗しました: {message}",
         "changeFolderColorFailed": "色の変更に失敗しました: {message}",
         "setFolderAliasFailed": "エイリアスの設定に失敗しました: {message}",
         "changeFolderDefaultAgentFailed": "デフォルトエージェントの設定に失敗しました: {message}"
       },
       "statsLabel": "{folders} フォルダ · {convos} 会話",
+      "reorderHandle": "ドラッグして並べ替え",
       "openFolder": "フォルダを開く",
       "searchPlaceholder": "会話を検索...",
       "viewOptions": "表示オプション",
@@ -2632,7 +2634,7 @@
         },
         "backendErrors": {
           "initializeTimeout": "{agent} の接続ハンドシェイクがタイムアウトしました（60 秒以内に応答なし）。設定を開いてエージェントとネットワーク設定を確認してください。",
-          "mcpRejectedByAgent": "codeg の MCP コンパニオンを渡した際、{agent} がセッションを拒否しました: {message} このエージェントが MCP に対応していない場合は、設定で「MCP サポート」をオフにして再接続してください。",
+          "mcpRejectedByAgent": "MaxCode の MCP コンパニオンを渡した際、{agent} がセッションを拒否しました: {message} このエージェントが MCP に対応していない場合は、設定で「MCP サポート」をオフにして再接続してください。",
           "processExited": "{agent} プロセスが予期せず終了しました。",
           "spawnFailed": "{agent} の起動に失敗しました: {message}",
           "downloadFailed": "{agent} のダウンロードに失敗しました: {message}",
@@ -2644,7 +2646,7 @@
           "turnFailedUnknown": "{agent} が不明な停止理由でターンを終了しました。",
           "grokModelSwitchIncompatibleAgent": "{agent} は既存の会話ではこのモデルに切り替えられません。新しいセッションを開始して使用してください。",
           "turnFailedEmpty": "{agent} は応答を生成せずにターンを終了しました。",
-          "turnFailedEmptyProtocol": "{agent} の出力を codeg が解析できませんでした。エージェントのバージョンがプロトコルと一致していない可能性があります。",
+          "turnFailedEmptyProtocol": "{agent} の出力を MaxCode が解析できませんでした。エージェントのバージョンがプロトコルと一致していない可能性があります。",
           "turnFailedEmptyMetadata": "{agent} はこのターンでステータス更新（計画 / モード / 使用量）のみを送信し、応答はありませんでした。",
           "detailsInAlerts": "ステータスバーのアラートを開き、詳細を展開するとエージェントの出力を確認できます。"
         },
@@ -2788,7 +2790,7 @@
           "shortcutsAuxPanel": "<shortcut>{toggleAuxPanel}</shortcut> で右側パネルを開き、このセッションで変更したファイルや Git の差分を確認できます",
           "shortcutsTerminalSidebar": "<shortcut>{toggleTerminal}</shortcut> で内蔵ターミナル、<shortcut>{toggleSidebar}</shortcut> でサイドバーを切り替えできます",
           "customShortcuts": "すべてのショートカットは「設定 → ショートカット」で自由に変更できます",
-          "webService": "「設定 → Web サービス」を有効にすると、チームメンバーが同じ codeg にブラウザでアクセスできます",
+          "webService": "「設定 → Web サービス」を有効にすると、チームメンバーが同じ MaxCode にブラウザでアクセスできます",
           "fusionMode": "ファイルや差分を開くと、会話の横に自動で表示されます。",
           "quickMessages": "入力欄横の + ボタンから「クイックメッセージ」を選ぶと、保存済みのスニペットを一発で挿入できます（「設定 → クイックメッセージ」で管理）",
           "experts": "+ ボタンの「エキスパートスキル」メニューから、デバッグや計画などのプリセットロールをワンクリックで読み込めます",
@@ -2798,7 +2800,7 @@
           "mentionTargets": "@ で参照できるのはファイルだけではありません。別のエージェントをメンションしてサブタスクを任せたり、過去のセッション・コミット・スキルを参照したりできます。",
           "splitGroups": "タブを右クリックして「右に分割」または「下に分割」を選ぶと、2 つの会話をそれぞれのペインで開いたままにできます。",
           "worktrees": "ブランチボタンから「新規ワークツリー」を選ぶと、複数のエージェントが同じリポジトリで互いのファイルを上書きせずに並行作業できます。",
-          "importSessions": "すでにターミナルで実行したセッションは、フォルダーのメニューにある「ローカルセッションをインポート」で codeg に取り込めます。",
+          "importSessions": "すでにターミナルで実行したセッションは、フォルダーのメニューにある「ローカルセッションをインポート」で MaxCode に取り込めます。",
           "subSessions": "エージェントが委任すると、サブセッションがサイドバーの親セッションの下に入れ子で表示されます。行を展開すれば、それぞれの作業を追えます。",
           "liveFeedback": "「+」メニューのライブフィードバックを使えば、エージェントが実行中のターンに、中断させずにメモを差し込めます。",
           "skillPacks": "設定 → スキルパックには、コーディング専門家・科学研究・オフィス作業のスキルがまとまっています。エージェントごとに有効化できます。",
@@ -3332,7 +3334,7 @@
         "grantDescription": "pi はこのリポジトリ自身の .pi ファイルを読み込みます。何が許可されるか確認してください。",
         "grantInheritedDescription": "親フォルダーが信頼されているため、pi はこのリポジトリ自身の .pi ファイルを読み込みます。何が許可されるか確認してください。",
         "grantDialogTitle": "このプロジェクトの pi リソースは信頼されています",
-        "grantDialogDescription": "pi はこのリポジトリ自身の .pi ファイルの読み込みを許可されています。以前のバージョンの codeg はフォルダーを開いた時点で自動的に許可していたため、確認を求められていない可能性があります。",
+        "grantDialogDescription": "pi はこのリポジトリ自身の .pi ファイルの読み込みを許可されています。以前のバージョンの MaxCode はフォルダーを開いた時点で自動的に許可していたため、確認を求められていない可能性があります。",
         "grantExecutionWarning": "拡張機能はコードです。リポジトリの拡張機能は、メッセージを送信する前に pi の起動時にあなたの権限で実行されます。",
         "inheritedFrom": "信頼の由来",
         "revoke": "信頼を取り消す",
@@ -3519,11 +3521,11 @@
   "WebServiceSettings": {
     "addressSwitchHint": "切り替えても、ここに表示され開くアドレスが変わるだけです。サービスはすべてのインターフェースで待ち受けており、どのアドレスからもアクセスできます。",
     "sectionTitle": "Webサービス",
-    "sectionDescription": "有効にするとブラウザからCodegにリモートアクセスできます",
+    "sectionDescription": "有効にするとブラウザからMaxCodeにリモートアクセスできます",
     "port": "ポート",
     "status": "ステータス",
     "autoStart": "自動起動",
-    "autoStartHint": "Codeg の起動時に Web サービスを開始",
+    "autoStartHint": "MaxCode の起動時に Web サービスを開始",
     "running": "実行中",
     "stopped": "停止中",
     "processing": "処理中...",
@@ -3538,7 +3540,7 @@
     "copy": "コピー",
     "qrcode": "QRコード",
     "qrcodeTitle": "スキャンして開く",
-    "qrcodeHint": "スマートフォンでスキャンして、ブラウザで Codeg を開きます",
+    "qrcodeHint": "スマートフォンでスキャンして、ブラウザで MaxCode を開きます",
     "addressLabel": "アクセスアドレス",
     "tokenLabel": "アクセストークン",
     "tokenHint": "Webクライアントの初回アクセス時にこのトークンを入力してください",
@@ -3546,7 +3548,7 @@
     "regenerate": "再生成",
     "stalePortOccupiedTitle": "ポート {port} は他のプロセスに使用されています",
     "stalePortUnknownTitle": "ポート {port} の状態を確認できません",
-    "stalePortHint": "ポートが解放されるまで Codeg はバインドできません。上のポートを変更するか、占有しているプロセスを終了してください。",
+    "stalePortHint": "ポートが解放されるまで MaxCode はバインドできません。上のポートを変更するか、占有しているプロセスを終了してください。",
     "errors": {
       "alreadyRunning": "Web サービスはすでに起動しています",
       "invalidAddress": "ホストまたはポートの形式が無効です",
@@ -3585,7 +3587,7 @@
     "tokenRequired": "トークンを入力してください。",
     "chatIdRequired": "Chat ID を入力してください。",
     "topicMode": "トピックグループモード",
-    "topicModeHint": "Telegram forum topics を個別の Codeg セッションとしてルーティングします。Bot は forum supergroup に参加し、topics を管理できる必要があります。",
+    "topicModeHint": "Telegram forum topics を個別の MaxCode セッションとしてルーティングします。Bot は forum supergroup に参加し、topics を管理できる必要があります。",
     "loadFailed": "チャンネルの読み込みに失敗しました。",
     "saveFailed": "保存に失敗しました。",
     "connectSuccess": "チャンネルに接続しました。",
@@ -3782,7 +3784,7 @@
     },
     "confirm": {
       "disableTitle": "これらのリンクを無効化しますか？",
-      "disableBody": "codeg が管理する {count} 件のスキルリンクを削除します。カスタムディレクトリを占有しているスキルはそのまま残ります。いつでも再び有効化できます。",
+      "disableBody": "MaxCode が管理する {count} 件のスキルリンクを削除します。カスタムディレクトリを占有しているスキルはそのまま残ります。いつでも再び有効化できます。",
       "cancel": "キャンセル",
       "confirm": "無効化"
     },
@@ -3803,7 +3805,7 @@
   },
   "ExpertsSettings": {
     "title": "エキスパートスキル",
-    "description": "AI コーディングエージェント向けに、厳選され実戦で検証されたスキルワークフローを有効にします。各エキスパートは superpowers プロジェクトの独立したスキルで、codeg が中央コピーを管理し、選択したエージェントにリンクします。",
+    "description": "AI コーディングエージェント向けに、厳選され実戦で検証されたスキルワークフローを有効にします。各エキスパートは superpowers プロジェクトの独立したスキルで、MaxCode が中央コピーを管理し、選択したエージェントにリンクします。",
     "loading": "エキスパートを読み込み中…",
     "loadingContent": "コンテンツを読み込み中…",
     "emptyExperts": "利用可能なエキスパートがありません。アプリケーションログを確認してください。",
@@ -3812,7 +3814,7 @@
     "searchPlaceholder": "名前、ID、または説明でエキスパートを検索",
     "enableForAgents": "エージェントで有効化",
     "noAgents": "ACP エージェントが検出されません。",
-    "copyModeWarning": "コピー済み（リンクなし）。codeg 更新後に最新版を取得するには再度有効化してください。",
+    "copyModeWarning": "コピー済み（リンクなし）。MaxCode 更新後に最新版を取得するには再度有効化してください。",
     "previewTitle": "SKILL.md プレビュー",
     "categories": {
       "discovery": "発見と設計",
@@ -3848,7 +3850,7 @@
   },
   "ScienceSettings": {
     "title": "科学研究スキル",
-    "description": "AI コーディングエージェント向けに厳選した科学研究スキル（仮説生成・実験計画・統計・可視化・批判的評価・文献検索）を有効化します。codeg が中央コピーを管理し、選んだエージェントに各スキルをリンクします。",
+    "description": "AI コーディングエージェント向けに厳選した科学研究スキル（仮説生成・実験計画・統計・可視化・批判的評価・文献検索）を有効化します。MaxCode が中央コピーを管理し、選んだエージェントに各スキルをリンクします。",
     "loading": "科学研究スキルを読み込み中…",
     "emptySkills": "利用可能な科学研究スキルがありません。アプリのログを確認してください。",
     "searchPlaceholder": "名前・ID・説明で科学研究スキルを検索",
@@ -3942,7 +3944,7 @@
   },
   "SkillPacksSettings": {
     "title": "スキルパック",
-    "description": "codeg が一元管理し、各 AI エージェントにリンクする厳選スキルの束です——コーディング専門家、科学研究、オフィス文書ツール。下でエージェントごとに有効化できます。",
+    "description": "MaxCode が一元管理し、各 AI エージェントにリンクする厳選スキルの束です——コーディング専門家、科学研究、オフィス文書ツール。下でエージェントごとに有効化できます。",
     "tabs": {
       "experts": "エキスパート",
       "science": "科学研究",
@@ -4164,7 +4166,7 @@
   },
   "BackupSettings": {
     "title": "バックアップと復元",
-    "description": "codeg データのポータブルなバックアップを書き出すか、バックアップから復元します。",
+    "description": "MaxCode データのポータブルなバックアップを書き出すか、バックアップから復元します。",
     "tabs": {
       "backup": "バックアップ",
       "restore": "復元"
@@ -4194,9 +4196,9 @@
         "incompatible": "互換なし",
         "createdAt": "作成日時: {value}",
         "appVersion": "アプリのバージョン: {value}",
-        "incompatibleHint": "このバックアップは新しいバージョンの codeg で作成されており、復元できません。"
+        "incompatibleHint": "このバックアップは新しいバージョンの MaxCode で作成されており、復元できません。"
       },
-      "replaceWarning": "復元すると現在の codeg データ（データベースとアップロード）がすべて置き換えられます。現在のデータは先にスナップショットされ、復旧できます。",
+      "replaceWarning": "復元すると現在の MaxCode データ（データベースとアップロード）がすべて置き換えられます。現在のデータは先にスナップショットされ、復旧できます。",
       "keyringNote": "デスクトップの GitHub/チャットのトークンは OS のキーチェーンに保存され、含まれません。復元後に再入力してください。",
       "button": "復元",
       "staging": "復元を準備中…",
@@ -4205,7 +4207,7 @@
       "restartTimeout": "サーバーが時間内に復帰しませんでした。起動後にページを再読み込みしてください。",
       "externalSideLocation": "会話履歴を {path} に復元しました",
       "confirmTitle": "すべてのデータを置き換えますか？",
-      "confirmBody": "現在の codeg データベースとアップロードをバックアップで置き換えてから再起動します。現在のデータは先にスナップショットされます。",
+      "confirmBody": "現在の MaxCode データベースとアップロードをバックアップで置き換えてから再起動します。現在のデータは先にスナップショットされます。",
       "cancel": "キャンセル",
       "confirmAction": "置き換えて再起動",
       "external": {
@@ -4223,15 +4225,15 @@
       },
       "restartFailed": "復元は準備できましたが、サーバーを再起動できませんでした。手動で再起動して復元を適用してください。"
     },
-    "remoteUnsupported": "バックアップと復元は codeg を実行しているマシンのデータを対象とします。現在リモートワークスペースに接続中です。そのサーバー上で直接バックアップを管理してください。"
+    "remoteUnsupported": "バックアップと復元は MaxCode を実行しているマシンのデータを対象とします。現在リモートワークスペースに接続中です。そのサーバー上で直接バックアップを管理してください。"
   },
   "backup": {
     "restore": {
       "error": {
         "badPassphrase": "パスフレーズが正しくないか、バックアップが破損しています。",
         "corrupted": "バックアップアーカイブが破損しています。",
-        "unknownFormat": "このファイルは認識可能な codeg バックアップではありません。",
-        "newerVersion": "このバックアップは codeg {backupVersion} で作成されており、現在のバージョン（{appVersion}）より新しいです。",
+        "unknownFormat": "このファイルは認識可能な MaxCode バックアップではありません。",
+        "newerVersion": "このバックアップは MaxCode {backupVersion} で作成されており、現在のバージョン（{appVersion}）より新しいです。",
         "alreadyPending": "適用待ちの復元が既にあります。先に再起動して適用してから、新しい復元を準備してください。"
       }
     },
@@ -4269,7 +4271,7 @@
   },
   "AgentToolsSettings": {
     "title": "会話内ツール",
-    "description": "codeg が会話の中でエージェントに追加で渡すツールです。エージェントの起動時に注入されるため、変更は以降に起動したエージェントに適用されます。",
+    "description": "MaxCode が会話の中でエージェントに追加で渡すツールです。エージェントの起動時に注入されるため、変更は以降に起動したエージェントに適用されます。",
     "feedbackLabel": "ライブフィードバック",
     "feedbackHint": "作業中のエージェントにメモや修正を送れます。即時ステアリングに対応したエージェントでは、メモは実行中のターンへ即座に挿入されます。それ以外のエージェントはフィードバック確認ツールで読み取りますが、通常はプロンプトで言及した場合にのみ確認します。例：「ライブフィードバックを定期的に確認して」とメッセージに追加してください。",
     "questionLabel": "ユーザーに質問",
@@ -4294,7 +4296,7 @@
     "preview": "試聴",
     "previewEvent": "「{event}」の通知音を試聴",
     "onlyWhenUnfocused": "ウィンドウが非アクティブなときのみ再生",
-    "onlyWhenUnfocusedHint": "Codeg を表示している間は鳴らしません。",
+    "onlyWhenUnfocusedHint": "MaxCode を表示している間は鳴らしません。",
     "eventsTitle": "イベント",
     "eventsHint": "イベントごとに音を選びます。「なし」を選ぶと鳴りません。同じイベントが数秒以内に繰り返された場合は 1 回だけ再生されます。",
     "toneNone": "なし",
@@ -4811,7 +4813,7 @@
     }
   },
   "CodexModelEditor": {
-    "customizedNotice": "モデル一覧をカスタマイズしたため、codeg が codex のモデル表全体を管理します。codex が今後追加する公式モデルは自動では表示されません。下の更新をクリックして保存し直すと同期できます。カスタマイズをすべて削除すると codex の自動更新に戻ります。",
+    "customizedNotice": "モデル一覧をカスタマイズしたため、MaxCode が codex のモデル表全体を管理します。codex が今後追加する公式モデルは自動では表示されません。下の更新をクリックして保存し直すと同期できます。カスタマイズをすべて削除すると codex の自動更新に戻ります。",
     "officialsTitle": "公式モデル",
     "officialsHint": "起動する codex の公式モデルを自動的に含めます。不要なものは削除できます。",
     "officialsEmpty": "利用可能な公式モデルがありません。",
@@ -4864,8 +4866,8 @@
       "terminal_only_path": "このコマンドはターミナルでは解決されますが、アプリでは解決されません。GUI の PATH のずれです。ターミナルからアプリを起動するか、エージェント設定から再インストールしてください。",
       "npm_prefix_timeout": "npm prefix -g が遅すぎました（1.5 秒超）。フォールバック検出をスキップしました。アプリを再起動して再試行してください。",
       "node_too_old": "使用中の Node.js がこのエージェントの要件より古いです。Node.js をアップグレードしてください。",
-      "adapter_missing_native_present": "お使いの {agent} CLI は確かにインストールされていますが、Codeg が起動するのは別の ACP アダプターパッケージで、そちらが未インストールです。エージェント設定からインストールしてください。既存の CLI には触れず、ログインも共有されます。",
-      "adapter_missing": "Codeg は {agent} 用に別個の ACP アダプターパッケージを起動しますが、まだインストールされていません。エージェント設定からインストールしてください。ベンダー CLI を入れるだけでは足りません。"
+      "adapter_missing_native_present": "お使いの {agent} CLI は確かにインストールされていますが、MaxCode が起動するのは別の ACP アダプターパッケージで、そちらが未インストールです。エージェント設定からインストールしてください。既存の CLI には触れず、ログインも共有されます。",
+      "adapter_missing": "MaxCode は {agent} 用に別個の ACP アダプターパッケージを起動しますが、まだインストールされていません。エージェント設定からインストールしてください。ベンダー CLI を入れるだけでは足りません。"
     }
   },
   "TokenUsage": {
@@ -4899,7 +4901,7 @@
     "resetFilters": "フィルタをリセット",
     "refresh": "更新",
     "rebuild": "すべて再構築",
-    "rebuildHint": "集計済みデータを破棄し、すべてのセッション記録を読み直します。codeg 以外の CLI で追記された場合に使います。",
+    "rebuildHint": "集計済みデータを破棄し、すべてのセッション記録を読み直します。MaxCode 以外の CLI で追記された場合に使います。",
     "syncing": "セッションを集計中…",
     "syncProgress": "{done} / {total}",
     "syncDone": "{synced} 件のセッションを集計しました",
@@ -4978,7 +4980,7 @@
     "cardHeading": "私の AI コーディング記録",
     "cardRangeAll": "全期間",
     "cardTotalLabel": "使用トークン",
-    "cardFooter": "codeg で作成",
+    "cardFooter": "MaxCode で作成",
     "cardTopModels": "よく使うモデル",
     "cardTopProjects": "主なプロジェクト",
     "archetypeNightOwl": "夜型コーダー",
@@ -5000,7 +5002,7 @@
     "archetypeSteady": "安定型ビルダー",
     "archetypeSteadyDesc": "のべ {days} 日開発しました。",
     "emptyTitle": "集計データがまだありません",
-    "emptyHint": "codeg は各エージェント自身のセッション記録から直接トークン数を読み取ります。更新すると、このマシンにある記録を集計します。",
+    "emptyHint": "MaxCode は各エージェント自身のセッション記録から直接トークン数を読み取ります。更新すると、このマシンにある記録を集計します。",
     "emptyAction": "セッションを集計",
     "loadFailed": "使用量を読み込めませんでした",
     "truncatedNotice": "期間が非常に長いため、表示中の数値は直近の一部のみを対象としています。"

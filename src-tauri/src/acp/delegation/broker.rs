@@ -850,7 +850,7 @@ fn attach_blocked(report: &mut DelegationTaskReport, blocked: BlockedOn) {
     // step with the tool description in `tool_schema.json`.
     report.message = Some(format!(
         "Running.\n{BLOCKED_LINE_PREFIX} {what}\nThe sub-agent is parked until \
-         a human answers in Codeg — it is not making progress. Tell the user, \
+         a human answers in MaxCode — it is not making progress. Tell the user, \
          then wait again."
     ));
     report.blocked_on = Some(blocked);

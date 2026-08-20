@@ -9,8 +9,8 @@ export const dynamic = "force-static"
 // pre-rounded plate with transparent corners. `?v=` busts icon cache.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Codeg",
-    short_name: "Codeg",
+    name: "MaxCode",
+    short_name: "MaxCode",
     description: "AI Coding Agent Conversation Manager",
     id: "/",
     start_url: "/",

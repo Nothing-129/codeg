@@ -27,6 +27,7 @@ import {
   FolderOpen,
   FolderOpenDot,
   FolderRoot,
+  GripVertical,
   Link2,
   ListChecks,
   Loader2,
@@ -93,6 +94,7 @@ import {
   CONV_RAIL_DEPTH_STEP,
 } from "./sidebar-conversation-card"
 import {
+  applyReorder,
   buildOwnerHeaderIndex,
   buildRows,
   computeStickyState,
@@ -232,6 +234,14 @@ const FolderHeader = memo(function FolderHeader({
   onSetDefaultAgent,
   onOpenInSystemExplorer,
   onOpenInTerminal,
+  reorderable = false,
+  isDragging = false,
+  isDragTarget = false,
+  onDragStart,
+  onDragEnter,
+  onDragOver,
+  onDrop,
+  onDragEnd,
   suppressed = false,
   depth = 0,
   variant = "repo",
@@ -274,6 +284,14 @@ const FolderHeader = memo(function FolderHeader({
   onSetDefaultAgent: (folderId: number, agentType: AgentType | null) => void
   onOpenInSystemExplorer: (folderId: number) => void
   onOpenInTerminal: (folderId: number) => void
+  reorderable?: boolean
+  isDragging?: boolean
+  isDragTarget?: boolean
+  onDragStart?: (folderId: number, event: React.DragEvent) => void
+  onDragEnter?: (folderId: number, event: React.DragEvent) => void
+  onDragOver?: (folderId: number, event: React.DragEvent) => void
+  onDrop?: (folderId: number, event: React.DragEvent) => void
+  onDragEnd?: () => void
   /**
    * True for the in-list copy of the folder whose floating sticky overlay is
    * currently showing. The overlay is the accessible control (`aria-hidden` +
@@ -376,7 +394,14 @@ const FolderHeader = memo(function FolderHeader({
         <ContextMenuTrigger asChild>
           <div
             aria-hidden={suppressed || undefined}
-            className="relative h-[2rem]"
+            onDragEnter={(event) => onDragEnter?.(folderId, event)}
+            onDragOver={(event) => onDragOver?.(folderId, event)}
+            onDrop={(event) => onDrop?.(folderId, event)}
+            className={cn(
+              "relative h-[2rem] rounded-full",
+              isDragging && "opacity-50",
+              isDragTarget && "ring-2 ring-primary/50 ring-inset"
+            )}
           >
             <div
               className={cn(
@@ -509,6 +534,27 @@ const FolderHeader = memo(function FolderHeader({
                   />
                 </div>
               </button>
+              {reorderable && (
+                <button
+                  type="button"
+                  draggable
+                  data-folder-grip={folderId}
+                  onDragStart={(event) => onDragStart?.(folderId, event)}
+                  onDragEnd={onDragEnd}
+                  onClick={(event) => event.stopPropagation()}
+                  title={t("reorderHandle")}
+                  aria-label={t("reorderHandle")}
+                  tabIndex={suppressed ? -1 : undefined}
+                  className={cn(
+                    "flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded-[0.375rem] outline-none",
+                    "text-muted-foreground/80 opacity-0 transition-[opacity,color] duration-150",
+                    "group-hover:opacity-100 focus-visible:opacity-100 hover:text-sidebar-foreground",
+                    "active:cursor-grabbing [@media(hover:none)]:opacity-100"
+                  )}
+                >
+                  <GripVertical className="h-[0.875rem] w-[0.875rem]" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={(e) => {
@@ -817,6 +863,7 @@ export function SidebarConversationList({
   const removeFolderFromWorkspace = useAppWorkspaceStore(
     (s) => s.removeFolderFromWorkspace
   )
+  const reorderFolders = useAppWorkspaceStore((s) => s.reorderFolders)
   const refreshFolder = useAppWorkspaceStore((s) => s.refreshFolder)
   const refreshing = loading
   const { activeFolder } = useActiveFolder()
@@ -975,6 +1022,11 @@ export function SidebarConversationList({
   const [browserOpen, setBrowserOpen] = useState(false)
   // Folder whose links are being managed (context menu -> Linked folders).
   const [linksFolder, setLinksFolder] = useState<FolderDetail | null>(null)
+  const [draggingFolderId, setDraggingFolderId] = useState<number | null>(null)
+  const [dragTargetFolderId, setDragTargetFolderId] = useState<number | null>(
+    null
+  )
+  const [reorderingFolders, setReorderingFolders] = useState(false)
 
   // Floating sticky folder header. `stickyFolderId` is the ONLY new render
   // state and changes solely when the scroll crosses into a different folder —
@@ -1237,6 +1289,70 @@ export function SidebarConversationList({
     }
     return ids
   }, [folders, childToParent])
+
+  const handleFolderDragStart = useCallback(
+    (folderId: number, event: React.DragEvent) => {
+      if (reorderingFolders) {
+        event.preventDefault()
+        return
+      }
+      event.dataTransfer.effectAllowed = "move"
+      event.dataTransfer.setData("text/plain", String(folderId))
+      setDraggingFolderId(folderId)
+      setDragTargetFolderId(folderId)
+    },
+    [reorderingFolders]
+  )
+
+  const handleFolderDragEnter = useCallback(
+    (folderId: number, event: React.DragEvent) => {
+      if (draggingFolderId == null) return
+      event.preventDefault()
+      setDragTargetFolderId(folderId)
+    },
+    [draggingFolderId]
+  )
+
+  const handleFolderDragOver = useCallback(
+    (_folderId: number, event: React.DragEvent) => {
+      if (draggingFolderId == null) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = "move"
+    },
+    [draggingFolderId]
+  )
+
+  const resetFolderDrag = useCallback(() => {
+    setDraggingFolderId(null)
+    setDragTargetFolderId(null)
+  }, [])
+
+  const handleFolderDrop = useCallback(
+    async (targetFolderId: number, event: React.DragEvent) => {
+      event.preventDefault()
+      const sourceFolderId = draggingFolderId
+      resetFolderDrag()
+      if (sourceFolderId == null || sourceFolderId === targetFolderId) return
+
+      const fromIndex = reorderableFolderIds.indexOf(sourceFolderId)
+      const toIndex = reorderableFolderIds.indexOf(targetFolderId)
+      if (fromIndex < 0 || toIndex < 0) return
+
+      setReorderingFolders(true)
+      try {
+        await reorderFolders(
+          applyReorder(reorderableFolderIds, fromIndex, toIndex)
+        )
+      } catch (err) {
+        toast.error(
+          t("toasts.reorderFoldersFailed", { message: toErrorMessage(err) })
+        )
+      } finally {
+        setReorderingFolders(false)
+      }
+    },
+    [draggingFolderId, reorderableFolderIds, reorderFolders, resetFolderDrag, t]
+  )
 
   // "Show worktrees" container map: repo id → its open worktree child folder ids
   // (sorted). A repo present here renders as a CONTAINER — buildRows nests its
@@ -2049,6 +2165,16 @@ export function SidebarConversationList({
         onSetDefaultAgent={handleChangeFolderDefaultAgent}
         onOpenInSystemExplorer={handleOpenFolderInSystemExplorer}
         onOpenInTerminal={handleOpenFolderInTerminal}
+        reorderable={!isRootGroup && !isWorktree}
+        isDragging={draggingFolderId === folderId}
+        isDragTarget={
+          draggingFolderId !== null && dragTargetFolderId === folderId
+        }
+        onDragStart={handleFolderDragStart}
+        onDragEnter={handleFolderDragEnter}
+        onDragOver={handleFolderDragOver}
+        onDrop={handleFolderDrop}
+        onDragEnd={resetFolderDrag}
         suppressed={opts.suppressed ?? false}
         depth={depth}
         variant={variant}

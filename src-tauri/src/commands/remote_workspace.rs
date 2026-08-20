@@ -184,7 +184,7 @@ pub async fn open_remote_workspace(
         format!("workspace?remoteConnectionId={id}&remoteWindowId={window_instance_id}").into(),
     );
     let builder = WebviewWindowBuilder::new(&app, &label, url)
-        .title(format!("Codeg - {}", connection.name))
+        .title(format!("MaxCode - {}", connection.name))
         .inner_size(1260.0, 860.0)
         .min_inner_size(400.0, 600.0)
         .center();

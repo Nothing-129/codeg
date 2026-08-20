@@ -131,7 +131,7 @@
       },
       "css": {
         "dialogTitle": "自訂 CSS",
-        "dialogDescription": "對所有 codeg 視窗生效。修改會即時預覽，點擊「套用」才會儲存。",
+        "dialogDescription": "對所有 MaxCode 視窗生效。修改會即時預覽，點擊「套用」才會儲存。",
         "size": "{used} KB / {max} KB",
         "ruleCount": "{count} 條規則",
         "errorTooLarge": "內容過大，無法儲存，請精簡到上限以內。",
@@ -622,7 +622,7 @@
     "envVars": "環境變數",
     "hostTools": {
       "label": "由 Agent 自行處理檔案與指令",
-      "description": "codeg 不再代為提供檔案存取與終端指令，改由 Agent 在自己的行程中執行——只有這樣它自帶的沙箱與權限規則才會生效。同時會關閉向其他 Agent 委派，否則同樣的操作又會繞回 codeg 執行。codeg 本身不提供沙箱，因此請僅在 Agent 已設定沙箱時開啟。"
+      "description": "MaxCode 不再代為提供檔案存取與終端指令，改由 Agent 在自己的行程中執行——只有這樣它自帶的沙箱與權限規則才會生效。同時會關閉向其他 Agent 委派，否則同樣的操作又會繞回 MaxCode 執行。MaxCode 本身不提供沙箱，因此請僅在 Agent 已設定沙箱時開啟。"
     },
     "nativeJsonConfig": "原生 JSON 配置",
     "modelHintDefault": "留空則使用系統預設模型。",
@@ -735,7 +735,7 @@
       "configTomlHint": "按原樣整體寫入 ~/.grok/config.toml。非法 TOML 會被拒絕，絕不因筆誤截斷檔案。",
       "configTomlPlaceholder": "# 上面控制項之外的鍵，例如\n# [mcp_servers.*]、[cli]、[permission] 規則。",
       "customModelTitle": "自訂模型（自帶端點）",
-      "customModelHint": "讓 Grok 指向自訂或自架端點。codeg 會寫入按模型的 `[model.*]` 區塊並設為預設模型。清空模型 ID 即可移除。",
+      "customModelHint": "讓 Grok 指向自訂或自架端點。MaxCode 會寫入按模型的 `[model.*]` 區塊並設為預設模型。清空模型 ID 即可移除。",
       "customModelIdLabel": "模型 ID",
       "customModelIdPlaceholder": "grok-4.5",
       "customModelIdHint": "註冊為 `[model.*]` 區塊，並作為模型名稱傳送給 API；同時設為 `[models].default`。",
@@ -753,7 +753,7 @@
       "autoCompactHint": "當上下文使用率達到此百分比時壓縮對話（Grok 預設 85）。寫入 `[session]`。"
     },
     "cursor": {
-      "configDescription": "在此設定 Cursor。先選擇驗證方式——官網訂閱（瀏覽器登入）或用於無頭/伺服器的 Cursor API 金鑰——然後選擇模型並編輯 CLI 的權限規則與沙箱。codeg 會寫入 ~/.cursor/cli-config.json，與 cursor-agent CLI 共用。",
+      "configDescription": "在此設定 Cursor。先選擇驗證方式——官網訂閱（瀏覽器登入）或用於無頭/伺服器的 Cursor API 金鑰——然後選擇模型並編輯 CLI 的權限規則與沙箱。MaxCode 會寫入 ~/.cursor/cli-config.json，與 cursor-agent CLI 共用。",
       "authTitle": "驗證",
       "authChecking": "檢測中…",
       "authNotInstalled": "cursor-agent 未安裝",
@@ -847,7 +847,7 @@
       "approvalPolicy_untrusted": "僅信任唯讀 — 只有已知安全的唯讀指令免批准",
       "approvalPolicy_never": "從不詢問 — 完全不彈審批",
       "approvalPolicy_granular": "精細控制 — 依提示類型分別設定",
-      "approvalPolicyUntrustedAcpWarning": "ACP 轉接器只有三種審批預設，untrusted 無對應項，codeg 工作階段會退回「按需詢問」——此時由模型自行決定何時詢問，沙箱本就允許的命令不再詢問。請改用下方的沙箱模式收緊。",
+      "approvalPolicyUntrustedAcpWarning": "ACP 轉接器只有三種審批預設，untrusted 無對應項，MaxCode 工作階段會退回「按需詢問」——此時由模型自行決定何時詢問，沙箱本就允許的命令不再詢問。請改用下方的沙箱模式收緊。",
       "granularHint": "關閉表示該類請求會被自動拒絕，而不是彈給你確認。",
       "granular_sandbox_approval": "Shell 指令越權申請",
       "granular_rules": "Execpolicy 規則提示",
@@ -860,7 +860,7 @@
       "sandboxMode_workspace-write": "可寫工作區",
       "sandboxMode_danger-full-access": "完全開放（無沙箱）",
       "sandboxModeHint": "在 Windows 上，未開啟 codex 的實驗性 Windows 沙箱時，可寫工作區會被降級為唯讀。",
-      "sandboxModeSeedsPresetHint": "codeg 還會用它推導工作階段的初始審批預設，因此與審批策略不同，它對一般提問同樣生效。輸入框中選擇的預設仍會覆蓋它。",
+      "sandboxModeSeedsPresetHint": "MaxCode 還會用它推導工作階段的初始審批預設，因此與審批策略不同，它對一般提問同樣生效。輸入框中選擇的預設仍會覆蓋它。",
       "writableRootsLabel": "額外可寫目錄",
       "writableRootsHint": "每行一個絕對路徑，作為工作目錄之外的額外可寫位置。",
       "sandboxRootsRelativeError": "必須是絕對路徑 — codex 會把相對路徑解析到 ~/.codex 底下：{path}",
@@ -1029,7 +1029,7 @@
     },
     "hermes": {
       "configManagement": "Hermes 配置",
-      "configDescription": "Hermes 在 ~/.hermes/.env 中管理自己的憑證，在 ~/.hermes/config.yaml 中管理設定。選擇一個供應商，然後設定 API 金鑰與模型——codeg 會替你寫入這兩個檔案。",
+      "configDescription": "Hermes 在 ~/.hermes/.env 中管理自己的憑證，在 ~/.hermes/config.yaml 中管理設定。選擇一個供應商，然後設定 API 金鑰與模型——MaxCode 會替你寫入這兩個檔案。",
       "providerLabel": "供應商",
       "providerHint": "供應商決定 Hermes 使用哪個 API 金鑰變數與 model.provider。OAuth 供應商透過下方的終端機設定進行設定。",
       "groupApiKey": "API 金鑰供應商",
@@ -1071,7 +1071,7 @@
     },
     "kimiCode": {
       "configManagement": "Kimi Code 設定",
-      "configDescription": "`kimi acp` 只認已儲存的登入權杖，所以 codeg 會在 ~/.kimi-code/config.toml 寫入受管供應商，並在本機植入一個門控權杖——推論仍然走你自己的 Key。",
+      "configDescription": "`kimi acp` 只認已儲存的登入權杖，所以 MaxCode 會在 ~/.kimi-code/config.toml 寫入受管供應商，並在本機植入一個門控權杖——推論仍然走你自己的 Key。",
       "statusUnconfigured": "尚未設定",
       "statusDirty": "有未儲存的變更",
       "summaryLabel": "生效設定",
@@ -1083,7 +1083,7 @@
       "authModeApiKey": "API Key",
       "authModeLogin": "Kimi 帳號登入（訂閱）",
       "authModeApiKeyHint": "在 config.toml 寫入受管供應商，並植入門控權杖以便工作階段能夠開啟。",
-      "loginHint": "在終端機執行 `kimi login`，用 Kimi 訂閱帳號登入。codeg 不儲存任何憑證，沿用 Kimi 自己的登入。在此儲存會移除 codeg 的 API Key 門控權杖。",
+      "loginHint": "在終端機執行 `kimi login`，用 Kimi 訂閱帳號登入。MaxCode 不儲存任何憑證，沿用 Kimi 自己的登入。在此儲存會移除 MaxCode 的 API Key 門控權杖。",
       "credentialTitle": "憑證",
       "interfaceTypeLabel": "供應商類型",
       "interfaceTypeHint": "Kimi 使用的供應商協定（config.toml 的 `type`）。Moonshot / platform.kimi.com 的 Key 請選「Kimi / Moonshot」。",
@@ -1112,7 +1112,7 @@
       "modelNotInList": "該模型不在你的 Key 可存取清單中，Kimi 會回報「模型不存在」。",
       "reasoningTitle": "推理",
       "reasoningEnableLabel": "啟用",
-      "reasoningDescription": "只有當模型宣告了推理能力，Kimi 才會在輸入框顯示「Thinking」選擇器，所以這裡由 codeg 寫入該宣告。對新建工作階段生效。",
+      "reasoningDescription": "只有當模型宣告了推理能力，Kimi 才會在輸入框顯示「Thinking」選擇器，所以這裡由 MaxCode 寫入該宣告。對新建工作階段生效。",
       "effortsLabel": "可選檔位",
       "effortsHint": "這些會成為輸入框「Thinking」選擇器裡的檔位。Kimi 會把檔位原樣轉傳給供應商，請選你的模型能接受的值。",
       "effortsEmptyHint": "一個檔位都不選時，輸入框只會退化成 Off / On 兩檔開關。",
@@ -1281,12 +1281,12 @@
     "adapter": {
       "label": "ACP 轉接器",
       "badge": "ACP 轉接器",
-      "badgeHint": "Codeg 為此智能體安裝的是 ACP 轉接器套件，而不是廠商 CLI —— 兩者各自獨立，設定共用。",
+      "badgeHint": "MaxCode 為此智能體安裝的是 ACP 轉接器套件，而不是廠商 CLI —— 兩者各自獨立，設定共用。",
       "learnMore": "了解詳情",
-      "missingWithNative": "已偵測到你本機的 {nativeLabel}：{nativePath}。Codeg 透過 ACP 協定驅動智能體，而該 CLI 本身不支援 ACP，所以 Codeg 需要獨立的轉接器套件 {adapterPackage}（由 Agent Client Protocol 專案維護，最初由 Zed 團隊發起）。它自帶執行環境，不會修改或取代你的 {nativeCmd} 指令，讀取的也是同一個 {configDir} —— 既有的登入與設定可直接沿用。點擊下方安裝即可。",
-      "missing": "Codeg 透過 ACP 協定驅動智能體，而 {nativeLabel} 本身不支援 ACP，所以 Codeg 需要獨立的轉接器套件 {adapterPackage}（由 Agent Client Protocol 專案維護，最初由 Zed 團隊發起）。它自帶執行環境，因此不必先安裝 {nativeCmd} CLI；若你已經安裝，兩者可以並存，並共用 {configDir} 中的登入與設定。點擊下方安裝即可。",
-      "readyWithNative": "轉接器 {adapterCmd} 已安裝 —— Codeg 啟動的是它，而不是你本機的 {nativeCmd}（{nativePath}）。兩者是各自獨立的套件，可以並存，且都讀取 {configDir}，登入與設定共用。",
-      "ready": "轉接器 {adapterCmd} 已安裝 —— Codeg 啟動的就是它。它自帶執行環境，所以不需要另外安裝 {nativeLabel}；即使日後你安裝了，兩者也能並存並共用 {configDir}。"
+      "missingWithNative": "已偵測到你本機的 {nativeLabel}：{nativePath}。MaxCode 透過 ACP 協定驅動智能體，而該 CLI 本身不支援 ACP，所以 MaxCode 需要獨立的轉接器套件 {adapterPackage}（由 Agent Client Protocol 專案維護，最初由 Zed 團隊發起）。它自帶執行環境，不會修改或取代你的 {nativeCmd} 指令，讀取的也是同一個 {configDir} —— 既有的登入與設定可直接沿用。點擊下方安裝即可。",
+      "missing": "MaxCode 透過 ACP 協定驅動智能體，而 {nativeLabel} 本身不支援 ACP，所以 MaxCode 需要獨立的轉接器套件 {adapterPackage}（由 Agent Client Protocol 專案維護，最初由 Zed 團隊發起）。它自帶執行環境，因此不必先安裝 {nativeCmd} CLI；若你已經安裝，兩者可以並存，並共用 {configDir} 中的登入與設定。點擊下方安裝即可。",
+      "readyWithNative": "轉接器 {adapterCmd} 已安裝 —— MaxCode 啟動的是它，而不是你本機的 {nativeCmd}（{nativePath}）。兩者是各自獨立的套件，可以並存，且都讀取 {configDir}，登入與設定共用。",
+      "ready": "轉接器 {adapterCmd} 已安裝 —— MaxCode 啟動的就是它。它自帶執行環境，所以不需要另外安裝 {nativeLabel}；即使日後你安裝了，兩者也能並存並共用 {configDir}。"
     },
     "cline": {
       "configDescription": "配置 Cline API 提供商和憑證。設定將儲存到 ~/.cline/data/。"
@@ -1417,7 +1417,7 @@
     "customAgentSkillsDirLabel": "專屬技能目錄",
     "customAgentSkillsDirHint": "該智慧體自身載入技能的目錄絕對路徑 —— 可與共享目錄並存，也可單獨使用。~ 會展開為主目錄；連結技能時優先放入此目錄。",
     "customAgentMcpLabel": "MCP 支援",
-    "customAgentMcpHint": "工作階段建立時向該智慧體注入 codeg 內建的 codeg-mcp 伴生行程 —— 委派、即時回饋與任務工具都依賴它。若該智慧體不支援 MCP、連線時報錯，請關閉此項；設定會在下次連線時生效。",
+    "customAgentMcpHint": "工作階段建立時向該智慧體注入 MaxCode 內建的 codeg-mcp 伴生行程 —— 委派、即時回饋與任務工具都依賴它。若該智慧體不支援 MCP、連線時報錯，請關閉此項；設定會在下次連線時生效。",
     "customAgentIconNotAnImage": "請選擇圖片檔案。",
     "customAgentIconTooLarge": "圖示需小於 {limit} KB。",
     "customAgentIconReadFailed": "無法讀取該圖片。",
@@ -1436,11 +1436,11 @@
     "sectionTitle": "一般",
     "sectionDescription": "集中管理開機自動啟動、預設終端機、渲染加速以及多智能體協同等通用偏好。",
     "autostartTitle": "開機自動啟動",
-    "autostartDescription": "登入這台電腦後自動啟動 codeg。",
+    "autostartDescription": "登入這台電腦後自動啟動 MaxCode。",
     "autostartSaveFailed": "開機自動啟動設定儲存失敗：{message}",
     "autostartUnavailable": "無法讀取本機的開機自動啟動狀態：{message}",
     "terminalTitle": "預設終端",
-    "terminalDescription": "選擇從終端列或檔案樹開啟新終端分頁時使用的 Shell。智慧代理請求 codeg 代為執行整條命令列時也會使用它。",
+    "terminalDescription": "選擇從終端列或檔案樹開啟新終端分頁時使用的 Shell。智慧代理請求 MaxCode 代為執行整條命令列時也會使用它。",
     "terminalSystemDefault": "系統預設",
     "terminalPowerShell7": "PowerShell 7 (pwsh)",
     "terminalWindowsPowerShell": "Windows PowerShell",
@@ -1463,8 +1463,8 @@
     "loadFailed": "載入失敗：{message}"
   },
   "LoginPage": {
-    "documentTitle": "登入 - codeg",
-    "brand": "Codeg",
+    "documentTitle": "登入 - MaxCode",
+    "brand": "MaxCode",
     "subtitle": "輸入存取 Token 以連接到桌面端",
     "tokenPlaceholder": "Access Token",
     "connect": "連接",
@@ -1582,7 +1582,7 @@
     },
     "sidebar": {
       "title": "會話",
-      "brand": "Codeg",
+      "brand": "MaxCode",
       "locateActiveConversation": "定位目前會話",
       "expandAllGroups": "展開全部分組",
       "collapseAllGroups": "折疊全部分組",
@@ -1610,11 +1610,13 @@
         "folderRemoved": "已移除資料夾 {name}",
         "openFolderFailed": "開啟資料夾失敗",
         "removeFolderFailed": "移除資料夾失敗：{message}",
+        "reorderFoldersFailed": "重新排序資料夾失敗：{message}",
         "changeFolderColorFailed": "修改顏色失敗：{message}",
         "setFolderAliasFailed": "設定別名失敗：{message}",
         "changeFolderDefaultAgentFailed": "設定預設智能體失敗：{message}"
       },
       "statsLabel": "{folders} 個資料夾 · {convos} 個對話",
+      "reorderHandle": "拖拽排序",
       "openFolder": "開啟資料夾",
       "searchPlaceholder": "搜尋對話...",
       "viewOptions": "顯示選項",
@@ -2632,7 +2634,7 @@
         },
         "backendErrors": {
           "initializeTimeout": "{agent} 連線交握逾時（60 秒未回應），請前往設定頁面檢查智能體與網路設定。",
-          "mcpRejectedByAgent": "附帶 codeg 的 MCP 伴生程序時，{agent} 拒絕了本次會話：{message} 如果該智能體不支援 MCP，請在設定中關閉它的「MCP 支援」後重新連線。",
+          "mcpRejectedByAgent": "附帶 MaxCode 的 MCP 伴生程序時，{agent} 拒絕了本次會話：{message} 如果該智能體不支援 MCP，請在設定中關閉它的「MCP 支援」後重新連線。",
           "processExited": "{agent} 處理程序意外結束。",
           "spawnFailed": "啟動 {agent} 失敗：{message}",
           "downloadFailed": "{agent} 下載失敗：{message}",
@@ -2644,7 +2646,7 @@
           "turnFailedUnknown": "{agent} 以未知的停止原因結束了此輪回覆。",
           "grokModelSwitchIncompatibleAgent": "{agent} 無法在既有對話中切換到該模型，請新建工作階段以使用它。",
           "turnFailedEmpty": "{agent} 此輪沒有產生任何回覆就結束了。",
-          "turnFailedEmptyProtocol": "{agent} 此輪的輸出 codeg 無法解析，可能是代理版本與協定不相符。",
+          "turnFailedEmptyProtocol": "{agent} 此輪的輸出 MaxCode 無法解析，可能是代理版本與協定不相符。",
           "turnFailedEmptyMetadata": "{agent} 此輪只收到狀態更新（計畫 / 模式 / 用量），沒有收到任何回覆。",
           "detailsInAlerts": "在狀態列的「警示」中展開詳情，即可查看代理輸出。"
         },
@@ -2788,7 +2790,7 @@
           "shortcutsAuxPanel": "<shortcut>{toggleAuxPanel}</shortcut> 切換右側面板，檢視本次會話改動的檔案與 Git 變更",
           "shortcutsTerminalSidebar": "<shortcut>{toggleTerminal}</shortcut> 開啟內建終端機，<shortcut>{toggleSidebar}</shortcut> 切換側邊欄",
           "customShortcuts": "所有快捷鍵都可在「設定 → 快捷鍵」中自訂",
-          "webService": "開啟「設定 → Web 服務」後，團隊成員可從瀏覽器接入同一臺 codeg",
+          "webService": "開啟「設定 → Web 服務」後，團隊成員可從瀏覽器接入同一臺 MaxCode",
           "fusionMode": "開啟檔案或差異後，會自動與會話並排顯示",
           "quickMessages": "點輸入框旁的 + 按鈕選擇「快捷訊息」，可一鍵插入預存片段（在「設定 → 快捷訊息」中管理）",
           "experts": "透過 + 按鈕裡的「專家技能」可一鍵載入預設角色（除錯 / 規劃等）",
@@ -2798,7 +2800,7 @@
           "mentionTargets": "@ 不只能引用檔案：還能 @ 另一個智能體把子任務交給它，或引用歷史會話、某次提交、某個技能。",
           "splitGroups": "右鍵點擊標籤選擇「向右拆分」或「向下拆分」，兩個會話各佔一個分割區同時開著。",
           "worktrees": "點開分支按鈕選「新增工作樹」，多個智能體就能在同一個儲存庫並行工作，互不覆蓋彼此的檔案。",
-          "importSessions": "之前在終端機裡跑過的會話，用資料夾右鍵選單的「匯入本地會話」就能把那段歷史接進 codeg。",
+          "importSessions": "之前在終端機裡跑過的會話，用資料夾右鍵選單的「匯入本地會話」就能把那段歷史接進 MaxCode。",
           "subSessions": "智能體委派出去的子會話會巢狀顯示在側邊欄的父會話底下，展開就能追蹤每一個子會話做了什麼。",
           "liveFeedback": "「+」選單裡的「即時回饋」能把一則便條塞進智能體正在跑的這一輪，不用打斷它。",
           "skillPacks": "設定 → 技能包 裡打包了程式專家、科研與辦公三類技能，可以按智能體分別開關。",
@@ -3332,7 +3334,7 @@
         "grantDescription": "pi 會載入此儲存庫自帶的 .pi 檔案。請檢視這代表什麼。",
         "grantInheritedDescription": "某個上層目錄已被信任，因此 pi 會載入此儲存庫自帶的 .pi 檔案。請檢視這代表什麼。",
         "grantDialogTitle": "此專案的 pi 資源已被信任",
-        "grantDialogDescription": "pi 被允許載入此儲存庫自帶的 .pi 檔案。舊版 codeg 會在你開啟目錄時自動授予此權限，因此你可能從未被詢問過。",
+        "grantDialogDescription": "pi 被允許載入此儲存庫自帶的 .pi 檔案。舊版 MaxCode 會在你開啟目錄時自動授予此權限，因此你可能從未被詢問過。",
         "grantExecutionWarning": "擴充功能就是程式碼。儲存庫中的擴充功能會在 pi 啟動時以你的權限執行——早於你送出任何訊息。",
         "inheritedFrom": "信任來自",
         "revoke": "撤銷信任",
@@ -3519,11 +3521,11 @@
   "WebServiceSettings": {
     "addressSwitchHint": "切換只會改變這裡顯示與開啟的位址；服務會監聽所有網路介面，每個位址都可存取。",
     "sectionTitle": "Web 服務",
-    "sectionDescription": "啟用後可透過瀏覽器遠端存取 Codeg",
+    "sectionDescription": "啟用後可透過瀏覽器遠端存取 MaxCode",
     "port": "連接埠",
     "status": "狀態",
     "autoStart": "自動啟動",
-    "autoStartHint": "Codeg 啟動時自動開啟 Web 服務",
+    "autoStartHint": "MaxCode 啟動時自動開啟 Web 服務",
     "running": "執行中",
     "stopped": "已停止",
     "processing": "處理中...",
@@ -3538,7 +3540,7 @@
     "copy": "複製",
     "qrcode": "QR 碼",
     "qrcodeTitle": "掃碼開啟",
-    "qrcodeHint": "用手機掃描，在瀏覽器中開啟 Codeg",
+    "qrcodeHint": "用手機掃描，在瀏覽器中開啟 MaxCode",
     "addressLabel": "存取位址",
     "tokenLabel": "存取 Token",
     "tokenHint": "Web 用戶端首次存取時需輸入此 Token",
@@ -3546,7 +3548,7 @@
     "regenerate": "重新產生",
     "stalePortOccupiedTitle": "連接埠 {port} 已被其他行程佔用",
     "stalePortUnknownTitle": "連接埠 {port} 狀態不明",
-    "stalePortHint": "在連接埠釋放前 Codeg 無法繫結。可以更換上方的連接埠，或結束佔用該連接埠的行程。",
+    "stalePortHint": "在連接埠釋放前 MaxCode 無法繫結。可以更換上方的連接埠，或結束佔用該連接埠的行程。",
     "errors": {
       "alreadyRunning": "Web 服務已在執行",
       "invalidAddress": "主機或連接埠格式無效",
@@ -3585,7 +3587,7 @@
     "tokenRequired": "請輸入 Token。",
     "chatIdRequired": "請輸入 Chat ID。",
     "topicMode": "話題群模式",
-    "topicModeHint": "將 Telegram forum topics 路由為獨立 Codeg 對話。Bot 必須加入 forum supergroup，並擁有管理 topics 權限。",
+    "topicModeHint": "將 Telegram forum topics 路由為獨立 MaxCode 對話。Bot 必須加入 forum supergroup，並擁有管理 topics 權限。",
     "loadFailed": "載入頻道失敗。",
     "saveFailed": "儲存失敗。",
     "connectSuccess": "頻道已連線。",
@@ -3782,7 +3784,7 @@
     },
     "confirm": {
       "disableTitle": "停用這些連結？",
-      "disableBody": "這將移除 {count} 個由 codeg 管理的技能連結。佔用自訂目錄的技能不受影響。你可以隨時重新啟用。",
+      "disableBody": "這將移除 {count} 個由 MaxCode 管理的技能連結。佔用自訂目錄的技能不受影響。你可以隨時重新啟用。",
       "cancel": "取消",
       "confirm": "停用"
     },
@@ -3803,7 +3805,7 @@
   },
   "ExpertsSettings": {
     "title": "專家技能",
-    "description": "為 AI 編碼代理啟用精心挑選、經過實戰驗證的技能工作流程。每個專家都是 superpowers 專案中的獨立技能 —— codeg 維護中央副本，並將其軟連結到你選擇的代理目錄。",
+    "description": "為 AI 編碼代理啟用精心挑選、經過實戰驗證的技能工作流程。每個專家都是 superpowers 專案中的獨立技能 —— MaxCode 維護中央副本，並將其軟連結到你選擇的代理目錄。",
     "loading": "正在載入專家清單…",
     "loadingContent": "正在載入內容…",
     "emptyExperts": "目前沒有可用的專家，請查看應用程式日誌。",
@@ -3812,7 +3814,7 @@
     "searchPlaceholder": "依名稱、ID 或描述搜尋專家",
     "enableForAgents": "為代理啟用",
     "noAgents": "未偵測到 ACP 代理。",
-    "copyModeWarning": "已複製(非軟連結)。codeg 更新後需要重新啟用以取得最新版本。",
+    "copyModeWarning": "已複製(非軟連結)。MaxCode 更新後需要重新啟用以取得最新版本。",
     "previewTitle": "SKILL.md 預覽",
     "categories": {
       "discovery": "探索與設計",
@@ -3848,7 +3850,7 @@
   },
   "ScienceSettings": {
     "title": "科學研究技能",
-    "description": "為你的 AI 編碼智能體啟用精選的科學研究技能：假設生成、實驗設計、統計、視覺化、批判性評估與文獻檢索。codeg 管理中央副本，並將每個技能連結到你選擇的智能體。",
+    "description": "為你的 AI 編碼智能體啟用精選的科學研究技能：假設生成、實驗設計、統計、視覺化、批判性評估與文獻檢索。MaxCode 管理中央副本，並將每個技能連結到你選擇的智能體。",
     "loading": "正在載入科學研究技能…",
     "emptySkills": "沒有可用的科學研究技能。請檢查應用程式日誌。",
     "searchPlaceholder": "依名稱、ID 或描述搜尋科學研究技能",
@@ -3942,7 +3944,7 @@
   },
   "SkillPacksSettings": {
     "title": "技能包",
-    "description": "由 codeg 集中管理、並連結到各 AI 智慧代理的成套技能——程式設計專家、科學研究與辦公文件工具。可在下方依代理分別啟用。",
+    "description": "由 MaxCode 集中管理、並連結到各 AI 智慧代理的成套技能——程式設計專家、科學研究與辦公文件工具。可在下方依代理分別啟用。",
     "tabs": {
       "experts": "專家",
       "science": "科學研究",
@@ -4164,7 +4166,7 @@
   },
   "BackupSettings": {
     "title": "備份與還原",
-    "description": "匯出一份可攜的 codeg 資料備份，或從備份還原。",
+    "description": "匯出一份可攜的 MaxCode 資料備份，或從備份還原。",
     "tabs": {
       "backup": "備份",
       "restore": "還原"
@@ -4194,9 +4196,9 @@
         "incompatible": "不相容",
         "createdAt": "建立時間：{value}",
         "appVersion": "應用程式版本：{value}",
-        "incompatibleHint": "此備份由較新版本的 codeg 建立，無法還原。"
+        "incompatibleHint": "此備份由較新版本的 MaxCode 建立，無法還原。"
       },
-      "replaceWarning": "還原將取代目前全部 codeg 資料（資料庫與上傳檔案）。目前資料會先做快照以便復原。",
+      "replaceWarning": "還原將取代目前全部 MaxCode 資料（資料庫與上傳檔案）。目前資料會先做快照以便復原。",
       "keyringNote": "桌面端的 GitHub/聊天 token 存於系統鑰匙圈，不包含在備份中；還原後需重新填寫。",
       "button": "還原",
       "staging": "正在準備還原…",
@@ -4205,7 +4207,7 @@
       "restartTimeout": "服務未能及時恢復。待其啟動後請重新整理頁面。",
       "externalSideLocation": "對話記錄已還原至 {path}",
       "confirmTitle": "取代全部資料？",
-      "confirmBody": "這將以備份取代目前的 codeg 資料庫與上傳檔案，然後重新啟動。目前資料會先做快照。",
+      "confirmBody": "這將以備份取代目前的 MaxCode 資料庫與上傳檔案，然後重新啟動。目前資料會先做快照。",
       "cancel": "取消",
       "confirmAction": "取代並重新啟動",
       "external": {
@@ -4223,15 +4225,15 @@
       },
       "restartFailed": "還原已就緒，但伺服器未能重新啟動。請手動重新啟動以套用此次還原。"
     },
-    "remoteUnsupported": "備份與還原作用於執行 codeg 的那台機器上的資料。你目前連線的是遠端工作區——請直接在該伺服器上管理其備份。"
+    "remoteUnsupported": "備份與還原作用於執行 MaxCode 的那台機器上的資料。你目前連線的是遠端工作區——請直接在該伺服器上管理其備份。"
   },
   "backup": {
     "restore": {
       "error": {
         "badPassphrase": "通行碼錯誤或備份已損毀。",
         "corrupted": "備份封存檔已損毀。",
-        "unknownFormat": "此檔案不是可識別的 codeg 備份。",
-        "newerVersion": "此備份由 codeg {backupVersion} 建立，比目前版本（{appVersion}）更新。",
+        "unknownFormat": "此檔案不是可識別的 MaxCode 備份。",
+        "newerVersion": "此備份由 MaxCode {backupVersion} 建立，比目前版本（{appVersion}）更新。",
         "alreadyPending": "已有一個還原在等待生效。請先重新啟動套用它，再暫存新的還原。"
       }
     },
@@ -4269,7 +4271,7 @@
   },
   "AgentToolsSettings": {
     "title": "對話內工具",
-    "description": "codeg 在對話中額外提供給智慧代理的工具。工具會在代理啟動時注入，變更只對之後啟動的代理生效。",
+    "description": "MaxCode 在對話中額外提供給智慧代理的工具。工具會在代理啟動時注入，變更只對之後啟動的代理生效。",
     "feedbackLabel": "即時回饋",
     "feedbackHint": "在智慧代理工作時向它傳送備註與修正。支援即時插入的代理會立刻在目前回合中看到你的備註；其他代理則透過檢查回饋的工具讀取——這類代理通常只有在提示中提到時才會檢查，例如在訊息中加上「定期檢查我的即時回饋」。",
     "questionLabel": "向使用者提問",
@@ -4294,7 +4296,7 @@
     "preview": "試聽",
     "previewEvent": "試聽「{event}」提示音",
     "onlyWhenUnfocused": "僅在視窗未聚焦時播放",
-    "onlyWhenUnfocusedHint": "正在檢視 Codeg 時保持靜音。",
+    "onlyWhenUnfocusedHint": "正在檢視 MaxCode 時保持靜音。",
     "eventsTitle": "事件",
     "eventsHint": "為每個事件選擇一種音效，選擇「靜音」則不播放。同一事件在數秒內重複觸發時只播放一次。",
     "toneNone": "靜音",
@@ -4811,7 +4813,7 @@
     }
   },
   "CodexModelEditor": {
-    "customizedNotice": "你已自訂模型清單，codeg 將接管 codex 的完整模型表。codex 日後新增的官方模型不會自動出現——點擊下方重新整理並再次儲存即可同步。清空所有自訂即可交回 codex 自動更新。",
+    "customizedNotice": "你已自訂模型清單，MaxCode 將接管 codex 的完整模型表。codex 日後新增的官方模型不會自動出現——點擊下方重新整理並再次儲存即可同步。清空所有自訂即可交回 codex 自動更新。",
     "officialsTitle": "官方模型",
     "officialsHint": "自動納入你啟動的 codex 的官方模型；可刪除不需要的。",
     "officialsEmpty": "暫無官方模型。",
@@ -4864,8 +4866,8 @@
       "terminal_only_path": "此命令在你的終端機能解析，但在應用中不能——這是 GUI PATH 差異。請從終端機啟動應用，或在智能體設定中重新安裝。",
       "npm_prefix_timeout": "npm prefix -g 太慢（超過 1.5 秒），已略過回退偵測。請重新啟動應用後再試。",
       "node_too_old": "目前 Node.js 版本低於此智能體的要求。請升級 Node.js。",
-      "adapter_missing_native_present": "你本機的 {agent} CLI 確實安裝了，但 Codeg 啟動的是另一個 ACP 轉接器套件，而它還沒安裝。到「智能體設定」中安裝即可 —— 它不會動到你的 CLI，登入狀態也是共用的。",
-      "adapter_missing": "Codeg 為 {agent} 啟動的是獨立的 ACP 轉接器套件，目前尚未安裝。請到「智能體設定」中安裝 —— 只安裝廠商 CLI 是不夠的。"
+      "adapter_missing_native_present": "你本機的 {agent} CLI 確實安裝了，但 MaxCode 啟動的是另一個 ACP 轉接器套件，而它還沒安裝。到「智能體設定」中安裝即可 —— 它不會動到你的 CLI，登入狀態也是共用的。",
+      "adapter_missing": "MaxCode 為 {agent} 啟動的是獨立的 ACP 轉接器套件，目前尚未安裝。請到「智能體設定」中安裝 —— 只安裝廠商 CLI 是不夠的。"
     }
   },
   "TokenUsage": {
@@ -4899,7 +4901,7 @@
     "resetFilters": "重設篩選",
     "refresh": "重新整理",
     "rebuild": "全量重建",
-    "rebuildHint": "捨棄已統計的資料並重新解析全部工作階段紀錄。當紀錄被 codeg 以外的 CLI 追加過時使用。",
+    "rebuildHint": "捨棄已統計的資料並重新解析全部工作階段紀錄。當紀錄被 MaxCode 以外的 CLI 追加過時使用。",
     "syncing": "正在統計工作階段…",
     "syncProgress": "{done} / {total}",
     "syncDone": "已統計 {synced} 個工作階段",
@@ -4978,7 +4980,7 @@
     "cardHeading": "我的 AI 編碼戰績",
     "cardRangeAll": "全部時間",
     "cardTotalLabel": "累計 Token",
-    "cardFooter": "由 codeg 產生",
+    "cardFooter": "由 MaxCode 產生",
     "cardTopModels": "常用模型",
     "cardTopProjects": "主力專案",
     "archetypeNightOwl": "深夜工程師",
@@ -5000,7 +5002,7 @@
     "archetypeSteady": "穩定輸出",
     "archetypeSteadyDesc": "累計 {days} 天在寫程式。",
     "emptyTitle": "還沒有可統計的資料",
-    "emptyHint": "codeg 直接從各智慧代理自己的工作階段紀錄讀取 Token 數。點一下重新整理，把本機已有的紀錄統計進來。",
+    "emptyHint": "MaxCode 直接從各智慧代理自己的工作階段紀錄讀取 Token 數。點一下重新整理，把本機已有的紀錄統計進來。",
     "emptyAction": "統計我的工作階段",
     "loadFailed": "用量載入失敗",
     "truncatedNotice": "此範圍過大 —— 下面的數字只涵蓋其中最近的一段。"

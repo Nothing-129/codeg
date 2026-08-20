@@ -195,7 +195,7 @@ export function BackupSettings() {
     const { open } = await import("@tauri-apps/plugin-dialog")
     const picked = await open({
       multiple: false,
-      filters: [{ name: "Codeg backup", extensions: ["codegbak", "zip"] }],
+      filters: [{ name: "MaxCode backup", extensions: ["codegbak", "zip"] }],
     })
     if (typeof picked !== "string") return
     const name = picked.split(/[\\/]/).pop() ?? picked

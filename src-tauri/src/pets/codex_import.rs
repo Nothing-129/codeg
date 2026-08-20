@@ -109,7 +109,7 @@ pub fn import_codex_pets(
             if !request.overwrite_with_suffix {
                 skipped.push(ImportSkipped {
                     source_id: pet.id.clone(),
-                    reason: "Pet with this id already exists in codeg.".to_string(),
+                    reason: "Pet with this id already exists in MaxCode.".to_string(),
                 });
                 continue;
             }

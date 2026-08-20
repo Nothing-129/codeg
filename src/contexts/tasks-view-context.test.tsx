@@ -161,7 +161,7 @@ describe("TasksViewProvider", () => {
     })
     await waitFor(() => expect(notifyMock).toHaveBeenCalledTimes(1))
     expect(notifyMock).toHaveBeenCalledWith(
-      "proj - Codeg",
+      "proj - MaxCode",
       expect.stringContaining("notifyFailed")
     )
   })

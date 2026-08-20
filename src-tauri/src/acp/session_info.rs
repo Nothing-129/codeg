@@ -117,7 +117,7 @@ impl SessionInfo {
             session_id,
             note: Some(format!(
                 "No session matches id {session_id}. It may have been deleted, \
-                 or never imported into codeg."
+                 or never imported into MaxCode."
             )),
             ..Default::default()
         }

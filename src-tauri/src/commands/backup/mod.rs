@@ -41,7 +41,7 @@ pub(crate) fn cancelled_error() -> AppCommandError {
 
 /// The file is not a codeg backup, or its layout version is too new.
 pub(crate) fn unknown_format_error() -> AppCommandError {
-    AppCommandError::invalid_input("Not a recognized codeg backup archive")
+    AppCommandError::invalid_input("Not a recognized MaxCode backup archive")
         .with_i18n(BACKUP_I18N_KEY_UNKNOWN_FORMAT, BTreeMap::new())
 }
 
@@ -56,7 +56,7 @@ pub(crate) fn newer_version_error(backup_version: &str, app_version: &str) -> Ap
     let mut params = BTreeMap::new();
     params.insert("backupVersion".to_string(), backup_version.to_string());
     params.insert("appVersion".to_string(), app_version.to_string());
-    AppCommandError::invalid_input("Backup was created by a newer version of codeg")
+    AppCommandError::invalid_input("Backup was created by a newer version of MaxCode")
         .with_i18n(BACKUP_I18N_KEY_NEWER_VERSION, params)
 }
 
