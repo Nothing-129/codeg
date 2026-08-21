@@ -76,7 +76,7 @@ jobs:
             const tag = context.ref.replace("refs/tags/", "");
             const { owner, repo } = context.repo;
             const prerelease = process.env.PRERELEASE === "true";
-            const releaseName = `codeg ${tag}`;
+            const releaseName = `MaxCode ${tag}`;
             const { data: tagRef } = await github.rest.git.getRef({
               owner,
               repo,
@@ -373,23 +373,23 @@ jobs:
           - name: "Linux x64"
             runner: "ubuntu-22.04"
             target: "x86_64-unknown-linux-gnu"
-            artifact: "codeg-server-linux-x64"
+            artifact: "MaxCode-server-linux-x64"
           - name: "Linux arm64"
             runner: "ubuntu-22.04"
             target: "aarch64-unknown-linux-gnu"
-            artifact: "codeg-server-linux-arm64"
+            artifact: "MaxCode-server-linux-arm64"
           - name: "macOS x64"
             runner: "macos-latest"
             target: "x86_64-apple-darwin"
-            artifact: "codeg-server-darwin-x64"
+            artifact: "MaxCode-server-darwin-x64"
           - name: "macOS arm64"
             runner: "macos-latest"
             target: "aarch64-apple-darwin"
-            artifact: "codeg-server-darwin-arm64"
+            artifact: "MaxCode-server-darwin-arm64"
           - name: "Windows x64"
             runner: "windows-2022"
             target: "x86_64-pc-windows-msvc"
-            artifact: "codeg-server-windows-x64"
+            artifact: "MaxCode-server-windows-x64"
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -608,13 +608,13 @@ jobs:
       - name: Download Linux x64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: codeg-server-linux-x64
+          name: MaxCode-server-linux-x64
           path: artifacts/linux-x64
 
       - name: Download Linux arm64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: codeg-server-linux-arm64
+          name: MaxCode-server-linux-arm64
           path: artifacts/linux-arm64
 
       - name: Prepare Docker build context

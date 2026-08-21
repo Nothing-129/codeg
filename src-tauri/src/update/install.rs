@@ -48,11 +48,11 @@ pub struct InstallOutcome {
 pub fn asset_basename() -> Option<&'static str> {
     use std::env::consts::{ARCH, OS};
     Some(match (OS, ARCH) {
-        ("linux", "x86_64") => "codeg-server-linux-x64",
-        ("linux", "aarch64") => "codeg-server-linux-arm64",
-        ("macos", "x86_64") => "codeg-server-darwin-x64",
-        ("macos", "aarch64") => "codeg-server-darwin-arm64",
-        ("windows", "x86_64") => "codeg-server-windows-x64",
+        ("linux", "x86_64") => "MaxCode-server-linux-x64",
+        ("linux", "aarch64") => "MaxCode-server-linux-arm64",
+        ("macos", "x86_64") => "MaxCode-server-darwin-x64",
+        ("macos", "aarch64") => "MaxCode-server-darwin-arm64",
+        ("windows", "x86_64") => "MaxCode-server-windows-x64",
         _ => return None,
     })
 }
@@ -950,8 +950,8 @@ mod tests {
 
     #[test]
     fn sanitize_keeps_normal_paths() {
-        let p = sanitize_entry_path(Path::new("codeg-server-linux-x64/web/index.html")).unwrap();
-        assert_eq!(p, PathBuf::from("codeg-server-linux-x64/web/index.html"));
+        let p = sanitize_entry_path(Path::new("MaxCode-server-linux-x64/web/index.html")).unwrap();
+        assert_eq!(p, PathBuf::from("MaxCode-server-linux-x64/web/index.html"));
     }
 
     /// Build a gzip'd tar with the given (path, bytes) regular-file entries.
@@ -1117,13 +1117,17 @@ mod tests {
     #[test]
     fn asset_basename_is_known_for_supported_targets() {
         // At least the host target the tests run on must resolve.
+        let asset = asset_basename();
         assert!(
-            asset_basename().is_some()
+            asset.is_some()
                 || cfg!(not(any(
                     target_os = "linux",
                     target_os = "macos",
                     target_os = "windows"
                 )))
         );
+        if let Some(asset) = asset {
+            assert!(asset.starts_with("MaxCode-server-"));
+        }
     }
 }

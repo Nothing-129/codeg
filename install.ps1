@@ -13,7 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Repo = "xintaofei/codeg"
-$Artifact = "codeg-server-windows-x64"
+$Artifact = "MaxCode-server-windows-x64"
 
 # Names of binaries this installer manages. codeg-server is the user-facing
 # entry point; codeg-mcp is the stdio MCP companion that the server's ACP

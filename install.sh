@@ -71,7 +71,7 @@ case "$ARCH" in
   *)              echo "Error: unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
-ARTIFACT="codeg-server-${PLATFORM}-${ARCH_SUFFIX}"
+ARTIFACT="MaxCode-server-${PLATFORM}-${ARCH_SUFFIX}"
 
 # ── Resolve version ──
 
