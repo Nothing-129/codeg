@@ -1,7 +1,7 @@
 #
 # Codeg Server installer for Windows
 # Usage:
-#   irm https://raw.githubusercontent.com/xintaofei/codeg/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/Nothing-129/maxcode/main/install.ps1 | iex
 #   .\install.ps1 -Version v0.5.0
 #
 
@@ -12,7 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repo = "xintaofei/codeg"
+$Repo = "Nothing-129/maxcode"
 $Artifact = "MaxCode-server-windows-x64"
 
 # Names of binaries this installer manages. codeg-server is the user-facing

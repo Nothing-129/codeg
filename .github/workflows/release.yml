@@ -66,6 +66,16 @@ jobs:
             exit 1
           fi
 
+      - name: Require updater signing key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "FATAL: TAURI_SIGNING_PRIVATE_KEY is required so this release can serve auto-updates"
+            exit 1
+          fi
+
       - id: release
         name: Create or reuse draft release
         uses: actions/github-script@v7
@@ -271,7 +281,7 @@ jobs:
           cat > src-tauri/ci-release.conf.json <<'EOF'
           {
             "bundle": {
-              "createUpdaterArtifacts": false,
+              "createUpdaterArtifacts": true,
               "macOS": {
                 "signingIdentity": "-"
               }
@@ -288,6 +298,8 @@ jobs:
           # do not fall back to the runner host triple.
           CODEG_SKIP_SIDECAR: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-draft-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
@@ -296,14 +308,15 @@ jobs:
           prerelease: ${{ needs.create-draft-release.outputs.prerelease }}
           tauriScript: pnpm tauri
           # Skip MSI bundling on Windows: tauri-apps/tauri#14681 — light.exe
-          # fails when externalBin is configured. The unsigned NSIS installer
-          # is still usable without the updater signing key.
+          # fails when externalBin is configured. NSIS + updater artifacts
+          # (minisign) still ship for in-app auto-update.
           args: >-
             --target ${{ matrix.target }}
             --bundles nsis
             --no-sign
             --config src-tauri/ci-release.conf.json
-          includeUpdaterJson: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
           retryAttempts: 2
 
       - name: Build and upload to draft release (Linux x64)
@@ -315,6 +328,8 @@ jobs:
           # do not fall back to the runner host triple.
           CODEG_SKIP_SIDECAR: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-draft-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
@@ -326,7 +341,7 @@ jobs:
             --target ${{ matrix.target }}
             --no-sign
             --config src-tauri/ci-release.conf.json
-          includeUpdaterJson: false
+          includeUpdaterJson: true
           retryAttempts: 2
 
       - name: Build and upload ad-hoc signed app to draft release (macOS)
@@ -338,6 +353,8 @@ jobs:
           # do not fall back to the runner host triple.
           CODEG_SKIP_SIDECAR: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-draft-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
@@ -348,7 +365,7 @@ jobs:
           args: >-
             --target ${{ matrix.target }}
             --config src-tauri/ci-release.conf.json
-          includeUpdaterJson: false
+          includeUpdaterJson: true
           retryAttempts: 2
 
       - name: Verify macOS app signature
@@ -533,10 +550,8 @@ jobs:
       # updater uses (`tauri signer sign` writes `<file>.sig`). The server's
       # `update::verify` module verifies this signature against the embedded
       # public key before installing — see src-tauri/src/update/verify.rs.
-      # Forks without the upstream signing key skip signing and upload the
-      # bare archive + sha256 instead of failing the release; the server's
-      # update verification then rejects unsigned archives, so self-update
-      # stays unavailable until a matching key pair is configured.
+      # Missing key is a hard error: every release must ship signed artifacts
+      # so in-app auto-update can verify them.
       - name: Sign and checksum bundle (Unix)
         if: runner.os != 'Windows'
         env:
@@ -544,12 +559,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-            pnpm tauri signer sign "dist/${{ matrix.artifact }}.tar.gz"
-            test -f "dist/${{ matrix.artifact }}.tar.gz.sig"
-          else
-            echo "::warning::TAURI_SIGNING_PRIVATE_KEY not set; uploading unsigned ${{ matrix.artifact }}"
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "FATAL: TAURI_SIGNING_PRIVATE_KEY is required to sign ${{ matrix.artifact }}"
+            exit 1
           fi
+          pnpm tauri signer sign "dist/${{ matrix.artifact }}.tar.gz"
+          test -f "dist/${{ matrix.artifact }}.tar.gz.sig"
           ( cd dist && shasum -a 256 "${{ matrix.artifact }}.tar.gz" > "${{ matrix.artifact }}.tar.gz.sha256" )
 
       - name: Sign and checksum bundle (Windows)
@@ -559,13 +574,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          if ($env:TAURI_SIGNING_PRIVATE_KEY) {
-            pnpm tauri signer sign "dist/${{ matrix.artifact }}.zip"
-            if (-not (Test-Path "dist/${{ matrix.artifact }}.zip.sig")) {
-              throw "signature not produced for ${{ matrix.artifact }}.zip"
-            }
-          } else {
-            Write-Host "::warning::TAURI_SIGNING_PRIVATE_KEY not set; uploading unsigned ${{ matrix.artifact }}"
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw "TAURI_SIGNING_PRIVATE_KEY is required to sign ${{ matrix.artifact }}"
+          }
+          pnpm tauri signer sign "dist/${{ matrix.artifact }}.zip"
+          if (-not (Test-Path "dist/${{ matrix.artifact }}.zip.sig")) {
+            throw "signature not produced for ${{ matrix.artifact }}.zip"
           }
           $hash = (Get-FileHash -Algorithm SHA256 "dist/${{ matrix.artifact }}.zip").Hash.ToLower()
           "$hash  ${{ matrix.artifact }}.zip" | Out-File -Encoding ascii "dist/${{ matrix.artifact }}.zip.sha256"
@@ -696,6 +710,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Require updater manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          assets=$(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name')
+          printf '%s\n' "$assets"
+          echo "$assets" | grep -qx 'latest.json' || {
+            echo "FATAL: latest.json missing from the draft release"
+            exit 1
+          }
+          echo "$assets" | grep -q '\.sig$' || {
+            echo "FATAL: no updater .sig artifacts on the draft release"
+            exit 1
+          }
+
       - name: Publish draft release
         uses: actions/github-script@v7
         env:

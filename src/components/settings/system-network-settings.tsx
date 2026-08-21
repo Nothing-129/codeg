@@ -173,7 +173,7 @@ export function SystemNetworkSettings() {
             <Button
               variant="ghost"
               className="size-5 rounded-full"
-              onClick={() => openUrl("https://github.com/xintaofei/codeg")}
+              onClick={() => openUrl("https://github.com/Nothing-129/maxcode")}
             >
               <GithubMarkIcon className="size-5" />
             </Button>

@@ -202,7 +202,7 @@ describe("StatusBarUpdate — popover", () => {
     })
     fireEvent.click(link)
     expect(openUrl).toHaveBeenCalledWith(
-      "https://github.com/xintaofei/codeg/releases/latest"
+      "https://github.com/Nothing-129/maxcode/releases/latest"
     )
     expect(startUpdate).not.toHaveBeenCalled()
   })
