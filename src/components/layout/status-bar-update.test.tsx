@@ -121,14 +121,17 @@ describe("StatusBarUpdate — trigger", () => {
     // The running version and arrow remain, but the release label and accent
     // stop asking for attention.
     expect(trigger.textContent).toBe("v0.21.7")
-    expect(trigger.className).not.toContain("text-primary")
+    expect(trigger.className).not.toContain("text-amber-700")
   })
 
   it("accents the badge with its label while the release is undismissed", () => {
     renderWith({ available: RELEASE })
     const trigger = screen.getByRole("button", { name: /New v0\.21\.9/ })
     expect(trigger.textContent).toContain("New v0.21.9")
-    expect(trigger.className).toContain("text-primary")
+    expect(trigger.className).toContain("border-amber-500/50")
+    expect(trigger.className).toContain("bg-amber-500/15")
+    expect(trigger.className).toContain("text-amber-700")
+    expect(trigger.className).not.toContain("animate-pulse")
   })
 
   it("still shows a dismissed release once its download is staged", () => {

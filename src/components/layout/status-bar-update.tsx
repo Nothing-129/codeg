@@ -295,7 +295,7 @@ export function StatusBarUpdate() {
             destructive
               ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
               : accented
-                ? "bg-primary/10 text-primary hover:bg-primary/15"
+                ? "border border-amber-500/50 bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 dark:border-amber-400/50 dark:text-amber-300"
                 : "hover:bg-accent hover:text-foreground"
           )}
         >

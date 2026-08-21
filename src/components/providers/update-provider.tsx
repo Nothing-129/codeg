@@ -429,6 +429,10 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
         appliedBaselineRef.current = result.currentVersion || null
         setLastCheckedAt(new Date(now))
 
+        if (!silent && !result.update) {
+          toast.success(t("alreadyLatest"))
+        }
+
         // A dismissal silences exactly one release. Once that release is no
         // longer the newest thing on offer, drop it so the next one surfaces.
         setDismissedVersion((prev) => {

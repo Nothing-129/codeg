@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { render, screen, act, waitFor } from "@testing-library/react"
 import { NextIntlClientProvider } from "next-intl"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { toast } from "sonner"
 import type { AppUpdateState } from "@/lib/updater"
 
 // The provider's snapshot/subscribe helpers go through getTransport(), so
@@ -119,6 +120,7 @@ beforeEach(() => {
   // The availability cache lives in localStorage, which jsdom keeps across
   // tests in a file — clear it so each case starts cold.
   localStorage.clear()
+  vi.mocked(toast.success).mockClear()
 })
 
 describe("UpdateProvider", () => {
@@ -287,6 +289,28 @@ const checkCalls = () =>
   call.mock.calls.filter(([e]) => e === "check_app_update").length
 
 describe("UpdateProvider — availability", () => {
+  it("confirms when a manual check completes with no update", async () => {
+    render(availabilityTree())
+    await waitFor(() => expect(ctx).not.toBeNull())
+
+    await act(async () => {
+      await ctx!.checkNow({ silent: false })
+    })
+
+    expect(toast.success).toHaveBeenCalledWith("You're on the latest version")
+  })
+
+  it("keeps an automatic check with no update silent", async () => {
+    render(availabilityTree())
+    await waitFor(() => expect(ctx).not.toBeNull())
+
+    await act(async () => {
+      await ctx!.checkNow()
+    })
+
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
   it("restores the last result from storage so a reload isn't briefly blind", async () => {
     // Only the timestamp used to be cached, which made a throttled reload claim
     // "you're up to date" for an update the previous check had already found.
