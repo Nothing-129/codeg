@@ -731,8 +731,10 @@ jobs:
       - name: Require updater manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # This job has no checkout; GH_REPO keeps `gh` from looking for .git.
           assets=$(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name')
           printf '%s\n' "$assets"
           echo "$assets" | grep -qx 'latest.json' || {
