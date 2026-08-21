@@ -18,7 +18,7 @@ use minisign_verify::{PublicKey, Signature};
 /// Tauri-format minisign public key — copied verbatim from
 /// `tauri.conf.json` `plugins.updater.pubkey`. Base64 of the two-line
 /// `minisign.pub` file (`untrusted comment:` + `RW…` key line).
-const TAURI_PUBKEY_B64: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ5MjU4QzQ1MTc3NzNCNkUKUldSdU8zY1hSWXdsU1ZHejZ3enNuYStlZjUvNVEzTkJxTWRzZmFnQ2EwdlFXbjY0cnorb05nQVIK";
+const TAURI_PUBKEY_B64: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBDOTk3RDY2QjI1MTBBQzYKUldUR0NsR3labjJaREZjQjBKQnR5L3J0TXU5UG52UmZTUXgyL1N2cStycWNoTVhGT2tVdjNkZ0QK";
 
 /// Decode an outer base64 wrapper into the inner minisign text file.
 fn unwrap_base64(b64: &str) -> Result<String, String> {

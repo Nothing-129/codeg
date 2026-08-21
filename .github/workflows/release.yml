@@ -52,10 +52,16 @@ jobs:
             exit 1
           fi
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: "pnpm"
 
       - name: Verify tag matches app version
         shell: bash
@@ -75,6 +81,18 @@ jobs:
             echo "FATAL: TAURI_SIGNING_PRIVATE_KEY is required so this release can serve auto-updates"
             exit 1
           fi
+
+      - name: Verify updater signing key unlocks
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          echo probe > /tmp/updater-sign-probe
+          pnpm tauri signer sign /tmp/updater-sign-probe
+          test -f /tmp/updater-sign-probe.sig
 
       - id: release
         name: Create or reuse draft release
