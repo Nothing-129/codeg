@@ -2,6 +2,10 @@
 
 This file provides guidance to Code Agent when working with code in this repository.
 
+## 工作协议
+
+- 如果涉及上传或推送，只允许上传或推送到用户自己的 GitHub 仓库，禁止上传或推送到上游仓库。
+
 ## 项目概述
 
 Codeg（Code Generation）是一个多智能体编码工作台，它将多个智能体（Claude Code、Codex CLI、OpenCode、Gemini CLI、OpenClaw、Cline 等）统一到一个工作区中，支持会话聚合和多智能体协作，支持桌面安装，服务器/Docker 部署。
