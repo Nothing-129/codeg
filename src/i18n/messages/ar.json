@@ -249,6 +249,7 @@
     "waitingForServer": "في انتظار عودة الخادم...",
     "restartToUpdate": "أعد التشغيل للتحديث",
     "newVersionBadge": "إصدار جديد v{version}",
+    "updateFailedStatus": "فشل التحديث",
     "updateAvailableTitle": "يتوفر تحديث",
     "releaseNotesTitle": "ما الجديد",
     "remindLater": "لاحقًا",

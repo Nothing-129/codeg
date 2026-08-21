@@ -15,7 +15,10 @@ import type { AppUpdateInfo } from "@/lib/updater"
  *     is what keeps a throttled reload from claiming "you're up to date" when
  *     the previous check had in fact found something;
  *   * which version the user waved away — so the status-bar badge stops
- *     nagging for that release but comes back for the next one.
+ *     nagging for that release but comes back for the next one;
+ *   * which release already produced the one-time discovery toast — so a
+ *     cached offer restored in another window or after a relaunch does not
+ *     announce itself again.
  *
  * Keys are scoped per backend: a remote-desktop window is the same browser
  * origin as the local app but reports a *different* server's version, so an
@@ -27,6 +30,7 @@ import type { AppUpdateInfo } from "@/lib/updater"
 
 const LAST_CHECK_KEY = "codeg.updateCheck.last"
 const DISMISSED_VERSION_KEY = "codeg.updateCheck.dismissedVersion"
+const NOTIFIED_VERSION_KEY = "codeg.updateCheck.notifiedVersion"
 
 export interface CachedUpdateCheck {
   /** Epoch ms when the check completed. */
@@ -132,6 +136,26 @@ export function writeDismissedVersion(version: string | null): void {
     const key = scoped(DISMISSED_VERSION_KEY)
     if (version) localStorage.setItem(key, version)
     else localStorage.removeItem(key)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** The release that already produced the one-time discovery toast. */
+export function readNotifiedVersion(): string | null {
+  if (typeof window === "undefined") return null
+  try {
+    return localStorage.getItem(scoped(NOTIFIED_VERSION_KEY)) || null
+  } catch {
+    return null
+  }
+}
+
+/** Remember that this release has already been announced in this backend. */
+export function writeNotifiedVersion(version: string): void {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(scoped(NOTIFIED_VERSION_KEY), version)
   } catch {
     /* ignore */
   }

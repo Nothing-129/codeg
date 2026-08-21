@@ -1,10 +1,10 @@
 // Conversation-status UI preference: whether to show the colored status
 // (in progress / review / completed / cancelled) and whether the user can
 // change it. Backed by the backend-persisted UiPreferences store
-// (`app_metadata`), so the toggles survive an app reinstall; both default ON
-// so the main-branch status workflow stays available until the user turns a
-// switch off. Thin sugar over `@/lib/ui-preferences-store` — consumers keep
-// the historical load/save/use API surface.
+// (`app_metadata`), so the toggles survive an app reinstall. Status colors
+// default OFF (opt-in); changing status defaults ON until the user turns
+// that switch off. Thin sugar over `@/lib/ui-preferences-store` — consumers
+// keep the historical load/save/use API surface.
 
 import {
   DEFAULT_UI_PREFERENCES,

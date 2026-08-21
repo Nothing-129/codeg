@@ -13,6 +13,7 @@ import { FolderTitleBar } from "@/components/layout/folder-title-bar"
 import { Sidebar } from "@/components/layout/sidebar"
 import { ConversationUnreadSync } from "@/components/conversations/conversation-unread-sync"
 import { StatusBar } from "@/components/layout/status-bar"
+import { UpdateProvider } from "@/components/providers/update-provider"
 import {
   AppWorkspaceProvider,
   ConversationStatusEventBridge,
@@ -1257,9 +1258,11 @@ function WorkspaceLayoutInner({ children }: { children: React.ReactNode }) {
                                           listener calls openConversations() to
                                           surface a launcher-opened folder. */}
                                     <WorkspaceOpenFolderListener />
-                                    <FolderLayoutShell>
-                                      {children}
-                                    </FolderLayoutShell>
+                                    <UpdateProvider>
+                                      <FolderLayoutShell>
+                                        {children}
+                                      </FolderLayoutShell>
+                                    </UpdateProvider>
                                   </WorkbenchRouteProvider>
                                 </TasksViewProvider>
                               </AutomationsViewProvider>

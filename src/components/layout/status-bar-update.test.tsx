@@ -14,6 +14,9 @@ vi.mock("@/components/providers/update-provider", () => ({
 const openUrl = vi.fn()
 vi.mock("@/lib/platform", () => ({ openUrl: (u: string) => openUrl(u) }))
 
+const { toastInfo } = vi.hoisted(() => ({ toastInfo: vi.fn() }))
+vi.mock("sonner", () => ({ toast: { info: toastInfo } }))
+
 // The popover pulls the markdown stack in lazily; keep the test off the ESM
 // markdown pipeline (its rendering is the settings page's concern).
 vi.mock("@/components/settings/release-notes", () => ({
@@ -32,6 +35,7 @@ import enMessages from "@/i18n/messages/en.json"
 const startUpdate = vi.fn(async () => {})
 const restart = vi.fn(async () => {})
 const dismissAvailable = vi.fn()
+const checkNow = vi.fn(async () => {})
 
 function makeCtx(overrides: Partial<UpdateContextValue>): UpdateContextValue {
   const state: AppUpdateState = overrides.state ?? { seq: 1, status: "idle" }
@@ -54,7 +58,7 @@ function makeCtx(overrides: Partial<UpdateContextValue>): UpdateContextValue {
     rollbackAvailable: false,
     canInstallInPlace: true,
     dismissedVersion: null,
-    checkNow: vi.fn(async () => {}),
+    checkNow,
     dismissAvailable,
     refreshLocalStatus: vi.fn(async () => {}),
     startUpdate,
@@ -79,13 +83,16 @@ beforeEach(() => {
   startUpdate.mockClear()
   restart.mockClear()
   dismissAvailable.mockClear()
+  checkNow.mockClear()
+  toastInfo.mockClear()
   openUrl.mockClear()
+  localStorage.clear()
 })
 
 describe("StatusBarUpdate — trigger", () => {
-  it("renders nothing when idle with no release on offer", () => {
-    const { container } = renderWith({})
-    expect(container).toBeEmptyDOMElement()
+  it("keeps the running version visible while idle", () => {
+    renderWith({})
+    expect(screen.getByRole("button", { name: "v0.21.7" })).toBeVisible()
   })
 
   it("renders nothing outside a provider", () => {
@@ -111,8 +118,9 @@ describe("StatusBarUpdate — trigger", () => {
 
     const trigger = screen.getByRole("button", { name: /New v0\.21\.9/ })
     expect(trigger).toBeVisible()
-    // No visible label, and not accented.
-    expect(trigger.textContent).toBe("")
+    // The running version and arrow remain, but the release label and accent
+    // stop asking for attention.
+    expect(trigger.textContent).toBe("v0.21.7")
     expect(trigger.className).not.toContain("text-primary")
   })
 
@@ -155,6 +163,15 @@ describe("StatusBarUpdate — trigger", () => {
 })
 
 describe("StatusBarUpdate — popover", () => {
+  it("checks manually from the idle version panel", async () => {
+    renderWith({})
+    fireEvent.click(screen.getByRole("button", { name: "v0.21.7" }))
+
+    expect(await screen.findByText("Software Update")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }))
+    expect(checkNow).toHaveBeenCalledWith({ silent: false })
+  })
+
   it("shows the version delta, notes and starts the in-place update", async () => {
     renderWith({ available: RELEASE })
     fireEvent.click(screen.getByRole("button", { name: /New v0\.21\.9/ }))
@@ -236,7 +253,7 @@ describe("StatusBarUpdate — popover", () => {
         error: "error sending request for url",
       },
     })
-    fireEvent.click(screen.getByRole("button", { name: /New v0\.21\.9/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Update failed/ }))
 
     expect(await screen.findByText(/Check your network or proxy/)).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Retry" }))
@@ -254,5 +271,20 @@ describe("StatusBarUpdate — popover", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: /25%/ }))
     expect(await screen.findByText("1.0 MB / 4.0 MB")).toBeVisible()
+  })
+})
+
+describe("StatusBarUpdate — discovery notification", () => {
+  it("announces each available release only once", () => {
+    const first = renderWith({ available: RELEASE })
+    expect(toastInfo).toHaveBeenCalledTimes(1)
+    expect(toastInfo).toHaveBeenCalledWith(
+      "New version v0.21.9 found",
+      expect.objectContaining({ action: expect.any(Object) })
+    )
+
+    first.unmount()
+    renderWith({ available: RELEASE })
+    expect(toastInfo).toHaveBeenCalledTimes(1)
   })
 })

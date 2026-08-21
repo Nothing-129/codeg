@@ -238,7 +238,7 @@ describe("Sidebar — conversation status view options", () => {
     uiPrefsSpies.updateUiPreferences.mockClear()
   })
 
-  it("defaults both status switches on and persists turning them off", async () => {
+  it("defaults status colors off and actions on, and persists toggling them", async () => {
     const user = userEvent.setup()
     renderSidebar()
 
@@ -249,17 +249,17 @@ describe("Sidebar — conversation status view options", () => {
     const allowActions = screen.getByRole("menuitemcheckbox", {
       name: "Allow changing conversation status",
     })
-    expect(showStatus).toHaveAttribute("data-state", "checked")
+    expect(showStatus).toHaveAttribute("data-state", "unchecked")
     expect(allowActions).toHaveAttribute("data-state", "checked")
 
     await user.click(showStatus)
     await user.click(allowActions)
 
-    expect(showStatus).toHaveAttribute("data-state", "unchecked")
+    expect(showStatus).toHaveAttribute("data-state", "checked")
     expect(allowActions).toHaveAttribute("data-state", "unchecked")
     // Persisted to the backend as the full UiPreferences blob (not localStorage).
     expect(uiPrefsSpies.updateUiPreferences).toHaveBeenLastCalledWith({
-      show_conversation_status: false,
+      show_conversation_status: true,
       allow_conversation_status_actions: false,
       show_welcome_quick_actions: true,
     })

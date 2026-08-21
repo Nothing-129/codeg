@@ -249,6 +249,7 @@
     "waitingForServer": "サーバーの復帰を待っています...",
     "restartToUpdate": "再起動して更新",
     "newVersionBadge": "新バージョン v{version}",
+    "updateFailedStatus": "更新に失敗",
     "updateAvailableTitle": "アップデートがあります",
     "releaseNotesTitle": "更新内容",
     "remindLater": "後で",

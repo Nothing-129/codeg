@@ -3,6 +3,7 @@
 import { StatusBarStats } from "@/components/layout/status-bar-stats"
 import { StatusBarTasks } from "@/components/layout/status-bar-tasks"
 import { StatusBarAlerts } from "@/components/layout/status-bar-alerts"
+import { StatusBarUpdate } from "@/components/layout/status-bar-update"
 import { CommandDropdown } from "@/components/layout/command-dropdown"
 import { QuickActionsDropdown } from "@/components/layout/quick-actions-dropdown"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -12,9 +13,9 @@ export function StatusBar() {
 
   if (isMobile) {
     // Mobile mirrors the desktop bar: workspace stats on the left, the command
-    // launcher + alerts on the right. `h-8` (matching desktop) gives the h-6
-    // command control room. The branch selector and context-window circle live
-    // in the below-composer row, so those are the bar's only two clusters.
+    // launcher + alerts + app version on the right. `h-8` (matching desktop)
+    // gives the h-6 controls room. The branch selector and context-window circle
+    // live in the below-composer row, so those are the bar's only two clusters.
     return (
       <div className="h-8 shrink-0 border-t border-border ws-chrome-border ws-surface-muted px-3 flex items-center justify-between text-xs text-muted-foreground">
         <div className="flex items-center gap-3">
@@ -24,6 +25,7 @@ export function StatusBar() {
         <div className="flex items-center gap-3">
           <CommandDropdown />
           <StatusBarAlerts />
+          <StatusBarUpdate />
         </div>
       </div>
     )
@@ -60,6 +62,7 @@ export function StatusBar() {
             the slot the old static branch label (StatusBarSessionInfo) held. */}
         <CommandDropdown />
         <StatusBarAlerts />
+        <StatusBarUpdate />
       </div>
     </div>
   )

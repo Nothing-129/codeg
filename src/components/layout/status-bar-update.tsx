@@ -1,9 +1,10 @@
 "use client"
 
-import { type ReactNode, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 import dynamic from "next/dynamic"
-import { ArrowUpCircle, Check, Sparkles } from "lucide-react"
+import { ArrowUp, ArrowUpCircle, Check, CircleAlert } from "lucide-react"
 import { useLocale, useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { useAppUpdate } from "@/components/providers/update-provider"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +17,11 @@ import {
   appUpdateErrorMessageKey,
   normalizeAppUpdateError,
 } from "@/lib/updater"
+import {
+  readDismissedVersion,
+  readNotifiedVersion,
+  writeNotifiedVersion,
+} from "@/lib/update-check-storage"
 import { cn } from "@/lib/utils"
 
 // The markdown stack is a settings-side dependency; keep it out of the
@@ -33,7 +39,7 @@ const RELEASES_URL = "https://github.com/xintaofei/codeg/releases/latest"
 function Spinner({ className }: { className?: string }) {
   return (
     <div
-      className={`animate-spin rounded-full border-[1.5px] border-current border-t-transparent ${className}`}
+      className={`animate-spin rounded-full border-[1.5px] border-current border-t-transparent motion-reduce:animate-none ${className}`}
     />
   )
 }
@@ -90,7 +96,8 @@ function StepRail({ current }: { current: Step }) {
                 aria-hidden="true"
                 className={cn(
                   "size-1.5 rounded-full",
-                  isCurrent && "bg-primary animate-pulse",
+                  isCurrent &&
+                    "bg-primary animate-pulse motion-reduce:animate-none",
                   isDone && "bg-primary/50",
                   !isDone && !isCurrent && "bg-border"
                 )}
@@ -113,13 +120,31 @@ function StepRail({ current }: { current: Step }) {
  *
  * Every state is a popover trigger: the compact pill says what is happening,
  * and clicking it reveals the release details plus the one action that makes
- * sense right now. Renders nothing when idle with no update on offer.
+ * sense right now. The running version remains visible even while idle, making
+ * the same stable control the place to check manually and to discover updates.
  */
 export function StatusBarUpdate() {
   const t = useTranslations("SystemSettings")
   const locale = useLocale()
   const [open, setOpen] = useState(false)
   const update = useAppUpdate()
+
+  const availableVersion = update?.available?.version ?? null
+  const dismissedVersion = update?.dismissedVersion ?? null
+  useEffect(() => {
+    if (!availableVersion || dismissedVersion === availableVersion) return
+    // The persisted dismissal can hydrate one effect after a cached offer.
+    // Read it directly as well so a waved-away release never flashes a toast.
+    if (readDismissedVersion() === availableVersion) return
+    if (readNotifiedVersion() === availableVersion) return
+    writeNotifiedVersion(availableVersion)
+    toast.info(t("foundUpdate", { version: availableVersion }), {
+      action: {
+        label: t("viewRelease", { version: availableVersion }),
+        onClick: () => setOpen(true),
+      },
+    })
+  }, [availableVersion, dismissedVersion, t])
 
   if (!update) return null
 
@@ -131,11 +156,14 @@ export function StatusBarUpdate() {
     isBusy,
     available,
     currentVersion,
-    dismissedVersion,
+    checking,
+    checkError,
+    lastCheckedAt,
     canInstallInPlace,
     runtime,
     selfUpdateSupported,
     dismissAvailable,
+    checkNow,
     startUpdate,
     restart,
   } = update
@@ -154,10 +182,7 @@ export function StatusBarUpdate() {
   // undiscoverable, which full hiding would (the settings page would be the
   // only way back to a release the user waved away by mistake).
   const muted = offering && available!.version === dismissedVersion
-  const showAvailable = offering && !muted
-  // A failure with nothing on offer has no actionable follow-up here; the
-  // settings page reports it in full.
-  if (!restarting && !ready && !isUpdating && !offering) return null
+  const showAvailable = offering && !muted && !failed
 
   // ─── Trigger ─────────────────────────────────────────────────────────────
 
@@ -167,41 +192,46 @@ export function StatusBarUpdate() {
       : null
 
   let triggerIcon: ReactNode
-  let triggerLabel: string
+  let triggerStatus: string | null
   let triggerTitle: string | undefined
   let accented = false
+  let destructive = false
   if (restarting) {
     triggerIcon = <Spinner className="h-3 w-3" />
-    triggerLabel =
+    triggerStatus =
       restartCountdown !== null && restartCountdown > 0
         ? t("restartingIn", { seconds: restartCountdown })
         : t("restarting")
   } else if (ready) {
     triggerIcon = <ArrowUpCircle className="h-3.5 w-3.5" />
-    triggerLabel = t("restartToUpdate")
+    triggerStatus = t("restartToUpdate")
     accented = true
   } else if (isUpdating) {
     triggerIcon = <Spinner className="h-3 w-3" />
-    triggerLabel =
+    triggerStatus =
       state.status === "downloading"
         ? downloadPercent !== null
           ? `${t("downloading")} ${downloadPercent}%`
           : t("downloading")
         : t("updating")
-  } else {
-    // `offering` is true here, so `available` is non-null.
+  } else if (failed) {
+    triggerIcon = <CircleAlert className="h-3.5 w-3.5" />
+    triggerStatus = t("updateFailedStatus")
+    destructive = true
+  } else if (offering) {
     const badge = t("newVersionBadge", { version: available!.version })
-    triggerIcon = muted ? (
-      <ArrowUpCircle className="h-3.5 w-3.5" />
-    ) : (
-      <Sparkles className="h-3.5 w-3.5" />
-    )
-    triggerLabel = muted ? "" : badge
-    // Icon-only still needs a name for screen readers and a hover hint for
-    // everyone else.
-    triggerTitle = muted ? badge : undefined
+    triggerIcon = <ArrowUp className="h-3.5 w-3.5" />
+    triggerStatus = muted ? null : badge
+    triggerTitle = badge
     accented = !muted
+  } else {
+    triggerIcon = null
+    triggerStatus = null
   }
+  const runningVersion = currentVersion ? `v${currentVersion}` : "v—"
+  const triggerLabel = [runningVersion, triggerStatus ?? triggerTitle]
+    .filter(Boolean)
+    .join(", ")
 
   // ─── Popover body ────────────────────────────────────────────────────────
 
@@ -213,6 +243,13 @@ export function StatusBarUpdate() {
     return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(
       parsed
     )
+  })()
+  const formattedLastChecked = (() => {
+    if (!lastCheckedAt) return null
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(lastCheckedAt)
   })()
 
   const activeStep: Step =
@@ -232,6 +269,14 @@ export function StatusBarUpdate() {
         )
       )
     : null
+  const checkErrorMessage = checkError
+    ? t(
+        appUpdateErrorMessageKey(
+          normalizeAppUpdateError(checkError).kind,
+          "check"
+        )
+      )
+    : null
 
   const handleLater = () => {
     dismissAvailable()
@@ -242,17 +287,23 @@ export function StatusBarUpdate() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          aria-label={triggerLabel ? undefined : triggerTitle}
+          aria-label={triggerLabel}
           title={triggerTitle}
           className={cn(
-            "flex items-center gap-1.5 transition-colors",
-            accented
-              ? "text-primary hover:text-primary/80"
-              : "hover:text-foreground"
+            "flex h-6 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded px-1.5 font-mono tabular-nums transition-colors duration-200",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+            destructive
+              ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+              : accented
+                ? "bg-primary/10 text-primary hover:bg-primary/15"
+                : "hover:bg-accent hover:text-foreground"
           )}
         >
+          <span>{runningVersion}</span>
           {triggerIcon}
-          {triggerLabel && <span>{triggerLabel}</span>}
+          {triggerStatus && (
+            <span className="hidden sm:inline">{triggerStatus}</span>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-80 gap-3 p-3">
@@ -264,7 +315,7 @@ export function StatusBarUpdate() {
               ? t("updateReadyHint")
               : offering
                 ? t("updateAvailableTitle")
-                : t("updateTitle")}
+                : t("versionTitle")}
           </div>
           <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
             <span className="font-mono">
@@ -273,6 +324,11 @@ export function StatusBarUpdate() {
             </span>
             {formattedDate && <span>{formattedDate}</span>}
           </div>
+          {formattedLastChecked && !formattedDate && (
+            <div className="text-[11px] text-muted-foreground">
+              {t("lastChecked", { time: formattedLastChecked })}
+            </div>
+          )}
         </div>
 
         {showRail && (
@@ -280,14 +336,21 @@ export function StatusBarUpdate() {
             <StepRail current={activeStep} />
             {state.status === "downloading" && (
               <>
-                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  role="progressbar"
+                  aria-label={t("downloading")}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={downloadPercent ?? undefined}
+                  className="h-1.5 overflow-hidden rounded-full bg-muted"
+                >
                   {downloadPercent !== null ? (
                     <div
                       className="h-full rounded-full bg-primary transition-all duration-300"
                       style={{ width: `${downloadPercent}%` }}
                     />
                   ) : (
-                    <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
+                    <div className="h-full w-1/3 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
                   )}
                 </div>
                 <div className="text-[11px] text-muted-foreground">
@@ -297,8 +360,12 @@ export function StatusBarUpdate() {
               </>
             )}
             {state.status === "installing" && (
-              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
+              <div
+                role="progressbar"
+                aria-label={t("updating")}
+                className="h-1.5 overflow-hidden rounded-full bg-muted"
+              >
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
               </div>
             )}
             {restarting && (
@@ -319,8 +386,20 @@ export function StatusBarUpdate() {
         )}
 
         {errorMessage && (
-          <div className="rounded-md border border-red-500/30 bg-red-500/5 px-2 py-1.5 text-[11px] text-red-400">
+          <div
+            role="alert"
+            className="rounded-md border border-red-500/30 bg-red-500/5 px-2 py-1.5 text-[11px] text-red-400"
+          >
             {t("updateError", { message: errorMessage })}
+          </div>
+        )}
+
+        {checkErrorMessage && !errorMessage && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-500/30 bg-red-500/5 px-2 py-1.5 text-[11px] text-red-400"
+          >
+            {t("checkUpdateFailed", { message: checkErrorMessage })}
           </div>
         )}
 
@@ -383,7 +462,16 @@ export function StatusBarUpdate() {
                 {t("viewRelease", { version: available!.version })}
               </Button>
             )
-          ) : null}
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => void checkNow({ silent: false })}
+              disabled={checking || isBusy}
+            >
+              {checking && <Spinner className="h-3 w-3" />}
+              {checking ? t("checking") : t("checkUpdate")}
+            </Button>
+          )}
         </div>
       </PopoverContent>
     </Popover>

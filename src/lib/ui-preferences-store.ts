@@ -32,7 +32,7 @@ import { onTransportReconnect, subscribe } from "@/lib/platform"
 import { UI_PREFERENCES_CHANGED_EVENT } from "@/lib/types"
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
-  show_conversation_status: true,
+  show_conversation_status: false,
   allow_conversation_status_actions: true,
   show_welcome_quick_actions: true,
 }

@@ -249,6 +249,7 @@
     "waitingForServer": "서버가 복구되기를 기다리는 중...",
     "restartToUpdate": "다시 시작하여 업데이트",
     "newVersionBadge": "새 버전 v{version}",
+    "updateFailedStatus": "업데이트 실패",
     "updateAvailableTitle": "업데이트 있음",
     "releaseNotesTitle": "새로운 기능",
     "remindLater": "나중에",

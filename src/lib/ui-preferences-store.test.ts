@@ -250,6 +250,12 @@ describe("one-time localStorage migration", () => {
 
     const { result } = renderHook(() => useUiPreferences())
     // Falls back to defaults instead of throwing into the mount effect.
-    await waitFor(() => expect(result.current).toEqual(ALL_ON))
+    await waitFor(() =>
+      expect(result.current).toEqual({
+        show_conversation_status: false,
+        allow_conversation_status_actions: true,
+        show_welcome_quick_actions: true,
+      })
+    )
   })
 })

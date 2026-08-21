@@ -4479,9 +4479,10 @@ export async function submitSessionFeedback(
 
 // ─── UI preferences (conversation status + welcome quick-actions) ────────
 
-/** Mirror of Rust `UiPreferences` (all default true; wire fields are
- *  snake_case). `null` from `getUiPreferences` means "no row yet" — the
- *  one-time localStorage migration keys on that exact signal. */
+/** Mirror of Rust `UiPreferences` (status colors default false; the other
+ *  two default true; wire fields are snake_case). `null` from
+ *  `getUiPreferences` means "no row yet" — the one-time localStorage
+ *  migration keys on that exact signal. */
 export interface UiPreferences {
   show_conversation_status: boolean
   allow_conversation_status_actions: boolean

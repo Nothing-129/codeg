@@ -1,10 +1,9 @@
 //! Pure-UI preference booleans persisted in `app_metadata`.
 //!
-//! Three toggles live here, all default ON so the status workflow stays
-//! available until the user turns a switch off:
-//!   * `show_conversation_status` — colored status dots (sidebar / tabs / dialogs)
-//!   * `allow_conversation_status_actions` — whether the status can be changed
-//!   * `show_welcome_quick_actions` — the mode cards on the welcome page
+//! Three toggles live here:
+//!   * `show_conversation_status` — colored status dots (sidebar / tabs / dialogs); default OFF
+//!   * `allow_conversation_status_actions` — whether the status can be changed; default ON
+//!   * `show_welcome_quick_actions` — the mode cards on the welcome page; default ON
 //!
 //! Unlike their localStorage predecessors these survive an app reinstall (the
 //! DB lives in the data dir, not the webview container) and are shared by every
@@ -23,10 +22,10 @@ use crate::web::event_bridge::{emit_event, EventEmitter, UI_PREFERENCES_CHANGED_
 
 pub const UI_PREFERENCES_KEY: &str = "ui_preferences";
 
-/// All three default ON — `#[serde(default)]` makes partial or future-shaped
-/// JSON degrade per-field instead of failing the whole load. (Container-level
-/// `serde(default)` reads missing fields from `Default`, which is why `Default`
-/// is the all-true manual impl below rather than the derived all-false one.)
+/// Per-field defaults via `#[serde(default)]` so partial or future-shaped JSON
+/// degrades instead of failing the whole load. Container-level `serde(default)`
+/// reads missing fields from `Default`; the manual impl below is mixed
+/// (status colors OFF, the other two ON) rather than derived all-false.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct UiPreferences {
@@ -38,7 +37,7 @@ pub struct UiPreferences {
 impl Default for UiPreferences {
     fn default() -> Self {
         Self {
-            show_conversation_status: true,
+            show_conversation_status: false,
             allow_conversation_status_actions: true,
             show_welcome_quick_actions: true,
         }
@@ -152,7 +151,7 @@ mod tests {
         app_metadata_service::upsert_value(
             &db.conn,
             UI_PREFERENCES_KEY,
-            r#"{"show_conversation_status":false}"#,
+            r#"{"allow_conversation_status_actions":true}"#,
         )
         .await
         .unwrap();
@@ -163,7 +162,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn corrupt_value_falls_back_to_all_enabled() {
+    async fn corrupt_value_falls_back_to_defaults() {
         let db = crate::db::test_helpers::fresh_in_memory_db().await;
         app_metadata_service::upsert_value(&db.conn, UI_PREFERENCES_KEY, "not-json")
             .await

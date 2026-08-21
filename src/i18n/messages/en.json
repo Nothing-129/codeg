@@ -249,6 +249,7 @@
     "waitingForServer": "Waiting for the server to come back...",
     "restartToUpdate": "Restart to update",
     "newVersionBadge": "New v{version}",
+    "updateFailedStatus": "Update failed",
     "updateAvailableTitle": "Update available",
     "releaseNotesTitle": "What's new",
     "remindLater": "Later",

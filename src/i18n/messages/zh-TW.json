@@ -249,6 +249,7 @@
     "waitingForServer": "正在等待服務恢復...",
     "restartToUpdate": "重新啟動以更新",
     "newVersionBadge": "新版本 v{version}",
+    "updateFailedStatus": "更新失敗",
     "updateAvailableTitle": "發現新版本",
     "releaseNotesTitle": "更新內容",
     "remindLater": "稍後",

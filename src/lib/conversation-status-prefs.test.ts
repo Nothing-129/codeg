@@ -29,36 +29,36 @@ describe("conversation status preferences", () => {
     __resetUiPreferencesStoreForTests()
   })
 
-  it("defaults both switches on", () => {
-    expect(loadConversationStatusDisplay()).toBe(true)
+  it("defaults status colors off and actions on", () => {
+    expect(loadConversationStatusDisplay()).toBe(false)
     expect(loadConversationStatusActions()).toBe(true)
   })
 
   it("round-trips each switch independently", async () => {
-    await saveConversationStatusDisplay(false)
-    expect(loadConversationStatusDisplay()).toBe(false)
+    await saveConversationStatusDisplay(true)
+    expect(loadConversationStatusDisplay()).toBe(true)
     expect(loadConversationStatusActions()).toBe(true)
 
     await saveConversationStatusActions(false)
-    expect(loadConversationStatusDisplay()).toBe(false)
+    expect(loadConversationStatusDisplay()).toBe(true)
     expect(loadConversationStatusActions()).toBe(false)
 
-    await saveConversationStatusDisplay(true)
-    expect(loadConversationStatusDisplay()).toBe(true)
+    await saveConversationStatusDisplay(false)
+    expect(loadConversationStatusDisplay()).toBe(false)
     expect(loadConversationStatusActions()).toBe(false)
   })
 
   it("updates live subscribers without a reload", () => {
     const { result } = renderHook(() => useConversationStatusPrefs())
-    expect(result.current.showStatus).toBe(true)
+    expect(result.current.showStatus).toBe(false)
     expect(result.current.allowActions).toBe(true)
 
     act(() => {
-      void result.current.setShowStatus(false)
+      void result.current.setShowStatus(true)
       void result.current.setAllowActions(false)
     })
 
-    expect(result.current.showStatus).toBe(false)
+    expect(result.current.showStatus).toBe(true)
     expect(result.current.allowActions).toBe(false)
   })
 })
