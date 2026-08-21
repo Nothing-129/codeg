@@ -6,6 +6,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import { SessionDetailsDialog } from "./session-details-dialog"
 import type { DbConversationSummary, SessionStats } from "@/lib/types"
 import enMessages from "@/i18n/messages/en.json"
+import { saveConversationStatusDisplay } from "@/lib/conversation-status-prefs"
+import { __resetUiPreferencesStoreForTests } from "@/lib/ui-preferences-store"
 
 // The agent icon renders inline SVG with a <title> that would duplicate the
 // agent label text; stub it so text queries stay unambiguous.
@@ -15,6 +17,8 @@ vi.mock("@/components/agent-icon", () => ({
 
 vi.mock("@/lib/api", () => ({
   getFolderConversation: vi.fn(),
+  getUiPreferences: vi.fn(async () => null),
+  updateUiPreferences: vi.fn((prefs: unknown) => Promise.resolve(prefs)),
 }))
 
 // Keep the real `cn`, stub only the clipboard write so copy actions are
@@ -84,6 +88,7 @@ function wrap(ui: ReactElement) {
 
 describe("SessionDetailsDialog", () => {
   beforeEach(() => {
+    __resetUiPreferencesStoreForTests()
     mockGet.mockReset()
     mockCopy.mockClear()
     mockCopy.mockResolvedValue(true)
@@ -155,6 +160,7 @@ describe("SessionDetailsDialog", () => {
   })
 
   it("shows the title, agent, and status in the identity header", () => {
+    void saveConversationStatusDisplay(true)
     const { getByText } = renderWithIntl(
       <SessionDetailsDialog
         open

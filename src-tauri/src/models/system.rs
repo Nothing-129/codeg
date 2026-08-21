@@ -130,6 +130,14 @@ pub struct GitHubAccount {
     pub avatar_url: Option<String>,
     pub is_default: bool,
     pub created_at: String,
+    /// Which forge this account signs in to: `"github"` | `"gitlab"`, or
+    /// absent. Absent is what every account stored before GitLab support
+    /// existed looks like, and it keeps meaning what it always meant — a
+    /// credential for this HOST, whichever forge lives there. Set, it also
+    /// says which API the token is for, which is the only reliable signal for
+    /// a self-hosted instance whose hostname gives nothing away.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -389,7 +389,8 @@ describe("SidebarConversationCard status display", () => {
     localStorage.clear()
   })
 
-  it("paints a status badge on the agent icon by default", () => {
+  it("paints a status badge on the agent icon when status display is on", () => {
+    void saveConversationStatusDisplay(true)
     const { getByTitle } = renderWithIntl(
       <SidebarConversationCard
         conversation={{ ...conv(8), status: "pending_review" }}

@@ -1347,6 +1347,52 @@ html:not(.dark) {
   --os-size: 8px;
 }
 
+/* Forge label chips. The six values come from `labelSwatch()` as inline custom
+   properties (both themes at once); this picks which set applies, because the
+   theme is a class on the root and an inline style cannot see it. Unlayered on
+   purpose — Tailwind's utilities live in a layer, so a `text-*` on the same
+   element would otherwise win and the chip would lose its own colour. */
+.forge-label {
+  background-color: var(--fl-bg);
+  color: var(--fl-fg);
+  border-color: var(--fl-border);
+}
+
+.dark .forge-label {
+  background-color: var(--fl-bg-dark);
+  color: var(--fl-fg-dark);
+  border-color: var(--fl-border-dark);
+}
+
+/* System theme, no explicit class — the same pairing the code blocks above use. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) .forge-label {
+    background-color: var(--fl-bg-dark);
+    color: var(--fl-fg-dark);
+    border-color: var(--fl-border-dark);
+  }
+}
+
+/* The forge workbench's "a request is out" sweep (see `PendingBar`). Its own
+   keyframes rather than an animation utility: the travel is expressed in the
+   SWEEP's width, not the track's, so it has to run from fully off one edge
+   (-100%) to fully off the other (300% of a one-third-wide element). Not gated
+   on `prefers-reduced-motion` — it is the only thing on the page that says a
+   slow forge is still answering, and it moves along one axis at a constant
+   rate. */
+@keyframes forge-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.forge-progress {
+  animation: forge-progress 1.1s linear infinite;
+}
+
 /* Streamdown code blocks: dark mode via shiki dual-theme CSS variables */
 .dark [data-streamdown="code-block-body"] {
   background-color: var(--shiki-dark-bg, var(--sdm-bg, transparent)) !important;
