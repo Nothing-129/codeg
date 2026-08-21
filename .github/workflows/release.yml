@@ -326,12 +326,12 @@ jobs:
           prerelease: ${{ needs.create-draft-release.outputs.prerelease }}
           tauriScript: pnpm tauri
           # Skip MSI bundling on Windows: tauri-apps/tauri#14681 — light.exe
-          # fails when externalBin is configured. NSIS + updater artifacts
-          # (minisign) still ship for in-app auto-update.
+          # fails when externalBin is configured. Do NOT pass --no-sign:
+          # tauri-cli treats it as skipping updater minisign too, which
+          # drops windows-* from latest.json.
           args: >-
             --target ${{ matrix.target }}
             --bundles nsis
-            --no-sign
             --config src-tauri/ci-release.conf.json
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
@@ -357,7 +357,6 @@ jobs:
           tauriScript: pnpm tauri
           args: >-
             --target ${{ matrix.target }}
-            --no-sign
             --config src-tauri/ci-release.conf.json
           includeUpdaterJson: true
           retryAttempts: 2
@@ -385,6 +384,21 @@ jobs:
             --config src-tauri/ci-release.conf.json
           includeUpdaterJson: true
           retryAttempts: 2
+
+      - name: Verify updater signatures were produced
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="src-tauri/target/${{ matrix.target }}/release/bundle"
+          echo "bundle contents:"
+          find "$bundle" -type f | sort
+          sigs=$(find "$bundle" -name '*.sig' -type f)
+          if [ -z "$sigs" ]; then
+            echo "FATAL: no updater .sig under $bundle"
+            exit 1
+          fi
+          echo "signed:"
+          echo "$sigs"
 
       - name: Verify macOS app signature
         if: contains(matrix.target, 'apple-darwin')
@@ -745,6 +759,17 @@ jobs:
             echo "FATAL: no updater .sig artifacts on the draft release"
             exit 1
           }
+          gh release download "${{ github.ref_name }}" --pattern latest.json --dir /tmp
+          python3 - <<'PY'
+          import json, sys
+          platforms = json.load(open("/tmp/latest.json")).get("platforms") or {}
+          print("platforms:", ", ".join(sorted(platforms)))
+          required = ("darwin-aarch64", "windows-x86_64", "linux-x86_64")
+          missing = [p for p in required if p not in platforms]
+          if missing:
+              print("FATAL: latest.json missing", ", ".join(missing), file=sys.stderr)
+              sys.exit(1)
+          PY
 
       - name: Publish draft release
         uses: actions/github-script@v7
