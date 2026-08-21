@@ -82,6 +82,23 @@ const ok200 = () => ({ status: 200, ok: true, json: async () => ({}) })
 const resp401 = () => ({ status: 401, ok: false, json: async () => ({}) })
 
 describe("WebTransport connection state machine", () => {
+  it("does not report an expired session when an unauthenticated call returns 401", async () => {
+    localStorage.removeItem("codeg_token")
+    fetchMock.mockResolvedValue(resp401())
+    const t = new WebTransport("http://localhost")
+
+    await expect(t.call("get_ui_preferences")).rejects.toThrow("Unauthorized")
+    expect(t.getConnectionSnapshot()).toBe("connected")
+  })
+
+  it("reports an expired session when an authenticated call returns 401", async () => {
+    fetchMock.mockResolvedValue(resp401())
+    const t = new WebTransport("http://localhost")
+
+    await expect(t.call("get_ui_preferences")).rejects.toThrow("Unauthorized")
+    expect(t.getConnectionSnapshot()).toBe("unauthorized")
+  })
+
   it("starts connected and the first __ready__ does not fire reconnect callbacks", () => {
     const t = new WebTransport("http://localhost")
     const onReconnect = vi.fn()

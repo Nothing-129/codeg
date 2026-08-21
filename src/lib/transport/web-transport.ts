@@ -174,11 +174,11 @@ export class WebTransport implements Transport {
       window.clearTimeout(timeout)
     }
     if (res.status === 401) {
-      // Definitive auth failure. Surface the unified unauthorized dialog
-      // rather than an abrupt redirect — a hard `location.href` here would
-      // fight a reconnect dialog that may already be on screen. The user
-      // re-authenticates from the dialog's "Go to login" action.
-      this.markUnauthorized()
+      // A rejected credential is a definitive auth failure; an empty token is
+      // merely the expected logged-out state (the login page still mounts
+      // global providers that may attempt optional backend reads). Only the
+      // former should surface the session-expired dialog.
+      if (token) this.markUnauthorized()
       throw new Error("Unauthorized")
     }
     if (!res.ok) {
