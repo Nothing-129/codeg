@@ -1593,6 +1593,7 @@
       "title": "Discussions",
       "brand": "MaxCode",
       "locateActiveConversation": "Localiser la conversation active",
+      "markAllRead": "Tout marquer comme lu ({count})",
       "expandAllGroups": "Développer tous les groupes",
       "collapseAllGroups": "Réduire tous les groupes",
       "newConversation": "Nouvelle conversation",

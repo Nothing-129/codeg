@@ -1593,6 +1593,7 @@
       "title": "会話",
       "brand": "MaxCode",
       "locateActiveConversation": "アクティブな会話を表示",
+      "markAllRead": "すべて既読にする（{count}）",
       "expandAllGroups": "すべてのグループを展開",
       "collapseAllGroups": "すべてのグループを折りたたむ",
       "newConversation": "新しい会話",

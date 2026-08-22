@@ -20,6 +20,7 @@ export interface ConversationUnreadState {
   visibleIds: ReadonlySet<number>
   noteActivity: (conversationId: number) => void
   markRead: (conversationId: number) => void
+  markAllRead: () => void
   setViewed: (conversationIds: Iterable<number>) => void
   setVisible: (conversationIds: Iterable<number>) => void
   clear: (conversationId: number) => void
@@ -54,6 +55,13 @@ export const useConversationUnreadStore = create<ConversationUnreadState>(
       next.delete(conversationId)
       persistUnread(next)
       set({ unreadIds: next })
+    },
+
+    markAllRead: () => {
+      if (get().unreadIds.size === 0) return
+      const unreadIds = new Set<number>()
+      persistUnread(unreadIds)
+      set({ unreadIds })
     },
 
     setViewed: (conversationIds) => {

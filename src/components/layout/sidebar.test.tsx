@@ -5,6 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Sidebar } from "./sidebar"
 import { __resetUiPreferencesStoreForTests } from "@/lib/ui-preferences-store"
+import {
+  resetConversationUnreadStore,
+  useConversationUnreadStore,
+} from "@/stores/conversation-unread-store"
 import enMessages from "@/i18n/messages/en.json"
 
 // The conversation-status switches now persist through the backend
@@ -116,6 +120,7 @@ function renderSidebar() {
 
 describe("Sidebar — fixed nav region", () => {
   beforeEach(() => {
+    resetConversationUnreadStore()
     spies.openNewConversationTab.mockClear()
     spies.openChatModeTab.mockClear()
     spies.setRoute.mockClear()
@@ -165,6 +170,22 @@ describe("Sidebar — fixed nav region", () => {
     // search; the button now lives in LeftEdgeChrome / FolderTitleBar instead.
     expect(queryByText("Search")).toBeNull()
     expect(queryByText("Ctrl+K")).toBeNull()
+  })
+
+  it("marks all unread conversations as read from the header", async () => {
+    useConversationUnreadStore.getState().noteActivity(7)
+    useConversationUnreadStore.getState().noteActivity(8)
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(
+      screen.getByRole("button", { name: "Mark all as read (2)" })
+    )
+
+    expect(useConversationUnreadStore.getState().unreadIds.size).toBe(0)
+    expect(
+      screen.queryByRole("button", { name: "Mark all as read (2)" })
+    ).toBeNull()
   })
 
   it("falls back to chat mode (never disabled) when no folder is active", () => {

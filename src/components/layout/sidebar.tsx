@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
+  CheckCheck,
   Crosshair,
   Funnel,
   ListChevronsDownUp,
@@ -20,6 +21,7 @@ import { useTabActions } from "@/contexts/tab-context"
 import { useAutomationsView } from "@/contexts/automations-view-context"
 import { useTasksView } from "@/contexts/tasks-view-context"
 import { useWorkbenchRoute } from "@/contexts/workbench-route-context"
+import { useConversationUnreadStore } from "@/stores/conversation-unread-store"
 import {
   SidebarConversationList,
   type SidebarConversationListHandle,
@@ -137,6 +139,7 @@ export function Sidebar() {
   const { openNewConversationTab, openChatModeTab } = useTabActions()
   const { unseenFailures } = useAutomationsView()
   const { attentionCount } = useTasksView()
+  const unreadCount = useConversationUnreadStore((s) => s.unreadIds.size)
   const { routeId, setRoute, openConversations } = useWorkbenchRoute()
   const isMac = useIsMac()
   const { isMac: platformIsMac } = usePlatform()
@@ -325,6 +328,20 @@ export function Sidebar() {
           >
             <Crosshair aria-hidden="true" className="h-3.5 w-3.5" />
           </Button>
+          {unreadCount > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 text-muted-foreground"
+              onClick={() =>
+                useConversationUnreadStore.getState().markAllRead()
+              }
+              title={t("markAllRead", { count: unreadCount })}
+              aria-label={t("markAllRead", { count: unreadCount })}
+            >
+              <CheckCheck aria-hidden="true" className="h-3.5 w-3.5" />
+            </Button>
+          )}
           {/* Expand/collapse-all keeps a standalone header button on mobile; on
               desktop it's folded into the view-options menu below. */}
           {isMobile && (

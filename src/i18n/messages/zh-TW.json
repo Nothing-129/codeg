@@ -1593,6 +1593,7 @@
       "title": "會話",
       "brand": "MaxCode",
       "locateActiveConversation": "定位目前會話",
+      "markAllRead": "全部標示為已讀（{count}）",
       "expandAllGroups": "展開全部分組",
       "collapseAllGroups": "折疊全部分組",
       "newConversation": "新增會話",

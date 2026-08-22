@@ -36,6 +36,21 @@ describe("conversation-unread-store", () => {
     expect(localStorage.getItem(conversationUnreadStorageKey())).toBe("[]")
   })
 
+  it("marks every unread thread as read without resetting view tracking", () => {
+    useConversationUnreadStore.getState().setViewed([9])
+    useConversationUnreadStore.getState().setVisible([7, 8, 9])
+    useConversationUnreadStore.getState().noteActivity(7)
+    useConversationUnreadStore.getState().noteActivity(8)
+
+    useConversationUnreadStore.getState().markAllRead()
+
+    const state = useConversationUnreadStore.getState()
+    expect(state.unreadIds.size).toBe(0)
+    expect([...state.viewedIds]).toEqual([9])
+    expect([...state.visibleIds]).toEqual([7, 8, 9])
+    expect(localStorage.getItem(conversationUnreadStorageKey())).toBe("[]")
+  })
+
   it("tracks visible conversations separately from persisted unread state", () => {
     useConversationUnreadStore.getState().setVisible([4, 5, 5, 0])
     const visibleIds = [...useConversationUnreadStore.getState().visibleIds]
